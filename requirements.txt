@@ -1,0 +1,20 @@
+# Runtime tools bundled by this repository. LazySlide and PyTorch are installed
+# explicitly in the Dockerfile so CPU/GPU builds use the intended wheel index.
+huggingface_hub[hf_xet]>=1.1.5,<2
+requests>=2.32,<3
+openslide-python>=1.4,<2
+tiffslide>=2.5,<3
+tifffile>=2024.12,<2027
+imagecodecs>=2024.12,<2027
+olefile>=0.47,<1
+opencv-python-headless>=4.10,<5
+pyvips>=3,<4
+pyyaml>=6,<7
+openpyxl>=3.1,<4
+tqdm>=4.67,<5
+
+# Cohort aggregation and optional reports.
+python-pptx>=1.0,<2
+PyMuPDF>=1.25,<2
+umap-learn>=0.5.7,<0.6
+seaborn>=0.13,<0.14

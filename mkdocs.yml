@@ -1,0 +1,79 @@
+site_name: TumorQuantAI
+site_description: Beginner-friendly documentation for reproducible cell-type quantification in H&E whole-slide images
+site_author: TumorQuantAI developers
+site_url: https://cfarkas.github.io/tumorquantai/
+
+repo_name: cfarkas/tumorquantai
+repo_url: https://github.com/cfarkas/tumorquantai
+edit_uri: edit/main/docs/
+
+extra_css:
+  - stylesheets/tumorquantai.css
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.tabs
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Use dark theme
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Use light theme
+
+nav:
+  - Home: index.md
+  - Start here:
+      - Quick start: QUICKSTART.md
+      - Installation: INSTALL.md
+      - Inputs, L0/L2, and MPP: INPUTS_AND_MPP.md
+      - Fast versus full: RUN_MODES.md
+  - Run the workflow:
+      - Running, resume, and failures: RUNNING.md
+      - Commands and tools: TOOLS.md
+      - Understand the outputs: OUTPUT_SCHEMA.md
+  - Analyze a cohort:
+      - Clinical stratification and ML: CLINICAL_ML.md
+  - Lymphoma tutorial:
+      - End-to-end tutorial: TUTORIAL_LYMPHOMA_ZENODO.md
+      - Lymphoma teaching dataset: DATASET_LYMPHOMA_ZENODO.md
+      - Validation record: VALIDATION_LYMPHOMA.md
+  - Reference:
+      - Glossary: GLOSSARY.md
+  - Maintainers:
+      - Zenodo publication: ZENODO_PUBLISHING.md
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true

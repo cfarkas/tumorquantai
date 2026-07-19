@@ -1,0 +1,38 @@
+name: Bug report
+description: Report a reproducible workflow or output problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please remove patient identifiers, access tokens, and private paths from logs.
+  - type: input
+    id: version
+    attributes:
+      label: Repository commit or release
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Nextflow, Docker, GPU/CPU, and operating system
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Redacted command
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and observed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted error and relevant trace rows
+      render: text

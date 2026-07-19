@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install lightweight test dependencies
+        run: >-
+          python -m pip install
+          'pandas>=2.2,<3' 'matplotlib>=3.8,<4' 'numpy>=1.26,<3'
+          'tifffile>=2024.1' 'pillow>=10,<12' 'scipy>=1.15,<2'
+          'scikit-learn>=1.6,<2' 'openpyxl>=3.1,<4' 'PyYAML>=6,<7' 'requests>=2.32,<3' 'olefile>=0.47,<1' 'pytest>=8,<9'
+
+      - name: Reject tracked patient-level artifacts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if git ls-files | grep -Eqi '(^|/)(data|outputs|clinical_ml_results|workflow_metadata|aggregated_celltypes)/|[.](xlsx|parquet|h5ad|mds)$|(^|/)(linked_clinical_histoplus_(full|all)|analysis_cohort|linkage_audit|oof_predictions[^/]*|fold_assignments|feature_manifest|clinical_missingness|univariate_stratification|fold_metrics|summary_metrics|incremental_value|model_selection|heldout_permutation_importance|celltype_counts_by_sample|celltype_fractions_by_sample|celltype_counts_long|sample_aggregation_audit|workflow_aggregation_manifest)[.]csv$|(^|/)(slides[.](tsv|json)|aggregation_summary[.]json)$'; then
+            echo 'Patient-level data or generated ML artifacts must not be committed' >&2
+            exit 1
+          fi
+
+      - name: Parse project metadata
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          import yaml
+
+          json.loads(Path('nextflow_schema.json').read_text(encoding='utf-8'))
+          yaml.safe_load(Path('CITATION.cff').read_text(encoding='utf-8'))
+          yaml.safe_load(Path('.github/workflows/ci.yml').read_text(encoding='utf-8'))
+          PY
+
+      - name: Compile Python tools
+        run: python -m py_compile lazyslide_histoplus_wsi_celltype.py bin/*.py
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      - name: Shell syntax
+        run: bash -n run.sh setup_server.sh build_and_push.sh
+
+      - name: Dockerfile static check
+        run: docker build --check .
+
+      - name: Install pinned Nextflow
+        env:
+          NXF_VER: '25.10.2'
+        run: |
+          curl -fsSL https://github.com/nextflow-io/nextflow/releases/download/v25.10.2/nextflow -o nextflow
+          echo '60aff30ad532030657296ca1fa72e37befda236bfd4fc7358a3cabf5e7589dd7  nextflow' | sha256sum --check
+          chmod +x nextflow
+          echo "$PWD" >> "$GITHUB_PATH"
+
+      - name: Parse Nextflow configuration
+        run: nextflow config -flat >/dev/null
+
+      - name: Nextflow discovery-only smoke test
+        run: |
+          nextflow run . \
+            -profile local \
+            --input_dir "$PWD/tests/fixtures" \
+            --output_dir "$RUNNER_TEMP/histoplus-dry-run" \
+            --dry_run true \
+            -ansi-log false
+          test -s "$RUNNER_TEMP/histoplus-dry-run/workflow_metadata/slides.tsv"
+
+      - name: Full scatter, ignored-failure, and aggregation smoke test
+        run: |
+          nextflow run . \
+            -profile local \
+            --input_dir "$PWD/tests/fixtures" \
+            --output_dir "$RUNNER_TEMP/histoplus-full-smoke" \
+            --worker_script "$PWD/tests/fixtures/stub_worker.py" \
+            --cpus 2 \
+            --memory '4 GB' \
+            --percent_slide 10 \
+            --max_retries 0 \
+            -ansi-log false
+          test -s "$RUNNER_TEMP/histoplus-full-smoke/aggregated_celltypes/celltype_counts_by_sample.csv"
+          grep -q 'case_fail_1,case_fail_1,False' \
+            "$RUNNER_TEMP/histoplus-full-smoke/aggregated_celltypes/sample_aggregation_audit.csv"
+
+      - name: All-failed cohort still emits an explicit audit
+        run: |
+          nextflow run . \
+            -profile local \
+            --input_dir "$PWD/tests/fixtures" \
+            --output_dir "$RUNNER_TEMP/histoplus-all-failed-smoke" \
+            --worker_script "$PWD/tests/fixtures/stub_worker.py" \
+            --include 'case_fail*' \
+            --cpus 2 \
+            --memory '4 GB' \
+            --percent_slide 10 \
+            --max_retries 0 \
+            -ansi-log false
+          grep -qx 'class_id,cell_type' \
+            "$RUNNER_TEMP/histoplus-all-failed-smoke/aggregated_celltypes/celltype_counts_by_sample.csv"
+          grep -q 'case_fail_1,case_fail_1,False' \
+            "$RUNNER_TEMP/histoplus-all-failed-smoke/aggregated_celltypes/sample_aggregation_audit.csv"

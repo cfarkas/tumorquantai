@@ -1,0 +1,16 @@
+{
+  "template_status": "FAIL_CLOSED_UNTIL_COMPLETED_BY_AN_AUTHORIZED_PERSON",
+  "authorized_by": "",
+  "authorized_at": "",
+  "license": "",
+  "release_fingerprint_sha256": "",
+  "deidentification_review_complete": false,
+  "pixel_content_privacy_review_complete": false,
+  "public_redistribution_authorized": false,
+  "dataset_rights_confirmed": false,
+  "license_confirmed": false,
+  "metadata_review_complete": false,
+  "publish_irreversibility_acknowledged": false,
+  "pixel_review_evidence": "",
+  "institutional_authorization_reference": ""
+}

@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this workflow, cite this repository and the LazySlide/HistoPLUS methods used in your analysis."
+title: "TumorQuantAI"
+type: software
+authors:
+  - family-names: Farkas
+    given-names: Carlos
+repository-code: "https://github.com/cfarkas/tumorquantai"
+version: 0.4.0
+date-released: 2026-07-18
