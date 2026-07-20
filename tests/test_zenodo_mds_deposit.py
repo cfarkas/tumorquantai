@@ -341,3 +341,69 @@ def test_draft_metadata_accepts_unsubmitted_state(tmp_path: Path) -> None:
         "metadata": dict(expected),
     }
     module.validate_draft_metadata(payload, expected)
+
+
+def test_draft_metadata_accepts_current_zenodo_normalization(
+    tmp_path: Path,
+) -> None:
+    expected = module.restricted_metadata_from_file(metadata_file(tmp_path))
+    expected["description"] = "H&E tutorial dataset"
+    actual = dict(expected)
+    actual["description"] = "H&amp;E tutorial dataset"
+    actual["creators"] = [
+        {"name": "Doe, Jane", "affiliation": None}
+    ]
+    actual["access_conditions"] = None
+    payload = {
+        "submitted": False,
+        "state": "unsubmitted",
+        "metadata": actual,
+    }
+    module.validate_draft_metadata(payload, expected)
+
+
+def test_draft_metadata_rejects_missing_conditions_for_legacy_state(
+    tmp_path: Path,
+) -> None:
+    expected = module.restricted_metadata_from_file(metadata_file(tmp_path))
+    actual = dict(expected)
+    actual["access_conditions"] = None
+    payload = {
+        "submitted": False,
+        "state": "inprogress",
+        "metadata": actual,
+    }
+    with pytest.raises(module.base.DepositError, match="access conditions"):
+        module.validate_draft_metadata(payload, expected)
+
+
+def test_draft_metadata_rejects_creator_change_after_normalization(
+    tmp_path: Path,
+) -> None:
+    expected = module.restricted_metadata_from_file(metadata_file(tmp_path))
+    actual = dict(expected)
+    actual["creators"] = [
+        {"name": "Other, Person", "affiliation": None}
+    ]
+    payload = {
+        "submitted": False,
+        "state": "unsubmitted",
+        "metadata": actual,
+    }
+    with pytest.raises(module.base.DepositError, match="creators"):
+        module.validate_draft_metadata(payload, expected)
+
+
+def test_draft_metadata_rejects_changed_access_conditions(
+    tmp_path: Path,
+) -> None:
+    expected = module.restricted_metadata_from_file(metadata_file(tmp_path))
+    actual = dict(expected)
+    actual["access_conditions"] = "Different conditions"
+    payload = {
+        "submitted": False,
+        "state": "unsubmitted",
+        "metadata": actual,
+    }
+    with pytest.raises(module.base.DepositError, match="access_conditions"):
+        module.validate_draft_metadata(payload, expected)

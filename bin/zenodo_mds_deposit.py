@@ -12,6 +12,7 @@ import argparse
 import csv
 import json
 import sys
+from html import unescape
 from pathlib import Path
 from typing import BinaryIO
 from urllib.parse import urlparse
@@ -306,36 +307,99 @@ def restricted_metadata_from_file(path: Path) -> dict[str, object]:
     return metadata
 
 
+def _semantic_text_equal(actual: object, expected: object) -> bool:
+    return (
+        isinstance(actual, str)
+        and isinstance(expected, str)
+        and unescape(actual) == unescape(expected)
+    )
+
+
+def _creator_metadata_matches(actual: object, expected: object) -> bool:
+    if (
+        not isinstance(actual, list)
+        or not isinstance(expected, list)
+        or len(actual) != len(expected)
+    ):
+        return False
+    for actual_creator, expected_creator in zip(actual, expected):
+        if not isinstance(actual_creator, dict) or not isinstance(
+            expected_creator, dict
+        ):
+            return False
+        for key, expected_value in expected_creator.items():
+            if key not in actual_creator:
+                return False
+            actual_value = actual_creator[key]
+            if isinstance(expected_value, str):
+                if not _semantic_text_equal(actual_value, expected_value):
+                    return False
+            elif actual_value != expected_value:
+                return False
+    return True
+
+
 def validate_draft_metadata(
     payload: dict[str, object], expected: dict[str, object]
 ) -> None:
     actual = payload.get("metadata")
     if not isinstance(actual, dict):
         raise base.DepositError("Zenodo draft response has no metadata object")
-    fields = (
-        "title",
-        "description",
+
+    if str(actual.get("access_right", "")).casefold() != "restricted":
+        raise base.DepositError("Zenodo draft is not restricted")
+    if payload.get("submitted") is not False:
+        raise base.DepositError("Zenodo deposition is not an unpublished draft")
+    draft_state = payload.get("state")
+    if draft_state not in {None, "inprogress", "unsubmitted"}:
+        raise base.DepositError("Zenodo deposition is not editable")
+
+    for field in ("title", "description"):
+        if field in expected and not _semantic_text_equal(
+            actual.get(field), expected.get(field)
+        ):
+            raise base.DepositError(
+                f"Zenodo draft metadata does not match requested {field}"
+            )
+
+    for field in (
         "upload_type",
         "access_right",
         "license",
-        "creators",
-        "access_conditions",
         "keywords",
         "related_identifiers",
-    )
-    for field in fields:
+    ):
         if field in expected and actual.get(field) != expected.get(field):
             raise base.DepositError(
                 f"Zenodo draft metadata does not match requested {field}"
             )
-    if str(actual.get("access_right", "")).casefold() != "restricted":
-        raise base.DepositError("Zenodo draft is not restricted")
-    if not str(actual.get("access_conditions", "")).strip():
-        raise base.DepositError("Zenodo draft lacks restricted access conditions")
-    if payload.get("submitted") is not False:
-        raise base.DepositError("Zenodo deposition is not an unpublished draft")
-    if payload.get("state") not in {None, "inprogress", "unsubmitted"}:
-        raise base.DepositError("Zenodo deposition is not editable")
+
+    if "creators" in expected and not _creator_metadata_matches(
+        actual.get("creators"), expected.get("creators")
+    ):
+        raise base.DepositError(
+            "Zenodo draft metadata does not match requested creators"
+        )
+
+    actual_conditions = actual.get("access_conditions")
+    conditions_missing = (
+        "access_conditions" not in actual or actual_conditions is None
+    )
+    if conditions_missing:
+        if draft_state != "unsubmitted":
+            raise base.DepositError(
+                "Zenodo draft lacks restricted access conditions"
+            )
+    elif not isinstance(actual_conditions, str) or not actual_conditions.strip():
+        raise base.DepositError(
+            "Zenodo draft lacks restricted access conditions"
+        )
+    elif not _semantic_text_equal(
+        actual_conditions, expected.get("access_conditions")
+    ):
+        raise base.DepositError(
+            "Zenodo draft metadata does not match requested access_conditions"
+        )
 
 
 def deposit_mds(
