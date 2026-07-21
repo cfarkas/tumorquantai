@@ -138,13 +138,20 @@ python bin/zenodo_mds_deposit.py \
   --private-mapping "$RELEASE/private/mds_source_mapping.csv" \
   --metadata "$RELEASE/private/metadata.json" \
   --state "$RELEASE/private/zenodo_mds_deposit_state.json" \
-  --token-file "$RELEASE/private/zenodo_token"
+  --token-file "$RELEASE/private/zenodo_token" \
+  --workers 4
 ```
 
 The state is mode 0600 and is bound to the exact metadata and file hashes.
 Repeating the command verifies matching remote files and uploads only missing
 ones. A state from another release or a draft containing unexpected files is
 rejected before metadata or files are changed.
+
+`--workers 1` is the sequential default. Values from 2 through 4 use bounded
+parallel uploads with an independent HTTPS session per worker. All pending
+local files are verified before any remote replacement, and each successful
+upload is recorded atomically, so the same command safely resumes after a
+connection or worker failure.
 
 ## 6. Review the draft
 

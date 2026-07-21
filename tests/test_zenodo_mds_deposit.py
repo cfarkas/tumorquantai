@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -286,6 +287,172 @@ def test_deposit_draft_chain_is_verified(
     assert stored["status"] == "draft"
     assert stored["release_fingerprint_sha256"]
     assert len(stored["uploaded"]) == 2
+
+
+def test_parallel_deposit_uses_bounded_workers_and_records_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class ParallelFakeZenodoClient(FakeZenodoClient):
+        barrier = threading.Barrier(2)
+        lock = threading.Lock()
+        worker_clients: set[int] = set()
+        worker_threads: set[int] = set()
+
+        def upload_file(
+            self, bucket_url: str, upload: module.base.UploadFile
+        ) -> dict[str, object]:
+            with type(self).lock:
+                type(self).worker_clients.add(id(self))
+                type(self).worker_threads.add(threading.get_ident())
+            type(self).barrier.wait(timeout=5)
+            return super().upload_file(bucket_url, upload)
+
+    public, private, slide = manifests(tmp_path)
+    allow_one_slide(monkeypatch, slide)
+    monkeypatch.setattr(
+        module, "ProgressZenodoClient", ParallelFakeZenodoClient
+    )
+    token = tmp_path / "token"
+    token.write_text("secret", encoding="utf-8")
+    os.chmod(token, 0o600)
+    state = tmp_path / "state.json"
+    result = module.deposit_mds(
+        public_manifest=public,
+        private_mapping=private,
+        metadata_file=metadata_file(tmp_path),
+        state_file=state,
+        token_file=token,
+        workers=2,
+    )
+    assert result["status"] == "restricted-unpublished-draft"
+    assert len(ParallelFakeZenodoClient.worker_clients) == 2
+    assert len(ParallelFakeZenodoClient.worker_threads) == 2
+    stored = json.loads(state.read_text(encoding="utf-8"))
+    assert len(stored["uploaded"]) == 2
+    assert {
+        item["status"] for item in stored["uploaded"].values()
+    } == {"uploaded"}
+
+
+def test_parallel_failure_records_success_and_resumes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FlakyParallelClient(FakeZenodoClient):
+        barrier = threading.Barrier(2)
+        fail_mds = True
+
+        def upload_file(
+            self, bucket_url: str, upload: module.base.UploadFile
+        ) -> dict[str, object]:
+            if type(self).fail_mds:
+                type(self).barrier.wait(timeout=5)
+                if upload.remote_name.endswith(".mds"):
+                    raise module.base.DepositError("simulated worker failure")
+            return super().upload_file(bucket_url, upload)
+
+    public, private, slide = manifests(tmp_path)
+    allow_one_slide(monkeypatch, slide)
+    monkeypatch.setattr(module, "ProgressZenodoClient", FlakyParallelClient)
+    token = tmp_path / "token"
+    token.write_text("secret", encoding="utf-8")
+    os.chmod(token, 0o600)
+    state = tmp_path / "state.json"
+    kwargs = {
+        "public_manifest": public,
+        "private_mapping": private,
+        "metadata_file": metadata_file(tmp_path),
+        "state_file": state,
+        "token_file": token,
+    }
+    with pytest.raises(module.base.DepositError, match="Parallel upload failed"):
+        module.deposit_mds(**kwargs, workers=2)
+    interrupted = json.loads(state.read_text(encoding="utf-8"))
+    assert set(interrupted["uploaded"]) == {module.DEFAULT_MANIFEST_NAME}
+
+    FlakyParallelClient.fail_mds = False
+    result = module.deposit_mds(**kwargs, workers=1)
+    assert result["status"] == "restricted-unpublished-draft"
+    resumed = json.loads(state.read_text(encoding="utf-8"))
+    assert len(resumed["uploaded"]) == 2
+    assert resumed["uploaded"][module.DEFAULT_MANIFEST_NAME]["status"] == (
+        "verified-existing"
+    )
+
+
+def test_replacement_waits_until_all_local_files_are_verified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class ReplacementFakeZenodoClient(FakeZenodoClient):
+        delete_calls = 0
+
+        def delete_file(self, url: str) -> None:
+            type(self).delete_calls += 1
+            type(self).files = [
+                item
+                for item in type(self).files
+                if item["links"]["self"] != url
+            ]
+
+    public, private, slide = manifests(tmp_path)
+    allow_one_slide(monkeypatch, slide)
+    monkeypatch.setattr(
+        module, "ProgressZenodoClient", ReplacementFakeZenodoClient
+    )
+    token = tmp_path / "token"
+    token.write_text("secret", encoding="utf-8")
+    os.chmod(token, 0o600)
+    state = tmp_path / "state.json"
+    kwargs = {
+        "public_manifest": public,
+        "private_mapping": private,
+        "metadata_file": metadata_file(tmp_path),
+        "state_file": state,
+        "token_file": token,
+    }
+    module.deposit_mds(**kwargs)
+
+    manifest_name = module.DEFAULT_MANIFEST_NAME
+    manifest = next(
+        item
+        for item in ReplacementFakeZenodoClient.files
+        if item["filename"] == manifest_name
+    )
+    manifest["filesize"] = int(manifest["filesize"]) + 1
+    ReplacementFakeZenodoClient.files = [manifest]
+    ReplacementFakeZenodoClient.delete_calls = 0
+
+    verified = 0
+    real_verify_local = module.base.verify_local
+
+    def fail_second_verification(upload: module.base.UploadFile) -> None:
+        nonlocal verified
+        verified += 1
+        if verified == 2:
+            raise module.base.DepositError("later local validation failed")
+        real_verify_local(upload)
+
+    monkeypatch.setattr(module.base, "verify_local", fail_second_verification)
+    with pytest.raises(
+        module.base.DepositError, match="later local validation failed"
+    ):
+        module.deposit_mds(**kwargs, replace_mismatched=True)
+
+    assert ReplacementFakeZenodoClient.delete_calls == 0
+    assert ReplacementFakeZenodoClient.files == [manifest]
+
+
+@pytest.mark.parametrize("workers", [0, module.MAX_UPLOAD_WORKERS + 1])
+def test_deposit_rejects_unsafe_worker_count(workers: int) -> None:
+    missing = Path("not-read-for-invalid-workers")
+    with pytest.raises(module.base.DepositError, match="--workers"):
+        module.deposit_mds(
+            public_manifest=missing,
+            private_mapping=missing,
+            metadata_file=missing,
+            state_file=missing,
+            workers=workers,
+            plan=True,
+        )
 
 
 def test_draft_metadata_requires_restricted_conditions() -> None:

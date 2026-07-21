@@ -12,6 +12,7 @@ import argparse
 import csv
 import json
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from html import unescape
 from pathlib import Path
 from typing import BinaryIO
@@ -25,6 +26,7 @@ DEFAULT_MANIFEST_NAME = "tumorquantai_lymphoma_mds_manifest.csv"
 EXPECTED_MDS_COUNT = 21
 EXPECTED_MDS_BYTES = 17_370_771_968
 ALLOWED_API_ORIGINS = {"zenodo.org", "sandbox.zenodo.org"}
+MAX_UPLOAD_WORKERS = 4
 MDS_PRIVATE_COLUMNS = {
     "alias",
     "staged_path",
@@ -412,11 +414,20 @@ def deposit_mds(
     token_file: Path | None = None,
     api_url: str = base.DEFAULT_API_URL,
     retries: int = 5,
+    workers: int = 1,
     replace_mismatched: bool = False,
     plan: bool = False,
     session=None,
 ) -> dict[str, object]:
     api_url = validated_api_url(api_url)
+    if workers < 1 or workers > MAX_UPLOAD_WORKERS:
+        raise base.DepositError(
+            f"--workers must be between 1 and {MAX_UPLOAD_WORKERS}"
+        )
+    if workers > 1 and session is not None:
+        raise base.DepositError(
+            "Parallel uploads cannot share an injected HTTP session"
+        )
     metadata = restricted_metadata_from_file(metadata_file)
     if str(metadata.get("access_right", "")).strip().casefold() != "restricted":
         raise base.DepositError(
@@ -513,10 +524,21 @@ def deposit_mds(
         uploaded_state = {}
         state["uploaded"] = uploaded_state
 
+    pending: list[tuple[base.UploadFile, base.RemoteFile | None]] = []
     for upload in uploads:
         existing = remote_files.get(upload.remote_name)
         if existing is not None and base.file_matches(existing, upload):
-            status = "verified-existing"
+            uploaded_state[upload.remote_name] = {
+                "size_bytes": upload.size_bytes,
+                "md5": upload.md5,
+                "status": "verified-existing",
+            }
+            base.atomic_json(state_path, state)
+            print(
+                f"verified-existing: {upload.remote_name}",
+                file=sys.stderr,
+                flush=True,
+            )
         else:
             if existing is not None:
                 if not replace_mismatched:
@@ -526,18 +548,76 @@ def deposit_mds(
                     )
                 if not existing.delete_url:
                     raise base.DepositError("Zenodo omitted a deletion URL")
-                client.delete_file(existing.delete_url)
             base.verify_local(upload)
+            pending.append((upload, existing))
+
+    if workers == 1:
+        for upload, existing in pending:
+            if existing is not None:
+                client.delete_file(existing.delete_url)
             response = client.upload_file(bucket_url, upload)
             base.validate_upload_response(response, upload)
-            status = "uploaded"
-        uploaded_state[upload.remote_name] = {
-            "size_bytes": upload.size_bytes,
-            "md5": upload.md5,
-            "status": status,
-        }
-        base.atomic_json(state_path, state)
-        print(f"{status}: {upload.remote_name}", file=sys.stderr, flush=True)
+            uploaded_state[upload.remote_name] = {
+                "size_bytes": upload.size_bytes,
+                "md5": upload.md5,
+                "status": "uploaded",
+            }
+            base.atomic_json(state_path, state)
+            print(
+                f"uploaded: {upload.remote_name}",
+                file=sys.stderr,
+                flush=True,
+            )
+    else:
+        def upload_one(
+            upload: base.UploadFile,
+            existing: base.RemoteFile | None,
+        ) -> base.UploadFile:
+            worker_client = ProgressZenodoClient(
+                token, api_url, retries=retries
+            )
+            try:
+                if existing is not None:
+                    worker_client.delete_file(existing.delete_url)
+                response = worker_client.upload_file(bucket_url, upload)
+                base.validate_upload_response(response, upload)
+                return upload
+            finally:
+                close_session = getattr(
+                    getattr(worker_client, "session", None), "close", None
+                )
+                if callable(close_session):
+                    close_session()
+
+        errors: list[tuple[base.UploadFile, Exception]] = []
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = {
+                executor.submit(upload_one, upload, existing): upload
+                for upload, existing in pending
+            }
+            for future in as_completed(futures):
+                upload = futures[future]
+                try:
+                    completed = future.result()
+                except Exception as exc:
+                    errors.append((upload, exc))
+                    continue
+                uploaded_state[completed.remote_name] = {
+                    "size_bytes": completed.size_bytes,
+                    "md5": completed.md5,
+                    "status": "uploaded",
+                }
+                base.atomic_json(state_path, state)
+                print(
+                    f"uploaded: {completed.remote_name}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+        if errors:
+            failed, error = errors[0]
+            raise base.DepositError(
+                f"Parallel upload failed: {failed.remote_name}"
+            ) from error
 
     verified = client.get_draft(deposition_id)
     validate_draft_metadata(verified, metadata)
@@ -575,6 +655,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--token-file", type=Path)
     parser.add_argument("--api-url", default=base.DEFAULT_API_URL)
     parser.add_argument("--retries", type=int, default=5)
+    parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--replace-mismatched", action="store_true")
     parser.add_argument("--plan", action="store_true")
     return parser
@@ -593,6 +674,7 @@ def main(argv: list[str] | None = None) -> int:
             token_file=args.token_file,
             api_url=args.api_url,
             retries=args.retries,
+            workers=args.workers,
             replace_mismatched=args.replace_mismatched,
             plan=args.plan,
         )
