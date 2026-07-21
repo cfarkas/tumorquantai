@@ -67,8 +67,9 @@ prognosis, treatment response, or clinical validity.
 
 ## Current release state
 
-Local sanitization, staging, and checksums are complete. No Zenodo draft has
-yet been created because the upload still requires a private access token. An
-explicitly authorized dataset license is still required before publication. Any
-draft created by the supplied tool remains restricted and unpublished;
-publication requires separate human governance and privacy review.
+Local sanitization, staging, checksums, and upload of the 21 sanitized
+H&E MDS files plus their authoritative manifest are complete. The record
+remains restricted and unpublished, and no public record ID or DOI is claimed.
+The tutorial download therefore remains gated. An explicitly authorized
+dataset license and separate human governance and privacy review are still
+required before any publication action.
