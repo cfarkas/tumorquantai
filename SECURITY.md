@@ -1,23 +1,35 @@
 # Security policy
 
-## Reporting
+## Report privately
 
-Report security issues privately to the repository owner through GitHub's
-private vulnerability reporting feature when available. Do not open a public
-issue containing an access token, patient identifier, private path, or WSI.
+Use GitHub's private vulnerability reporting feature when it is enabled for
+this repository. Do not open a public issue containing an access token, model
+weight, raw WSI, PHI, patient identifier, private path, private manifest,
+patient-level table, or sensitive log. No unverified email address is provided.
 
-## Data and credential safety
+For a non-security bug, use the bug template only after reviewing and
+redacting `./tumorquantai doctor --json` and
+`./tumorquantai status OUTPUT --json`.
 
-- Use a read-only Hugging Face token and store it outside the repository.
-- Prefer `HF_TOKEN` or a mode-0600 token file; never pass the token value in a
-  command line because commands can appear in shell history and process lists.
-- The launcher mounts only configured input, output, and cache paths. Review
-  generated Docker options before use on multi-user systems.
-- Treat coordinates, thumbnails, overlays, reports, manifests, logs, and slide
-  names as potentially sensitive clinical data.
-- Container images do not contain model weights or study data by design.
+## Credential, model, and data safety
+
+- Prefer `TUMORQUANTAI_HF_TOKEN_FILE` or the mode-0600
+  `~/.config/tumorquantai/hf_token`. The legacy path remains supported.
+- Never put a token value in command arguments, a sample sheet, notebook,
+  issue, log, report, container image, or Git.
+- Keep authorized local weights outside the repository/results and mount them
+  read-only. TumorQuantAI records identity, not contents.
+- Treat slide names, coordinates, thumbnails, overlays, manifests, reports,
+  logs, and matrices as potentially sensitive.
+- Keep source input read-only and use neutral aliases.
+- Verify mounts/free space before downloads, conversion, or inference. Do not
+  alter Docker storage/mount configuration as a troubleshooting shortcut.
+
+Doctor/report redaction reduces accidental disclosure but is not a guarantee;
+review every attachment before sharing.
 
 ## Supported versions
 
-Security fixes are applied to the current default branch. Pin a reviewed commit
-or release and an immutable container tag for production analyses.
+Security fixes target the current default branch. For reproducible analyses,
+pin a reviewed TumorQuantAI commit/release, immutable container digest, and
+immutable HistoPLUS revision. Include those identities in a private report.

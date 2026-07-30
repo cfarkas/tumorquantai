@@ -1,6 +1,27 @@
 # Changelog
 
-## 0.4.0 — 2026-07-18
+## Unreleased
+
+- Added the `tumorquantai` beginner CLI with offline doctor, credential-free
+  structural demo, model-free inspection, safe smoke/fast/full presets,
+  failure-aware status, portable report, and a one-public-slide quickstart.
+- Rebuilt the README as a command-first landing page and reorganized the
+  MkDocs site into beginner starts, tutorials, how-to guides, explanations,
+  reference, troubleshooting, and maintainer material.
+- Documented public Zenodo record 21466410, DOI
+  `10.5281/zenodo.21466410`, dataset-matched software `v0.4.0`, and the fixed
+  alias-022 1% path without Zenodo credentials.
+- Added a live GitHub usability benchmark, license-decision record, separate
+  citation guidance, community templates, and lightweight documentation/CLI
+  quality gates.
+- Preserved `run.sh`, direct Nextflow, scientific/output invariants, legacy
+  token-file compatibility, and explicit failed-sample-versus-zero semantics.
+- Hardened published weight provenance: existing weight filename, byte size,
+  and SHA-256 fields remain, while private filesystem paths, device/inode
+  numbers, and filesystem timestamps are no longer emitted. Consumers that
+  read those location fields must treat them as intentionally removed.
+
+## 0.4.0 — 2026-07-20
 
 - Added the strict schema-version-2 raw-MDS lymphoma manifest and assembled a
   locally validated restricted-draft upload payload; no remote draft was created.

@@ -1,27 +1,42 @@
 name: Bug report
-description: Report a reproducible workflow or output problem
+description: Report a reproducible TumorQuantAI workflow or output problem
 title: "[Bug]: "
 labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: Please remove patient identifiers, access tokens, and private paths from logs.
+      value: |
+        Thank you. Before posting, remove tokens, model weights, raw WSI, PHI,
+        patient-level tables, private manifests, institution/private paths, and
+        sensitive logs. Never paste token contents. Security issues belong in
+        GitHub private vulnerability reporting, not this public form.
   - type: input
     id: version
     attributes:
-      label: Repository commit or release
+      label: TumorQuantAI release or commit
+      placeholder: v0.4.0 or a full Git commit
     validations:
       required: true
-  - type: input
-    id: environment
+  - type: dropdown
+    id: command
     attributes:
-      label: Nextflow, Docker, GPU/CPU, and operating system
+      label: Entry point
+      options:
+        - tumorquantai doctor
+        - tumorquantai demo
+        - tumorquantai inspect
+        - tumorquantai run
+        - tumorquantai status/report
+        - tumorquantai quickstart
+        - run.sh or direct Nextflow
+        - Other bundled tool
     validations:
       required: true
   - type: textarea
-    id: command
+    id: redacted_command
     attributes:
       label: Redacted command
+      description: Use placeholders for private paths; never include token values.
       render: shell
     validations:
       required: true
@@ -32,7 +47,31 @@ body:
     validations:
       required: true
   - type: textarea
-    id: logs
+    id: doctor
     attributes:
-      label: Redacted error and relevant trace rows
+      label: Redacted doctor JSON
+      description: Run ./tumorquantai doctor --json, review it, and attach/paste the redacted result.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: Redacted status JSON
+      description: For an existing output, run ./tumorquantai status OUTPUT --json and review it. Write “not applicable” otherwise.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Smallest relevant redacted log excerpt
+      description: Do not attach entire work directories or logs containing sensitive paths/data.
       render: text
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I reviewed every field/attachment and removed tokens, weights, WSI, PHI, patient tables, private manifests, and sensitive paths.
+          required: true

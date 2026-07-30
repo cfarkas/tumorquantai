@@ -1,172 +1,70 @@
-# Create the restricted Zenodo draft
+# Curator guide for a future Zenodo dataset version
 
-This procedure uploads the lymphoma collection as a **restricted, unpublished
-draft**. The supplied command cannot publish it.
+The current public dataset is Zenodo record `21466410`, DOI
+`10.5281/zenodo.21466410`, dataset version v2, matched to TumorQuantAI
+`v0.4.0`. Public downloads use `bin/download_zenodo_mds.py` and require no
+Zenodo credential.
 
-## Human release gates
+This page is only for an authorized curator creating a **future successor
+version draft**. It does not describe the current public record and does not
+authorize a publication action.
 
-Before any later publication, an accountable data owner must confirm:
+## Non-negotiable boundaries
 
-- authority to redistribute the slide pixels;
-- applicable ethics, consent, and institutional requirements;
-- successful automated and human privacy review;
-- the dataset-matched software tag exists at its reviewed immutable commit;
-- approved creators, affiliations, description, keywords, and contact;
-- the exact dataset license and restricted-access conditions; and
-- the final file list and checksums.
+- Obtain accountable owner, governance, privacy, and rights approval before
+  remote changes.
+- Keep source WSI, labels, private mappings, clinical data, credentials, and
+  logs outside the repository.
+- Work on a verified mounted storage filesystem with restrictive permissions.
+- Stage only 21 sanitized MDS files plus the authoritative public manifest.
+- Require full ordered `DSI0` aggregate identity between source and sanitized
+  copies, in addition to geometry and whole-file checksums.
+- The helper may create/verify a restricted draft; it must not make it public.
+- A future version needs an explicit dataset rights/license decision.
+- Do not alter or assign the dataset DOI to TumorQuantAI software.
 
-A technical pass does not grant legal or ethical permission to publish.
+## Local staging
 
-## 1. Private preparation inputs
+Use `bin/prepare_zenodo_mds.py --help` and reviewed, private source/mapping
+paths. Its plan must report:
 
-Create a mode-0600 CSV containing at least:
+- exactly 21 safe public aliases and 17,370,771,968 MDS bytes for this fixed
+  collection, unless a separately reviewed future version contract changes it;
+- schema-version-2 public manifest;
+- deterministic neutral non-pixel content;
+- matching full pixel-stream aggregate checksums;
+- no source markers or unexpected sidecars; and
+- mode-0600 staged files and private mapping.
 
-```csv
-alias,source_mds_path
-TumorQuantAI_LymphomaWSI_001,/private/source/slide_001/1.mds
-```
+Review the staged public tree and private mapping separately. The private
+mapping must never be uploaded.
 
-Aliases must match `TumorQuantAI_LymphomaWSI_NNN`; source paths must be regular
-`.mds` files. The local release workspace already has this protected mapping.
-Never commit or upload it.
+## Remote draft
 
-```bash
-export RELEASE=/secure/TumorQuantAI_Lymphoma_Zenodo
-chmod 600 "$RELEASE/private/alias_mapping_private.csv"
+Only after local review, use `bin/zenodo_mds_deposit.py --help` with a
+mode-0600 token file outside the repository. Never put a token value in a
+command, environment dump, issue, or log. The tool validates trusted Zenodo
+origins and cannot make a record public.
 
-python bin/prepare_zenodo_mds.py \
-  --alias-mapping "$RELEASE/private/alias_mapping_private.csv" \
-  --staging-dir "$RELEASE/private/mds_staging" \
-  --public-manifest "$RELEASE/public/generated/tumorquantai_lymphoma_mds_manifest.csv" \
-  --private-mapping "$RELEASE/private/mds_source_mapping.csv" \
-  --exclude-alias TumorQuantAI_LymphomaWSI_010 \
-  --expected-count 21 \
-  --source-mpp 0.261780 \
-  --resume
-```
+Verify the remote draft through structured API metadata:
 
-The source files are read-only. The command writes deterministic neutral
-non-pixel streams, checks the pixel-stream roster, computes schema-version-2
-ordered aggregate SHA-256 digests over every `DSI0` stream name, length, and
-byte, requires source and staged digests to match, retains sampled fingerprints
-as supplemental diagnostics, reopens each MDS, scans source markers, and
-writes separate public/private manifests.
+- restricted draft state;
+- exact file roster, sizes, and MD5 values;
+- authoritative manifest identity;
+- title, creators, description, keywords, related TumorQuantAI release, and
+  research-use limitation; and
+- no private mapping, model weight, token, clinical field, or source label.
 
-Required MDS result:
+## Human publication gate
 
-- 21 staged files;
-- 17,370,771,968 MDS bytes;
-- mode 0600 for every staged MDS and private mapping; and
-- schema-version-2 public manifest with exactly 21 rows.
+Making a future record version public remains a manual owner/governance action
+outside these tools. Before that decision, complete an independent privacy and
+rights review, reproduce public download/conversion checks from the draft,
+verify one-slide technical acceptance when authorized, and record exact
+software/container/model identities.
 
-## 2. Complete authorized metadata
-
-`private/metadata.json` must contain no placeholder values:
-
-```json
-{
-  "metadata": {
-    "title": "TumorQuantAI lymphoma H&E whole-slide image tutorial dataset",
-    "description": "Twenty-one privacy-sanitized H&E MDS whole-slide images for the TumorQuantAI v0.4.0 technical tutorial.",
-    "upload_type": "dataset",
-    "access_right": "restricted",
-    "access_conditions": "Access requires approval from the accountable data controller and confirmation of the intended research use.",
-    "license": "",
-    "creators": [{"name": "Farkas, Carlos"}],
-    "related_identifiers": [
-      {
-        "identifier": "https://github.com/cfarkas/tumorquantai/releases/tag/v0.4.0",
-        "relation": "isSupplementedBy",
-        "scheme": "url"
-      }
-    ]
-  }
-}
-```
-
-For the restricted draft, the legacy deposition API permits the license field
-to be blank or omitted; non-empty access conditions remain mandatory. Do not
-infer a license on behalf of the data owner. Set the exact authorized Zenodo
-license ID before any later publication.
-
-## 3. Create a limited token
-
-In Zenodo, open **Applications → Personal access tokens** and create a token
-with only `deposit:write`. `deposit:actions` is not required because this tool
-has no publication action.
-
-```bash
-umask 077
-read -rsp "Zenodo token: " ZENODO_TOKEN
-printf '%s' "$ZENODO_TOKEN" > "$RELEASE/private/zenodo_token"
-unset ZENODO_TOKEN
-printf '\n'
-chmod 600 "$RELEASE/private/zenodo_token"
-```
-
-Never paste the token into chat, a command argument, an issue, or a log.
-
-## 4. Validate the exact plan
-
-```bash
-python bin/zenodo_mds_deposit.py \
-  --public-manifest "$RELEASE/public/generated/tumorquantai_lymphoma_mds_manifest.csv" \
-  --private-mapping "$RELEASE/private/mds_source_mapping.csv" \
-  --metadata "$RELEASE/private/metadata.json" \
-  --state "$RELEASE/private/zenodo_mds_deposit_state.json" \
-  --token-file "$RELEASE/private/zenodo_token" \
-  --plan
-```
-
-The current release plan must report:
-
-- `mds_file_count: 21`;
-- `mds_total_size_bytes: 17370771968`;
-- `file_count: 22` (21 MDS plus the authoritative manifest);
-- `total_size_bytes` equal to 17,370,771,968 plus the exact
-  schema-version-2 manifest size reported by the plan;
-- `restricted: true`; and
-- `draft_only: true`.
-
-## 5. Upload or resume
-
-Run the same command without `--plan`:
-
-```bash
-python bin/zenodo_mds_deposit.py \
-  --public-manifest "$RELEASE/public/generated/tumorquantai_lymphoma_mds_manifest.csv" \
-  --private-mapping "$RELEASE/private/mds_source_mapping.csv" \
-  --metadata "$RELEASE/private/metadata.json" \
-  --state "$RELEASE/private/zenodo_mds_deposit_state.json" \
-  --token-file "$RELEASE/private/zenodo_token" \
-  --workers 4
-```
-
-The state is mode 0600 and is bound to the exact metadata and file hashes.
-Repeating the command verifies matching remote files and uploads only missing
-ones. A state from another release or a draft containing unexpected files is
-rejected before metadata or files are changed.
-
-`--workers 1` is the sequential default. Values from 2 through 4 use bounded
-parallel uploads with an independent HTTPS session per worker. All pending
-local files are verified before any remote replacement, and each successful
-upload is recorded atomically, so the same command safely resumes after a
-connection or worker failure.
-
-## 6. Review the draft
-
-Confirm in Zenodo:
-
-- visibility is restricted and the record is still unpublished;
-- 21 `.mds` files plus the public manifest are present;
-- every MDS filename is a public alias;
-- sizes and MD5 values match the manifest;
-- no private mapping, source accession, label, sidecar, clinical file,
-  unrelated project material, special stain, or token is present; and
-- title, creators, description, license, access conditions, and the
-  dataset-matched immutable software link are correct.
-
-An unpublished deposition cannot be used by the public tutorial downloader.
-After an authorized human publishes the record, place its final ID/DOI in the
-tutorial and repeat the one-slide and four-slide acceptance paths from a clean
-download. A published restricted record still requires authorized access.
+After a future version is public, update
+[dataset consistency](maintainers/DATASET_CONSISTENCY.md), tutorials, tests,
+and release notes in one reviewed change. Ordinary quickstart must continue to
+use an immutable version-specific record rather than an ambiguous latest
+concept record.

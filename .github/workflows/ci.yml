@@ -13,6 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          # The patch check below compares against the PR base SHA.
+          fetch-depth: 0
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -24,7 +27,8 @@ jobs:
           python -m pip install
           'pandas>=2.2,<3' 'matplotlib>=3.8,<4' 'numpy>=1.26,<3'
           'tifffile>=2024.1' 'pillow>=10,<12' 'scipy>=1.15,<2'
-          'scikit-learn>=1.6,<2' 'openpyxl>=3.1,<4' 'PyYAML>=6,<7' 'requests>=2.32,<3' 'olefile>=0.47,<1' 'pytest>=8,<9'
+          'scikit-learn>=1.6,<2' 'openpyxl>=3.1,<4' 'PyYAML>=6,<7' 'requests>=2.32,<3'
+          'olefile>=0.47,<1' 'pytest>=8,<9' 'jsonschema>=4,<5'
 
       - name: Reject tracked patient-level artifacts
         shell: bash
@@ -48,11 +52,45 @@ jobs:
           yaml.safe_load(Path('.github/workflows/ci.yml').read_text(encoding='utf-8'))
           PY
 
+      - name: Validate Citation File Format schema
+        run: |
+          # Isolate cffconvert's jsonschema<4 dependency from the test environment.
+          python -m venv "$RUNNER_TEMP/cffconvert"
+          "$RUNNER_TEMP/cffconvert/bin/python" -m pip install \
+            --disable-pip-version-check 'cffconvert==2.0.0'
+          "$RUNNER_TEMP/cffconvert/bin/cffconvert" \
+            --infile CITATION.cff --validate
+
       - name: Compile Python tools
-        run: python -m py_compile lazyslide_histoplus_wsi_celltype.py bin/*.py
+        run: python -m py_compile tumorquantai lazyslide_histoplus_wsi_celltype.py bin/*.py scripts/*.py
+
+      - name: Beginner CLI and repository hygiene
+        run: |
+          ./tumorquantai --help >/dev/null
+          for command in doctor demo inspect run status report quickstart; do
+            ./tumorquantai "$command" --help >/dev/null
+          done
+          python scripts/check_repository_hygiene.py
+
+      - name: Model-free fixture inspection
+        run: |
+          inspection_dir="$(mktemp -d)/inspection"
+          ./tumorquantai inspect tests/fixtures \
+            --output "$inspection_dir" \
+            --source-mpp 0.261780
 
       - name: Unit tests
         run: python -m pytest -q
+
+      - name: Patch whitespace check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [[ -n "${BASE_SHA}" ]]; then
+            git diff --check "${BASE_SHA}...HEAD"
+          else
+            git log -1 --check
+          fi
 
       - name: Shell syntax
         run: bash -n run.sh setup_server.sh build_and_push.sh

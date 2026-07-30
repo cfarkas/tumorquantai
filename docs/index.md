@@ -1,216 +1,103 @@
-# TumorQuantAI
+# TumorQuantAI documentation
 
-![Abstract TumorQuantAI workflow: a whole-slide image becomes sampled tissue tiles, typed cells, and cohort tables](assets/tumorquantai-hero.svg){ .tqa-hero }
+![Diagram showing a whole-slide image becoming tissue tiles, predicted cells, review overlays, and cohort tables](assets/tumorquantai-hero.svg){ .tqa-hero }
 
-**Whole-slide images in. Cell-type tables, coordinates, and review images out.**
-TumorQuantAI is a reproducible research workflow for quantifying HistoPLUS cell
-types in H&E whole-slide images (WSIs). It processes each slide independently
-and then combines successful samples into analysis-ready cohort matrices.
+**TumorQuantAI is a reproducible research workflow that applies HistoPLUS cell
+typing to H&E whole-slide images and keeps the inputs, sampling, failures, and
+outputs reviewable.**
 {: .tqa-lede }
 
 !!! warning "Research use only"
-    TumorQuantAI is not a diagnostic device and its predictions are not
-    pathologist ground truth. A qualified expert must review image quality,
-    tissue selection, overlays, and biological interpretation before results
-    are used in research conclusions. Do not use its output for patient-care
-    decisions.
+    TumorQuantAI is not a diagnostic device. Predictions are not diagnoses or
+    pathologist ground truth and must not be used for patient-care decisions.
 
-## Choose where to start
+## Start with a command
 
-| Your goal | Start here | What you will do |
-| --- | --- | --- |
-| Complete a first safe run | [Quick start](QUICKSTART.md) | Check the host, discover slides, confirm MPP, and run one slide at 1%. |
-| Understand L0/L2 and physical scale | [Inputs and MPP](INPUTS_AND_MPP.md) | Select the correct primary image and avoid guessing image resolution. |
-| Check slide discovery without running the model | [Discover your slides](#step-2-discover-before-inference) | Create and inspect the input manifest without spending inference time. |
-| Test one slide first | [Run a 1% smoke test](#step-3-run-one-small-smoke-test) | Process a small, reproducible tissue-tile sample and inspect the outputs. |
-| Choose between a sampled or exhaustive run | [Fast versus full](RUN_MODES.md) | Match processing depth to the study question and available compute. |
-| Follow a worked WSI example | [Lymphoma WSI tutorial](TUTORIAL_LYMPHOMA_ZENODO.md) | Download the teaching collection, verify it, and progress from one to four to all 21 slides. |
-| Understand the result files | [Output guide](OUTPUT_SCHEMA.md) | Find counts, fractions, coordinates, audit records, and per-slide images. |
-| Continue an interrupted run | [Running and recovery](RUNNING.md) | Reuse completed tasks and interpret explicit failures. |
-| Combine results with clinical metadata | [Clinical stratification and ML](CLINICAL_ML.md) | Run the advanced, privacy-sensitive cohort analysis after validating linkage. |
+Check the software structure without a GPU, model, Docker, or credentials:
 
-If this is your first time using TumorQuantAI, follow the three steps below.
-The discovery step is deliberately model-free, and the smoke test limits the
-first inference run to one sample and 1% of its tissue tiles.
+```bash
+git clone https://github.com/cfarkas/tumorquantai.git
+cd tumorquantai
+./tumorquantai demo
+```
 
-## What TumorQuantAI does
+Then open `tumorquantai-demo/START_HERE.html`. Every demo page is labelled as
+synthetic structural output with no biological meaning.
+
+## Choose your path
 
 <div class="tqa-summary-grid" markdown>
 
 <div class="tqa-summary-card" markdown>
 
-### 1. Reads exported slides
+### No model: learn the layout
 
-The portable input is a primary level-0 TIFF such as
-`case_001/1_L0_rgb.tif`. Sampled runs also require its level-2 companion,
-`case_001/1_L2_rgb.tif`.
-
-</div>
-
-<div class="tqa-summary-card" markdown>
-
-### 2. Finds and types cells
-
-LazySlide handles the WSI and HistoPLUS assigns cell types. Fast mode samples a
-fixed percentage of tissue tiles; full mode processes all detected tissue
-tiles.
+Run the [structural demo](start-here/demo.md). It exercises discovery,
+per-sample isolation, failure auditing, aggregation, status, and reporting.
 
 </div>
 
 <div class="tqa-summary-card" markdown>
 
-### 3. Builds reviewable outputs
+### One public real slide
 
-Each sample gets cell coordinates, class counts, overlays, logs, and
-provenance. The cohort gets count and fraction matrices plus an audit of
-complete and failed samples.
+Follow the [one-slide quickstart](start-here/public-slide.md). The public MDS
+download needs no Zenodo credential; inference waits for authorized HistoPLUS
+access.
+
+</div>
+
+<div class="tqa-summary-card" markdown>
+
+### Your own slides
+
+Use [inspect and run your own slide](start-here/own-slides.md) to create a
+reviewable manifest and establish source MPP before inference.
 
 </div>
 
 </div>
 
-```text
-exported L0 TIFF
-       |
-       v
-slide discovery and tissue tiles
-       |
-       v
-cell segmentation and HistoPLUS cell typing
-       |
-       +----> per-cell coordinates and review overlays
-       |
-       +----> cell types × samples count and fraction matrices
-```
+## The result contract
 
-TumorQuantAI does **not** upload your slides, include the gated HistoPLUS
-weights, create a clinical diagnosis, or turn sampled-tile counts into
-estimated whole-slide counts.
-
-## Before your first run
-
-You need:
-
-- Linux, Java 17 or newer, Nextflow 24.10 or newer, and Docker 24 or newer;
-- enough local storage for TIFF inputs, temporary work files, and results;
-- authorized access to the gated HistoPLUS model weights; and
-- the verified physical resolution of each exported L0 slide in micrometres
-  per pixel (MPP), unless reliable MPP metadata is embedded in the TIFF.
-
-A GPU is recommended for inference but is not required. CPU mode is available
-and is slower. Follow [Install and check your computer](INSTALL.md) before
-continuing.
-
-## Your first result, step by step
-
-### Step 1: clone and check the host
-
-```bash
-git clone https://github.com/cfarkas/tumorquantai.git
-cd tumorquantai
-
-./setup_server.sh --check
-./run.sh --doctor
-```
-
-The doctor command should finish with `doctor: OK`. Complete the protected
-Hugging Face token or local-weight setup in the
-[installation guide](INSTALL.md#hugging-face-authentication) before inference.
-Never paste a model token into a command, notebook, issue, or shared log.
-
-### Step 2: discover before inference
-
-Arrange exported images in a dedicated input folder:
+TumorQuantAI writes one result directory per sample, then aggregates only
+completed samples:
 
 ```text
-/data/slides/
-└── case_001/
-    ├── 1_L0_rgb.tif
-    └── 1_L2_rgb.tif
+results/
+├── START_HERE.html
+├── <sample>/
+│   ├── cell_types/class_counts.csv
+│   ├── cell_types/cell_type_coordinates.csv
+│   ├── overlays/celltypes_overview_and_zoom.png
+│   └── summary/summary.json
+└── aggregated_celltypes/
+    ├── celltype_counts_by_sample.csv
+    ├── celltype_fractions_by_sample.csv
+    └── sample_aggregation_audit.csv
 ```
 
-Now create the manifest without loading HistoPLUS:
+The exact [output reference](reference/outputs.md) is derived from the current
+writers. A failed or incomplete sample is excluded from numeric matrices and
+retained in the audit; it never becomes an all-zero biological sample.
 
-```bash
-./run.sh \
-  --input-dir /data/slides \
-  --output-dir /data/tumorquantai-discovery \
-  --dry-run
-```
+## Understand before scaling
 
-Open:
+- [What TumorQuantAI predicts](explanation/predictions.md)
+- [WSI, pyramid levels, L0 and L2](explanation/wsi-pyramid.md)
+- [Source MPP versus target MPP](explanation/mpp.md)
+- [Sampling and reproducibility](explanation/sampling.md)
+- [Counts versus fractions](explanation/counts-fractions.md)
+- [Failed sample versus biological zero](explanation/failed-vs-zero.md)
 
-```text
-/data/tumorquantai-discovery/workflow_metadata/slides.tsv
-```
+For errors, begin at [Troubleshooting](troubleshooting/index.md). A bug report
+should contain redacted `doctor --json` and `status --json` output—never a
+token, model weight, raw WSI, PHI, or patient-level table.
 
-Confirm that every row represents the intended primary L0 slide and that every
-sample ID is unique. Correct the input layout before proceeding if a slide is
-missing or an unintended file appears.
+## Published teaching dataset
 
-### Step 3: run one small smoke test
-
-Ask the scanner operator or check the export record for the physical L0 MPP.
-The prompt below prevents an example value from being mistaken for a real
-measurement:
-
-```bash
-read -rp "Verified source L0 MPP: " SOURCE_MPP
-
-./run.sh \
-  --input-dir /data/slides \
-  --output-dir /data/tumorquantai-smoke \
-  --include 'case_001*' \
-  --fast \
-  --percent-slide 1 \
-  --slide-mpp "$SOURCE_MPP" \
-  --mpp 0.5 \
-  --profile auto
-```
-
-`--slide-mpp` describes the source image. `--mpp 0.5` is the model-tile target
-resolution. They are different settings. Omit `--slide-mpp` only when the TIFF
-contains reliable physical-resolution metadata.
-
-When the command finishes, review these files first:
-
-| File | Why open it |
-| --- | --- |
-| `tumorquantai-smoke/<sample_id>/overlays/celltypes_overview_and_zoom.png` | Check tissue orientation, selected region, and whether cell markings align visually. |
-| `tumorquantai-smoke/<sample_id>/summary/summary.json` | Confirm completion, sampling percentage, seed, source MPP, and detected-cell total. |
-| `tumorquantai-smoke/aggregated_celltypes/sample_aggregation_audit.csv` | Confirm the sample was included rather than failed or omitted. |
-| `tumorquantai-smoke/aggregated_celltypes/celltype_fractions_by_sample.csv` | View cell-type composition with cell types as rows and samples as columns. |
-
-!!! info "What a 1% or 10% result means"
-    Fast-mode raw counts are cells detected in the sampled tissue tiles. They
-    are not whole-slide counts and should not be multiplied by
-    `100 / percent-slide`. Use the fraction matrix for composition comparisons
-    only after reviewing sampling consistency and the audit table.
-
-If the overlay and metadata look sensible, continue with a distinct output
-folder for a larger fast run or a full run. Never mix fast and full results in
-the same output directory. Resume is enabled automatically when the same
-command is repeated after an interruption.
-
-## Where to go next
-
-- [Fast versus full](RUN_MODES.md): choose a processing depth and keep
-  sampled/exhaustive results separate.
-- [Running and recovery](RUNNING.md): resume, resources, common problems, and
-  explicit failed-sample handling.
-- [Commands and tools](TOOLS.md): aggregation, reports, and advanced options.
-- [Understand the outputs](OUTPUT_SCHEMA.md): precise schemas and how failures
-  differ from biological zeroes.
-- [Lymphoma WSI tutorial](TUTORIAL_LYMPHOMA_ZENODO.md): integrity-checked
-  teaching-data workflow with fail-closed one-, four-, and 21-slide paths after the
-  Zenodo record is released.
-- [Clinical stratification and ML](CLINICAL_ML.md): advanced private-data
-  linkage, descriptive analysis, and nested-cross-validation workflow.
-- [Glossary](GLOSSARY.md): short definitions for WSI, L0/L2, MPP, sampling,
-  audit tables, and resume.
-
-For a complete list of accepted launcher options, run:
-
-```bash
-./run.sh --help
-```
+The public collection is [Zenodo record
+21466410](https://zenodo.org/records/21466410), DOI
+[`10.5281/zenodo.21466410`](https://doi.org/10.5281/zenodo.21466410), matched
+to TumorQuantAI `v0.4.0`. The collection has no diagnostic annotations or
+pathologist ground truth and is not a clinical benchmark.

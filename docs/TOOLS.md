@@ -128,8 +128,9 @@ manifest from the same version-specific Zenodo record, downloads selected MDS
 files with resumable transfers, and
 verifies size, MD5, and SHA-256. `--expected-count` makes the one-, four-, and
 21-slide paths fail closed. Repeating a larger selection safely expands the
-local verified roster. Restricted downloads use a mode-0600 token file and are
-stored under a mode-0700 root.
+local verified roster. Public record 21466410 needs no token; the optional
+mode-0600 token-file support is retained only for authorized restricted future
+records.
 
 `bin/mds_to_tiff.py` converts only internal `DSI0` pixels to canonical L0/L2
 BigTIFF. Supply the downloaded MDS manifest so source checksums, MPP, level
@@ -138,10 +139,11 @@ settings, geometry, and SHA-256 match `mds_conversion_manifest.json`. Start
 with the one-slide dry run in the lymphoma tutorial.
 
 `bin/prepare_zenodo_mds.py` and `bin/zenodo_mds_deposit.py` are curator-only
-tools for privacy-sanitized staging and creation of a restricted, unpublished
-draft. Preparation requires a matching ordered aggregate SHA-256 over every
+tools for privacy-sanitized staging and creation of a restricted future-version
+draft. They are not used by the public download path. Preparation requires a
+matching ordered aggregate SHA-256 over every
 `DSI0` stream name, length, and byte in the source and staged copies; the schema-version-2 manifest records it
-as `pixel_full_sha256`. The depositor cannot publish.
+as `pixel_full_sha256`. The depositor cannot make a draft public.
 
 ## Legacy preconverted-TIFF release tools
 

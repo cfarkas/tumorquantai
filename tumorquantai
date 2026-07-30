@@ -1,0 +1,872 @@
+#!/usr/bin/env python3
+"""Beginner-first command-line interface for TumorQuantAI."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib.util
+import json
+import math
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Sequence
+
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "bin"))
+
+import tumorquantai_core as core  # noqa: E402
+
+
+PROTECTED_EXPERT_OPTIONS = {
+    "c", "config", "params_file", "with_apptainer", "with_conda",
+    "with_docker", "with_mpi", "with_podman", "with_singularity",
+    "without_docker", "executor", "process_executor",
+    "container_image", "continue_on_error", "device", "docker_run_options",
+    "dry_run", "exclude", "hf_cache", "histoplus_cache_dir",
+    "histoplus_revision", "histoplus_weight_file", "histoplus_weight_sha256",
+    "include", "input_dir", "mpp", "output_dir", "patch_random_seed",
+    "percent_slide", "profile", "sample_sheet", "slide_mpp", "slide_patterns",
+    "w", "work_dir",
+}
+
+
+def positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number greater than zero") from exc
+    if not math.isfinite(parsed) or not parsed > 0:
+        raise argparse.ArgumentTypeError("must be a finite number greater than zero")
+    return parsed
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="./tumorquantai",
+        description=(
+            "Run, inspect, and understand TumorQuantAI without assembling a long "
+            "Nextflow command. Research use only; not clinically validated."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Start safely:\n"
+            "  ./tumorquantai demo\n"
+            "  ./tumorquantai inspect /data/slides --output /data/tqa-inspection\n"
+            "  ./tumorquantai quickstart --output /mounted-storage/tutorial-one-slide"
+        ),
+    )
+    parser.add_argument("--version", action="version", version=f"TumorQuantAI {core.VERSION}")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    doctor = subparsers.add_parser("doctor", help="check the computer without inference")
+    doctor.add_argument("--input", type=Path, help="optional input path to check")
+    doctor.add_argument("--output", type=Path, help="optional output mount to check")
+    doctor.add_argument("--work-dir", type=Path, help="optional Nextflow work directory")
+    doctor.add_argument("--online", action="store_true", help="also check public GitHub, Zenodo, and model metadata")
+    doctor.add_argument("--json", action="store_true", help="print redacted machine-readable JSON")
+    doctor.add_argument("--token-file", type=Path, help=argparse.SUPPRESS)
+    doctor.add_argument("--local-weight", type=Path, help=argparse.SUPPRESS)
+
+    demo = subparsers.add_parser("demo", help="run a credential-free structural demo")
+    demo.add_argument("--output", "--outdir", type=Path, default=Path("tumorquantai-demo"), help="small demo result directory (default: tumorquantai-demo)")
+
+    inspect = subparsers.add_parser("inspect", help="inspect slides without inference or model access")
+    inspect.add_argument("input", type=Path, help="directory containing exported L0 slides")
+    inspect.add_argument("--output", "--outdir", type=Path, required=True, help="inspection result directory")
+    inspect.add_argument("--source-mpp", type=positive_float, help="verified source L0 micrometres per pixel")
+    inspect.add_argument("--sample-sheet", type=Path, help="CSV/TSV with sample_id and slide_path")
+    inspect.add_argument("--pattern", action="append", default=[], help="primary-slide glob; repeatable")
+    inspect.add_argument("--include", default="*", help="sample-ID glob to include")
+    inspect.add_argument("--exclude", default="", help="sample-ID glob to exclude")
+
+    run = subparsers.add_parser("run", help="run a smoke, fast, or full analysis")
+    run.add_argument("input", type=Path, help="directory containing exported L0 slides")
+    run.add_argument(
+        "--output", "--outdir", type=Path, required=True,
+        help="result directory on a verified mounted storage filesystem",
+    )
+    run.add_argument("--preset", choices=("smoke", "fast", "full"), default="smoke", help="1%%, 10%%, or 100%% of detected tissue tiles (default: smoke)")
+    run.add_argument("--source-mpp", "--slide-mpp", type=positive_float, help="verified source L0 micrometres per pixel")
+    run.add_argument("--sample", help="sample ID for the one-slide smoke preset")
+    run.add_argument("--profile", choices=("auto", "gpu", "cpu", "local"), default="auto")
+    run.add_argument("--seed", type=int, default=core.DEFAULT_SEED, help=f"deterministic sampling seed (default: {core.DEFAULT_SEED})")
+    run.add_argument("--sample-sheet", type=Path)
+    run.add_argument("--pattern", action="append", default=[])
+    run.add_argument("--include", default="*")
+    run.add_argument("--exclude", default="")
+    run.add_argument("--work-dir", type=Path, help="default: OUTPUT/.tumorquantai-work")
+    run.add_argument("--dry-run", action="store_true", help="run discovery only; no HistoPLUS inference")
+    run.add_argument("--no-resume", action="store_true", help="disable Nextflow cache reuse")
+    run.add_argument("--token-file", type=Path, help="authorized token file path; never a token value")
+    run.add_argument("--local-weight", type=Path, help="authorized local HistoPLUS weight file")
+
+    status = subparsers.add_parser("status", help="summarize completed, failed, incomplete, excluded, and pending samples")
+    status.add_argument("output", type=Path, help="TumorQuantAI output directory")
+    status.add_argument("--json", action="store_true", help="print redacted machine-readable JSON")
+
+    report = subparsers.add_parser("report", help="generate START_HERE.html and JSON summary")
+    report.add_argument("output", type=Path, help="TumorQuantAI output directory")
+    report.add_argument("--json", action="store_true", help="also print the machine-readable summary")
+
+    quickstart = subparsers.add_parser("quickstart", help="prepare and optionally run public Zenodo sample 022")
+    quickstart.add_argument("--output", type=Path, required=True, help="tutorial root on a storage mount")
+    mode = quickstart.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="print the bounded one-slide plan; do not download")
+    mode.add_argument("--download-only", action="store_true", help="download and verify only sample 022")
+    mode.add_argument("--convert-only", action="store_true", help="convert an already downloaded sample 022")
+    mode.add_argument("--no-inference", action="store_true", help="download, convert, and inspect; do not infer")
+    quickstart.add_argument("--profile", choices=("auto", "gpu", "cpu", "local"), default="auto")
+    quickstart.add_argument("--seed", type=int, default=core.DEFAULT_SEED)
+    quickstart.add_argument("--token-file", type=Path, help=argparse.SUPPRESS)
+    quickstart.add_argument("--local-weight", type=Path, help="authorized local HistoPLUS weight file")
+    return parser
+
+
+def resolve_profile(requested: str) -> str:
+    if requested != "auto":
+        return requested
+    if shutil.which("nvidia-smi"):
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+        )
+        if result.returncode == 0 and shutil.which("docker"):
+            daemon = subprocess.run(
+                ["docker", "info", "--format", "{{json .Runtimes}}"],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            if daemon.returncode == 0 and "nvidia" in daemon.stdout.lower():
+                return "gpu"
+    return "cpu"
+
+
+def print_storage_plan(storage: dict[str, Any], estimates: dict[str, int]) -> None:
+    print("Storage preflight:")
+    print(f"  mount:      {storage['mount']['target']} ({storage['mount']['filesystem']})")
+    print(f"  free:       {core.format_bytes(storage['free_bytes'])}")
+    for name, amount in estimates.items():
+        print(f"  {name + ':':<11} {core.format_bytes(amount)} estimated")
+    print(f"  work/output on same filesystem: {'yes' if storage['same_filesystem'] else 'no'}")
+
+
+def validate_expert_args(arguments: Sequence[str]) -> None:
+    for argument in arguments:
+        if not argument.startswith("-"):
+            continue
+        name = (
+            argument.split("=", 1)[0].lstrip("-")
+            .replace("-", "_").replace(".", "_")
+        )
+        if any(marker in name.lower() for marker in (
+            "token", "secret", "password", "passwd", "credential", "api_key", "apikey"
+        )):
+            raise core.TumorQuantAIError(
+                "Expert passthrough cannot accept credential-like options; configure a token file or authorized local weight instead.",
+                core.EXIT_USAGE,
+            )
+        if name in PROTECTED_EXPERT_OPTIONS or name.startswith("process_"):
+            raise core.TumorQuantAIError(
+                f"Expert passthrough cannot override protected option {argument.split('=', 1)[0]!r}; use the documented beginner option or direct run.sh.",
+                core.EXIT_USAGE,
+            )
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    checks = core.doctor_checks(
+        output=args.output, work=args.work_dir, input_path=args.input, online=args.online,
+        explicit_token=args.token_file, local_weight=args.local_weight,
+    )
+    if args.json:
+        print(json.dumps(core.doctor_json(checks), indent=2, sort_keys=True))
+    else:
+        print(core.format_doctor(checks))
+    return core.EXIT_PREFLIGHT if any(item["status"] == "FAIL" for item in checks) else core.EXIT_OK
+
+
+def cmd_demo(args: argparse.Namespace) -> int:
+    result = core.make_demo(args.output)
+    report = Path(result["report"])
+    counts = result["status"]["counts"]
+    print("TumorQuantAI structural demo complete.")
+    print("No HistoPLUS inference ran; values have no biological meaning.")
+    print(f"Included fixture samples: {counts['completed']}; intentional failed fixture: {counts['failed']}; completed zero fixture: {counts['biological_zero']}")
+    print(f"Open first: {report}")
+    return core.EXIT_OK
+
+
+def cmd_inspect(args: argparse.Namespace) -> int:
+    input_root = args.input.expanduser().resolve()
+    output = args.output.expanduser().resolve()
+    if output == input_root or input_root in output.parents:
+        raise core.TumorQuantAIError(
+            "Inspection output must not equal or be nested inside the slide input directory.",
+            core.EXIT_PREFLIGHT,
+        )
+    result = core.inspect_inputs(
+        input_root, output, patterns=args.pattern, sample_sheet=args.sample_sheet,
+        source_mpp=args.source_mpp, include=args.include, exclude=args.exclude,
+    )
+    summary = result["summary"]
+    if not summary["sample_count"]:
+        raise core.TumorQuantAIError(
+            "No primary slides were discovered. Check the input path, naming pattern, and sample sheet; see docs/troubleshooting/index.md#no-slides-discovered.",
+            core.EXIT_INPUT,
+        )
+    print("TumorQuantAI input inspection complete. No inference ran.")
+    print(f"Primary slides: {summary['sample_count']}")
+    print(f"Missing L2 companions: {summary['missing_l2']}")
+    print(f"Missing source MPP: {summary['missing_source_mpp']}")
+    print(f"Potential duplicates: {summary['potential_duplicate_count']}")
+    print(f"Review manifest: {result['manifest_csv']}")
+    print(f"Open report: {result['html']}")
+    if summary["missing_source_mpp"]:
+        print("Next: verify the scanner/export metadata, then pass --source-mpp to a run.")
+    return core.EXIT_OK
+
+
+def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], list[str], dict[str, str]]:
+    expert_args = list(args.expert_args)
+    if expert_args and expert_args[0] == "--":
+        expert_args = expert_args[1:]
+    validate_expert_args(expert_args)
+    output = args.output.expanduser().resolve()
+    input_root = args.input.expanduser().resolve()
+    work = (args.work_dir or output / ".tumorquantai-work").expanduser().resolve()
+    cache_root = (
+        getattr(args, "cache_dir", None) or core.associated_cache_directory(output)
+    ).expanduser().resolve()
+    if output == input_root or input_root in output.parents:
+        raise core.TumorQuantAIError(
+            "Output must not equal or be nested inside the input directory",
+            core.EXIT_PREFLIGHT,
+        )
+    if output.exists() and not output.is_dir():
+        raise core.TumorQuantAIError("Output path exists but is not a directory", core.EXIT_PREFLIGHT)
+    existing = core.load_run_manifest(output)
+    if output.is_dir() and not existing:
+        entries = {item.name for item in output.iterdir()}
+        metadata = output / "workflow_metadata"
+        metadata_safe = not metadata.exists() or (
+            metadata.is_dir()
+            and {item.name for item in metadata.iterdir()} <= {"preflight-inspection"}
+        )
+        if entries - {".tumorquantai-work", "workflow_metadata"} or not metadata_safe:
+            raise core.TumorQuantAIError(
+                "Output is non-empty but has no TumorQuantAI run manifest; choose a new output directory.",
+                core.EXIT_PREFLIGHT,
+            )
+    if not args.dry_run:
+        core.validate_large_data_root(output)
+        core.validate_large_data_root(work)
+        core.validate_large_data_root(cache_root)
+    requested_profile = resolve_profile(args.profile)
+    for key, requested in (
+        ("preset", args.preset), ("seed", args.seed),
+        ("execution_profile", requested_profile),
+    ):
+        if key in existing and existing[key] != requested:
+            raise core.TumorQuantAIError(
+                f"Refusing to mix incompatible runs in one output directory ({key}). Choose a new --output.",
+                core.EXIT_PREFLIGHT,
+            )
+    if (
+        args.source_mpp is not None
+        and "source_mpp" in existing
+        and abs(float(existing["source_mpp"]) - args.source_mpp) > 1e-9
+    ):
+        raise core.TumorQuantAIError(
+            "Refusing to mix incompatible source MPP values in one output directory. Choose a new --output.",
+            core.EXIT_PREFLIGHT,
+        )
+    initial_storage = core.storage_preflight(output, work, 0, create=True)
+    cache_storage = core.storage_preflight(output, cache_root, 0, create=True)
+    if not initial_storage["ok"] or not cache_storage["ok"]:
+        raise core.TumorQuantAIError(
+            "Output, work, and model-cache paths must be writable on the same filesystem. Choose a verified mounted output path.",
+            core.EXIT_PREFLIGHT,
+        )
+    inspection_dir = cache_root / "preflight-inspection"
+    result = core.inspect_inputs(
+        input_root, inspection_dir, patterns=args.pattern, sample_sheet=args.sample_sheet,
+        source_mpp=args.source_mpp, include=args.include, exclude=args.exclude,
+        require_l2=args.preset in {"smoke", "fast"},
+    )
+    slides = result["slides"]
+    if not slides:
+        raise core.TumorQuantAIError("No primary slides were discovered", core.EXIT_INPUT)
+    sample_ids = sorted(str(row["sample_id"]) for row in slides)
+    if args.preset == "smoke":
+        selected = args.sample or sample_ids[0]
+        if selected not in sample_ids:
+            raise core.TumorQuantAIError(f"Smoke sample {selected!r} was not discovered", core.EXIT_INPUT)
+        selected_samples = [selected]
+    else:
+        if args.sample:
+            raise core.TumorQuantAIError("--sample is only valid with --preset smoke", core.EXIT_USAGE)
+        selected_samples = sample_ids
+    mpp_values = sorted({float(row["source_mpp"]) for row in slides if row.get("source_mpp")})
+    if any(not row["physical_scale_ready"] for row in slides):
+        raise core.TumorQuantAIError(
+            "Source MPP is missing or unreadable. Verify it and rerun with --source-mpp; physical scale fails closed.",
+            core.EXIT_PREFLIGHT,
+        )
+    if len(mpp_values) != 1:
+        raise core.TumorQuantAIError("Discovered slides have inconsistent source MPP values; use separate runs or an audited sample sheet.", core.EXIT_PREFLIGHT)
+    source_mpp = mpp_values[0]
+    profile = requested_profile
+    input_bytes = sum(
+        int(row["size_bytes"]) for row in slides
+        if str(row["sample_id"]) in selected_samples
+    )
+    estimates = {
+        "download": 0,
+        "conversion": 0,
+        "model cache": 5 * 1024**3,
+        "work": max(5 * 1024**3, input_bytes * 2),
+        "results": max(1024**3, input_bytes),
+    }
+    required = sum(estimates.values())
+    storage = core.storage_preflight(output, work, required, create=True)
+    print_storage_plan(storage, estimates)
+    print(f"  model cache path: {cache_root} (beside the output directory)")
+    if not storage["ok"]:
+        raise core.TumorQuantAIError("Output/work storage preflight failed; choose a writable output-associated work directory with more space.", core.EXIT_PREFLIGHT)
+    if args.dry_run:
+        token = None
+        token_source = "not checked for discovery-only dry run"
+        access = {
+            "ready": False,
+            "method": "not checked for discovery-only dry run",
+            "weight": None,
+            "token": None,
+        }
+    else:
+        token, token_source, warning = core.resolve_token_file(args.token_file)
+        if warning:
+            print(f"WARNING: {warning}", file=sys.stderr)
+        access = core.model_access(args.local_weight, token)
+        if not access["ready"]:
+            raise core.TumorQuantAIError(
+                "Authorized HistoPLUS access is not configured. See docs/how-to/model-access.md; do not put a token on the command line.",
+                core.EXIT_MODEL,
+            )
+    if shutil.which("nextflow") is None:
+        raise core.TumorQuantAIError("Nextflow is not installed. Run ./tumorquantai doctor for the exact next action.", core.EXIT_PREFLIGHT)
+    if profile != "local":
+        if shutil.which("docker") is None:
+            raise core.TumorQuantAIError("Docker is not installed; use doctor or a prepared --profile local environment.", core.EXIT_PREFLIGHT)
+        daemon = subprocess.run(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        if daemon.returncode != 0:
+            raise core.TumorQuantAIError("Docker daemon is unavailable. Run ./tumorquantai doctor for the exact next action.", core.EXIT_PREFLIGHT)
+        if profile == "gpu":
+            gpu_visible = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+            ) if shutil.which("nvidia-smi") else None
+            runtimes = subprocess.run(
+                ["docker", "info", "--format", "{{json .Runtimes}}"],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            if (
+                gpu_visible is None or gpu_visible.returncode != 0
+                or runtimes.returncode != 0 or "nvidia" not in runtimes.stdout.lower()
+            ):
+                raise core.TumorQuantAIError(
+                    "GPU profile requested, but NVIDIA host/container runtime visibility is not ready. Use doctor or --profile cpu.",
+                    core.EXIT_PREFLIGHT,
+                )
+
+    percent = {"smoke": 1.0, "fast": 10.0, "full": 100.0}[args.preset]
+    safe_cpus = min(4, max(1, os.cpu_count() or 1))
+    memory_gb = 16
+    try:
+        available_kib = int(next(
+            line.split()[1]
+            for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines()
+            if line.startswith("MemAvailable:")
+        ))
+        memory_gb = max(4, min(16, available_kib // 1024 // 1024))
+    except (OSError, StopIteration, ValueError):
+        pass
+    command = [
+        str(ROOT / "run.sh"), "--input-dir", str(input_root), "--output-dir", str(output),
+        "--work-dir", str(work), "--profile", profile, "--percent-slide", f"{percent:g}",
+        "--seed", str(args.seed), "--slide-mpp", f"{source_mpp:.9g}",
+        "--container-image", core.GPU_CONTAINER if profile == "gpu" else core.CPU_CONTAINER,
+        "--histoplus-revision", core.MODEL_REVISION,
+        "--hf-cache", str(cache_root / "huggingface"),
+        "--histoplus-cache", str(cache_root / "histoplus"),
+        "--cpus", str(safe_cpus), "--memory", f"{memory_gb} GB",
+        "--max-parallel-slides", "1", "--num-workers", "2",
+        "--celltypes-batch-size", "1" if profile == "cpu" else "2",
+    ]
+    if args.preset == "smoke":
+        command.extend(["--fast", "--fail-fast", "--include", selected_samples[0]])
+    elif args.preset == "fast":
+        command.extend(["--fast", "--include", args.include])
+    else:
+        command.extend(["--full", "--include", args.include])
+    if args.sample_sheet:
+        command.extend(["--sample-sheet", str(args.sample_sheet.expanduser().resolve())])
+    for pattern in args.pattern:
+        command.extend(["--pattern", pattern])
+    if args.exclude:
+        command.extend(["--exclude", args.exclude])
+    if args.no_resume:
+        command.append("--no-resume")
+    if args.dry_run:
+        command.append("--dry-run")
+    secret_values: list[str] = []
+    weight = access.get("weight")
+    if weight and not args.dry_run:
+        command.extend(["--histoplus-weight-file", str(weight)])
+        secret_values.append(str(weight))
+    elif access.get("token") and not args.dry_run:
+        command.extend(["--hf-token-file", str(access["token"])])
+        secret_values.append(str(access["token"]))
+    if expert_args:
+        command.append("--")
+        command.extend(expert_args)
+    display = core.shell_join(command, secret_values)
+    resume_parts = [
+        "./tumorquantai", "run", str(input_root), "--output", str(output),
+        "--preset", args.preset, "--source-mpp", f"{source_mpp:.9g}",
+        "--profile", profile, "--seed", str(args.seed), "--work-dir", str(work),
+    ]
+    if args.preset == "smoke":
+        resume_parts.extend(["--sample", selected_samples[0]])
+    if args.sample_sheet:
+        resume_parts.extend(["--sample-sheet", str(args.sample_sheet.expanduser().resolve())])
+    for pattern in args.pattern:
+        resume_parts.extend(["--pattern", pattern])
+    resume_parts.extend(["--include", args.include])
+    if args.exclude:
+        resume_parts.extend(["--exclude", args.exclude])
+    if expert_args:
+        resume_parts.append("--")
+        resume_parts.extend(expert_args)
+    resume_display = core.shell_join(resume_parts)
+    expert_fingerprint = hashlib.sha256(
+        json.dumps(expert_args, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    plan = {
+        "schema_version": "tumorquantai_run_v1",
+        "software_version": core.VERSION, "software_commit": core.git_commit(),
+        "created_at_utc": core.utc_now(), "completion_status": "planned" if args.dry_run else "running",
+        "preset": args.preset, "sampling_percent": percent, "seed": args.seed,
+        "source_mpp": source_mpp, "source_mpp_provenance": "supplied" if args.source_mpp else "embedded TIFF metadata",
+        "target_mpp": core.TARGET_MPP, "execution_profile": profile,
+        "container_identity": (
+            "not used (local profile)" if profile == "local"
+            else (core.GPU_CONTAINER if profile == "gpu" else core.CPU_CONTAINER)
+        ),
+        "model_revision": core.MODEL_REVISION, "demonstration": False,
+        "selected_samples": selected_samples, "discovered_samples": sample_ids,
+        "input_signature": core.input_signature(slides), "resume_enabled": not args.no_resume,
+        "resume_command": resume_display, "expanded_command": display,
+        "credential_method": access["method"], "credential_source": token_source,
+        "work_directory": ".tumorquantai-work" if work.parent == output else "external configured work directory",
+        "cache_directory": "sibling output-associated cache",
+        "expert_args_fingerprint": expert_fingerprint,
+        "resources": {
+            "cpus": safe_cpus, "memory_gb": memory_gb,
+            "max_parallel_slides": 1, "num_workers": 2,
+        },
+    }
+    for key in (
+        "preset", "sampling_percent", "seed", "source_mpp", "input_signature",
+        "selected_samples", "execution_profile", "expert_args_fingerprint",
+    ):
+        if key in existing and existing[key] != plan[key]:
+            raise core.TumorQuantAIError(
+                f"Refusing to mix incompatible runs in one output directory ({key}: existing={existing[key]!r}, requested={plan[key]!r}). Choose a new --output.",
+                core.EXIT_PREFLIGHT,
+            )
+    published_inspection = output / "workflow_metadata/preflight-inspection"
+    published_inspection.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(inspection_dir, published_inspection, dirs_exist_ok=True)
+    environment = os.environ.copy()
+    if access.get("weight"):
+        for name in (
+            "HF_TOKEN", "TUMORQUANTAI_HF_TOKEN_FILE", "HF_TOKEN_FILE",
+            "HISTOPLUS_WEIGHT_FILE",
+        ):
+            environment.pop(name, None)
+    environment["NXF_LOG_FILE"] = str(output / "workflow_metadata/nextflow.log")
+    return plan, command, secret_values, environment
+
+
+def run_beginner(args: argparse.Namespace) -> int:
+    plan, command, _secret_values, environment = _prepare_run(args)
+    output = args.output.expanduser().resolve()
+    core.write_run_manifest(output, plan)
+    print("Expanded engine command (secret paths redacted):")
+    print(f"  {plan['expanded_command']}")
+    print(f"Execution path: {plan['execution_profile'].upper()}")
+    print(f"Sampling: {plan['sampling_percent']:g}% of detected tissue tiles; seed={plan['seed']}")
+    print(f"Nextflow work directory: {plan['work_directory']}")
+    completed = subprocess.run(command, cwd=output, env=environment, check=False)
+    latest = core.load_run_manifest(output)
+    latest["completed_at_utc"] = core.utc_now()
+    latest["workflow_exit_code"] = completed.returncode
+    latest["completion_status"] = "discovery_complete" if args.dry_run and completed.returncode == 0 else ("complete" if completed.returncode == 0 else "failed")
+    core.write_run_manifest(output, latest)
+    status_summary = core.collect_status(output)
+    if not args.dry_run and completed.returncode == 0:
+        incomplete_total = sum(status_summary["counts"][key] for key in ("failed", "incomplete", "pending"))
+        if status_summary["counts"]["completed"] == 0:
+            latest["completion_status"] = "failed_all_samples"
+        elif incomplete_total:
+            latest["completion_status"] = "complete_with_exclusions"
+        core.write_run_manifest(output, latest)
+        status_summary = core.collect_status(output)
+    report, _ = core.generate_report(output)
+    if completed.returncode == 0:
+        if not args.dry_run and latest["completion_status"] == "failed_all_samples":
+            print("Workflow orchestration finished, but no sample completed; failed/incomplete samples were not converted to zero.", file=sys.stderr)
+            print(core.format_status(status_summary), file=sys.stderr)
+            return core.EXIT_WORKFLOW
+        print("TumorQuantAI workflow finished.")
+        if not args.dry_run and latest["completion_status"] == "complete_with_exclusions":
+            print("WARNING: some samples failed or remain incomplete; inspect START_HERE.html and the aggregation audit.", file=sys.stderr)
+        print(f"Open first: {report}")
+        return core.EXIT_OK
+    print(f"Workflow failed with exit code {completed.returncode}.", file=sys.stderr)
+    print(core.format_status(core.collect_status(output)), file=sys.stderr)
+    return core.EXIT_WORKFLOW
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    summary = core.collect_status(args.output, include_private_paths=not args.json)
+    if args.json:
+        print(json.dumps(summary, indent=2, sort_keys=True))
+    else:
+        print(core.format_status(summary))
+    return core.EXIT_OK
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    report, summary = core.generate_report(args.output)
+    if args.json:
+        print(json.dumps(summary, indent=2, sort_keys=True))
+    else:
+        print(f"START_HERE: {report}")
+        print(f"Machine-readable summary: {report.parent / core.REPORT_JSON}")
+    return core.EXIT_OK
+
+
+def _quickstart_estimates(with_inference: bool) -> dict[str, int]:
+    conversion_uncompressed = (37_888 * 26_112 + 9_728 * 6_656) * 3
+    return {
+        "download": core.TUTORIAL_SIZE,
+        "conversion": conversion_uncompressed,
+        "work": 8 * 1024**3 if with_inference else 512 * 1024**2,
+        "results": 2 * 1024**3 if with_inference else 256 * 1024**2,
+    }
+
+
+def _quickstart_required_bytes(args: argparse.Namespace, estimates: dict[str, int]) -> int:
+    if args.download_only:
+        keys = ("download",)
+    elif args.convert_only:
+        keys = ("conversion", "work", "results")
+    elif args.no_inference:
+        keys = ("download", "conversion", "work", "results")
+    else:
+        keys = tuple(estimates)
+    return sum(estimates[key] for key in keys)
+
+
+def _check_quickstart_dependencies(args: argparse.Namespace) -> None:
+    if sys.version_info < (3, 10):
+        raise core.TumorQuantAIError(
+            "The public-slide tools require Python 3.10 or newer.", core.EXIT_PREFLIGHT
+        )
+    modules = set()
+    if not args.convert_only:
+        modules.add("requests")
+    if not args.download_only:
+        modules.update({"imagecodecs", "numpy", "olefile", "PIL", "tifffile"})
+    missing = sorted(name for name in modules if importlib.util.find_spec(name) is None)
+    if missing:
+        raise core.TumorQuantAIError(
+            "Missing public-slide host dependencies: " + ", ".join(missing)
+            + ". Install the documented lightweight tutorial environment before downloading.",
+            core.EXIT_PREFLIGHT,
+        )
+
+
+def _write_quickstart_manifest(
+    root: Path,
+    state: str,
+    verification: dict[str, Any] | None = None,
+    *,
+    seed: int = core.DEFAULT_SEED,
+    profile: str = "auto",
+    inference_manifest: dict[str, Any] | None = None,
+) -> None:
+    manifest = core.load_run_manifest(root)
+    previous_state = str(manifest.get("completion_status", ""))
+    preserve_completed = (
+        previous_state == "one_slide_smoke_complete"
+        and state in {
+            "download_verified", "converted_and_inspected",
+            "ready_for_authorized_inference", "ready_with_preflight_blockers",
+        }
+    )
+    if preserve_completed:
+        if verification:
+            manifest["source_checksums"] = verification
+        manifest["last_data_verification_at_utc"] = core.utc_now()
+        core.write_run_manifest(root, manifest)
+        return
+    effective_state = previous_state if preserve_completed else state
+    manifest.update({
+        "schema_version": "tumorquantai_run_v1", "software_version": core.VERSION,
+        "software_commit": core.git_commit(), "completion_status": effective_state,
+        "dataset_record": core.DATASET_RECORD, "dataset_doi": core.DATASET_DOI,
+        "dataset_release": core.DATASET_RELEASE, "tutorial_sample": core.TUTORIAL_SAMPLE,
+        "preset": "smoke", "sampling_percent": 1.0, "seed": seed,
+        "source_mpp": core.TUTORIAL_SOURCE_MPP, "target_mpp": core.TARGET_MPP,
+        "model_revision": core.MODEL_REVISION,
+        "demonstration": False,
+        "resume_command": shlex.join([
+            "./tumorquantai", "quickstart", "--output", str(root), "--profile", profile,
+            "--seed", str(seed),
+        ]),
+    })
+    if not preserve_completed or "container_identity" not in manifest:
+        manifest["container_identity"] = "selected at inference readiness"
+    if verification:
+        manifest["source_checksums"] = verification
+    if inference_manifest:
+        for key in (
+            "execution_profile", "container_identity", "model_revision",
+            "expanded_command", "selected_samples", "credential_method",
+        ):
+            if key in inference_manifest:
+                manifest[key] = inference_manifest[key]
+    core.write_run_manifest(root, manifest)
+
+
+def cmd_quickstart(args: argparse.Namespace) -> int:
+    root = args.output.expanduser().resolve()
+    download = root / "download"
+    converted = root / "converted"
+    inspection = root / "inspection"
+    smoke_results = root / "smoke-results"
+    work = root / ".tumorquantai-work"
+    inference_requested = not (
+        args.download_only or args.convert_only or args.no_inference
+    )
+    estimates = _quickstart_estimates(inference_requested)
+    required = _quickstart_required_bytes(args, estimates)
+    if not args.dry_run:
+        core.validate_large_data_root(root)
+        _check_quickstart_dependencies(args)
+    existing = core.load_run_manifest(root)
+    if (
+        inference_requested
+        and existing.get("completion_status") == "one_slide_smoke_complete"
+        and existing.get("seed") != args.seed
+    ):
+        raise core.TumorQuantAIError(
+            "A completed quickstart cannot be resumed with a different seed; choose a new output root.",
+            core.EXIT_PREFLIGHT,
+        )
+    storage = core.storage_preflight(root, work, required, create=not args.dry_run)
+    print_storage_plan(storage, estimates)
+    print(f"  required now: {core.format_bytes(required)} for the selected stage(s)")
+    if not storage["ok"]:
+        raise core.TumorQuantAIError("Quickstart storage preflight failed. Choose a writable mounted path with the displayed free space.", core.EXIT_PREFLIGHT)
+    print(f"Bounded public plan: Zenodo record {core.DATASET_RECORD}, exactly {core.TUTORIAL_FILE} ({core.TUTORIAL_SIZE} bytes).")
+    print("Conversion levels: L0 and L2. Inference preset: smoke (1%, deterministic seed).")
+    if args.dry_run:
+        print("Dry run complete: no network request, download, conversion, or inference was performed.")
+        return core.EXIT_OK
+
+    readiness_failures: list[str] = []
+    if inference_requested:
+        readiness_codes = {"TQA-JAVA", "TQA-NEXTFLOW"}
+        if args.profile != "local":
+            readiness_codes.update({"TQA-DOCKER-CLI", "TQA-DOCKER-DAEMON"})
+        readiness_checks = core.doctor_checks(
+                output=root, work=work, input_path=None, online=False,
+                explicit_token=args.token_file, local_weight=args.local_weight,
+            )
+        readiness_failures = [
+            str(item["code"])
+            for item in readiness_checks
+            if (
+                item["status"] == "FAIL" and item["code"] in readiness_codes
+            ) or (
+                args.profile == "gpu"
+                and item["code"] in {"TQA-GPU", "TQA-GPU-RUNTIME"}
+                and item["status"] != "PASS"
+            )
+        ]
+
+    if not args.convert_only:
+        downloader = [
+            sys.executable, str(ROOT / "bin/download_zenodo_mds.py"),
+            "--record", core.DATASET_RECORD, "--output-dir", str(download),
+            "--sample-id", core.TUTORIAL_SAMPLE, "--expected-count", "1",
+        ]
+        print("Downloading the public manifest and only sample 022 (no Zenodo token):")
+        print(f"  {core.shell_join(downloader)}")
+        downloaded = subprocess.run(downloader, check=False)
+        if downloaded.returncode != 0:
+            raise core.TumorQuantAIError("Public Zenodo download or integrity verification failed.", core.EXIT_DATA)
+    verification = core.verify_tutorial_download(download)
+    _write_quickstart_manifest(root, "download_verified", verification, seed=args.seed, profile=args.profile)
+    if args.download_only:
+        report, _ = core.generate_report(root)
+        print("Download and checksum verification complete.")
+        print(f"Open first: {report}")
+        return core.EXIT_OK
+
+    converter = [
+        sys.executable, str(ROOT / "bin/mds_to_tiff.py"),
+        "--input", str(download / f"raw/{core.TUTORIAL_SAMPLE}/1.mds"),
+        "--output-dir", str(converted),
+        "--manifest", str(download / "tumorquantai_lymphoma_mds_manifest.csv"),
+        "--levels", "0", "2", "--sample-id", core.TUTORIAL_SAMPLE,
+        "--expected-count", "1", "--source-mpp", f"{core.TUTORIAL_SOURCE_MPP:.6f}", "--resume",
+    ]
+    print("Converting verified pixel data to resumable L0/L2 TIFFs:")
+    print(f"  {core.shell_join(converter)}")
+    converted_result = subprocess.run(converter, check=False)
+    if converted_result.returncode != 0:
+        raise core.TumorQuantAIError("MDS conversion failed; rerun the same quickstart command to resume verified work.", core.EXIT_DATA)
+    core.inspect_inputs(
+        converted, inspection, sample_sheet=converted / "samples.csv",
+        source_mpp=core.TUTORIAL_SOURCE_MPP, require_l2=True,
+    )
+    _write_quickstart_manifest(root, "converted_and_inspected", verification, seed=args.seed, profile=args.profile)
+    if args.convert_only or args.no_inference:
+        report, _ = core.generate_report(root)
+        print("One-slide data preparation and model-free inspection complete.")
+        print(f"Open first: {report}")
+        return core.EXIT_OK
+
+    token, _source, warning = core.resolve_token_file(args.token_file)
+    if warning:
+        print(f"WARNING: {warning}", file=sys.stderr)
+    access = core.model_access(args.local_weight, token)
+    if not access["ready"]:
+        _write_quickstart_manifest(root, "ready_for_authorized_inference", verification, seed=args.seed, profile=args.profile)
+        report, _ = core.generate_report(root)
+        print("Data preparation is complete. Authorized HistoPLUS access is not configured; the data are not corrupt.")
+        print("Secure next step: configure ~/.config/tumorquantai/hf_token with mode 0600, then run:")
+        print(f"  ./tumorquantai quickstart --output {shlex.quote(str(root))} --profile {args.profile} --seed {args.seed}")
+        print(f"Open first: {report}")
+        return core.EXIT_OK
+    if readiness_failures:
+        _write_quickstart_manifest(
+            root, "ready_with_preflight_blockers", verification,
+            seed=args.seed, profile=args.profile,
+        )
+        report, _ = core.generate_report(root)
+        print("Data preparation is complete, but local inference prerequisites are not ready: " + ", ".join(readiness_failures))
+        print("Next: run ./tumorquantai doctor --output " + shlex.quote(str(root)))
+        print(f"Open first: {report}")
+        return core.EXIT_OK
+
+    run_args = argparse.Namespace(
+        input=converted, output=smoke_results, preset="smoke", source_mpp=core.TUTORIAL_SOURCE_MPP,
+        sample=core.TUTORIAL_SAMPLE, profile=args.profile, seed=args.seed,
+        sample_sheet=converted / "samples.csv", pattern=[], include="*", exclude="",
+        work_dir=work, dry_run=False, no_resume=False, token_file=args.token_file,
+        local_weight=args.local_weight, expert_args=[],
+        cache_dir=core.associated_cache_directory(root),
+    )
+    code = run_beginner(run_args)
+    if code != core.EXIT_OK:
+        child_manifest = core.load_run_manifest(smoke_results)
+        _write_quickstart_manifest(
+            root, "inference_failed", verification, seed=args.seed,
+            profile=args.profile, inference_manifest=child_manifest,
+        )
+        top_report, _ = core.generate_report(root)
+        print(f"Quickstart inference failed; open first: {top_report}", file=sys.stderr)
+        return code
+    try:
+        core.validate_single_sample_audit(smoke_results)
+    except core.TumorQuantAIError:
+        child_manifest = core.load_run_manifest(smoke_results)
+        _write_quickstart_manifest(
+            root, "audit_failed", verification, seed=args.seed,
+            profile=args.profile, inference_manifest=child_manifest,
+        )
+        core.generate_report(root)
+        raise
+    result_manifest = core.load_run_manifest(smoke_results)
+    result_manifest.update({
+        "dataset_record": core.DATASET_RECORD, "dataset_doi": core.DATASET_DOI,
+        "dataset_release": core.DATASET_RELEASE, "source_checksums": verification,
+    })
+    core.write_run_manifest(smoke_results, result_manifest)
+    core.generate_report(smoke_results)
+    _write_quickstart_manifest(
+        root,
+        "one_slide_smoke_complete",
+        verification,
+        seed=args.seed,
+        profile=args.profile,
+        inference_manifest=result_manifest,
+    )
+    top_report, _ = core.generate_report(root)
+    print("Public one-slide 1% smoke test complete; audit has exactly one included sample and zero excluded samples.")
+    print(f"Open first: {top_report}")
+    return core.EXIT_OK
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
+    raw_arguments = list(argv) if argv is not None else sys.argv[1:]
+    expert_args: list[str] = []
+    if raw_arguments[:1] == ["run"] and "--" in raw_arguments:
+        separator = raw_arguments.index("--")
+        expert_args = raw_arguments[separator + 1 :]
+        raw_arguments = raw_arguments[:separator]
+    args = parser.parse_args(raw_arguments)
+    if args.command == "run":
+        args.expert_args = expert_args
+    try:
+        if args.command == "doctor":
+            return cmd_doctor(args)
+        if args.command == "demo":
+            return cmd_demo(args)
+        if args.command == "inspect":
+            return cmd_inspect(args)
+        if args.command == "run":
+            return run_beginner(args)
+        if args.command == "status":
+            return cmd_status(args)
+        if args.command == "report":
+            return cmd_report(args)
+        if args.command == "quickstart":
+            return cmd_quickstart(args)
+    except core.TumorQuantAIError as exc:
+        print(f"ERROR: {core.redact_text(str(exc), paths=True)}", file=sys.stderr)
+        return exc.exit_code
+    except OSError as exc:
+        print(
+            "ERROR: filesystem operation failed: "
+            + core.redact_text(str(exc), paths=True),
+            file=sys.stderr,
+        )
+        return core.EXIT_PREFLIGHT
+    return core.EXIT_USAGE
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

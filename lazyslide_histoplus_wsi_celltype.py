@@ -1694,6 +1694,29 @@ def current_histoplus_weight_identity(args: argparse.Namespace) -> dict[str, Any
     return resolved if isinstance(resolved, dict) else requested_histoplus_weight_identity(args)
 
 
+def publishable_histoplus_weight_identity(identity: dict[str, Any]) -> dict[str, Any]:
+    """Keep immutable model identity without publishing a local weight path.
+
+    Paths, inode/device values, and timestamps are useful for in-process cache
+    validation but reveal private storage layout when copied into result JSON.
+    Content SHA-256 and size retain the reproducibility-relevant identity.
+    """
+
+    public: dict[str, Any] = {}
+    for key, value in identity.items():
+        if key in {"path", "device", "inode", "mtime_ns", "ctime_ns"}:
+            continue
+        if key in {"file", "resolved_file"} and isinstance(value, dict):
+            public[key] = {
+                nested_key: nested_value
+                for nested_key, nested_value in value.items()
+                if nested_key in {"available", "size_bytes", "sha256"}
+            }
+        else:
+            public[key] = value
+    return public
+
+
 def resolved_histoplus_weight_identity(
     requested_identity: dict[str, Any], weight_path: Path
 ) -> dict[str, Any]:
@@ -1799,9 +1822,9 @@ def find_local_histoplus_weight(
             return candidate
         if logger is not None:
             logger.warning(
-                "Ignoring unprovenanced or mismatched HistoPLUS cache file for pinned revision %s: %s",
+                "Ignoring an unprovenanced or mismatched HistoPLUS cache file for pinned revision %s (%s)",
                 revision,
-                candidate,
+                filename,
             )
     return None
 
@@ -1820,7 +1843,7 @@ def maybe_copy_histoplus_weight(
     dst = target_dir / resolved_weight.name
     if dst.resolve() != resolved_weight.resolve():
         shutil.copy2(resolved_weight, dst)
-        logger.info("Copied HistoPLUS weight file to: %s", dst)
+        logger.info("Copied the authorized HistoPLUS weight file (%s).", dst.name)
     write_histoplus_weight_provenance(dst, requested_identity)
     return dst
 
@@ -1866,12 +1889,12 @@ def resolve_histoplus_weight_source(args: argparse.Namespace, logger: logging.Lo
         weight_path = args.histoplus_model_path.expanduser().resolve()
         if not weight_path.exists():
             raise FileNotFoundError(
-                f"Requested local HistoPLUS weight file not found: {weight_path}"
+                "Requested local HistoPLUS weight file was not found or is unreadable."
             )
         weight_path = maybe_copy_histoplus_weight(
             args, weight_path, logger, requested_identity
         )
-        logger.info("Using user-supplied HistoPLUS weight file: %s", weight_path)
+        logger.info("Using an authorized user-supplied HistoPLUS weight file (%s).", filename)
         args._resolved_histoplus_weight = str(weight_path)
         args._resolved_histoplus_weight_filename = filename
         args._resolved_histoplus_weight_identity = resolved_histoplus_weight_identity(
@@ -1884,7 +1907,7 @@ def resolve_histoplus_weight_source(args: argparse.Namespace, logger: logging.Lo
         local_weight = maybe_copy_histoplus_weight(
             args, local_weight, logger, requested_identity
         )
-        logger.info("Using locally cached HistoPLUS weight file: %s", local_weight)
+        logger.info("Using a locally cached HistoPLUS weight file (%s).", filename)
         args._resolved_histoplus_weight = str(local_weight)
         args._resolved_histoplus_weight_filename = filename
         args._resolved_histoplus_weight_identity = {
@@ -1928,7 +1951,7 @@ def resolve_histoplus_weight_source(args: argparse.Namespace, logger: logging.Lo
         ) from exc
 
     cached = maybe_copy_histoplus_weight(args, cached, logger, requested_identity)
-    logger.info("Resolved HistoPLUS weights from Hugging Face cache: %s", cached)
+    logger.info("Resolved HistoPLUS weights from the pinned Hugging Face revision (%s).", filename)
     args._resolved_histoplus_weight = str(cached)
     args._resolved_histoplus_weight_filename = filename
     args._resolved_histoplus_weight_identity = {
@@ -4437,7 +4460,9 @@ def run_slide(job: SlideJob, args: argparse.Namespace, root_logger: logging.Logg
         "target_mpp": float(args.mpp),
         "slide_mpp": source_slide_mpp,
         "device": device,
-        "histoplus_weight_identity": current_histoplus_weight_identity(args),
+        "histoplus_weight_identity": publishable_histoplus_weight_identity(
+            current_histoplus_weight_identity(args)
+        ),
         "tile_px_requested": int(args.tile_px),
         "tile_px_effective": int(effective_tile_px),
         "n_cells": int(len(export_df)),
@@ -4453,7 +4478,7 @@ def run_slide(job: SlideJob, args: argparse.Namespace, root_logger: logging.Logg
             "coordinates_npy": str(coord_npy_path),
             "coordinates_json": str(cell_dir / "cell_type_coordinates.json") if args.save_geojson_like_json else None,
             "class_counts_csv": str(cell_dir / "class_counts.csv"),
-            "histoplus_weight_file": str(resolved_histoplus_weight),
+            "histoplus_weight_file": resolved_histoplus_filename,
             "pyramidal_processing_slide": relativize_output_paths(str(processing_l0_path), slide_out),
             "patch_mapping_csv": patch_sampling_summary.get("patch_mapping_csv"),
             "sampled_patch_manifest_csv": patch_sampling_summary.get("patch_manifest_csv"),
@@ -4502,10 +4527,12 @@ def run_slide(job: SlideJob, args: argparse.Namespace, root_logger: logging.Logg
             "histoplus_repo_id": args.histoplus_repo_id,
             "histoplus_revision": args.histoplus_revision,
             "histoplus_weight_filename": resolved_histoplus_filename,
-            "histoplus_weight_file": str(resolved_histoplus_weight),
-            "histoplus_weight_identity": current_histoplus_weight_identity(args),
+            "histoplus_weight_file": resolved_histoplus_filename,
+            "histoplus_weight_identity": publishable_histoplus_weight_identity(
+                current_histoplus_weight_identity(args)
+            ),
             "pyramidal_processing_slide": relativize_output_paths(str(processing_l0_path), slide_out),
-            "histoplus_model_path": str(args.histoplus_model_path) if args.histoplus_model_path is not None else None,
+            "histoplus_model_path": resolved_histoplus_filename if args.histoplus_model_path is not None else None,
             "histoplus_force_download": bool(args.histoplus_force_download),
             "hf_token_supplied": bool(get_hf_token(args)),
             "zoom_box": list(roi),
@@ -4551,8 +4578,10 @@ def prefetch_histoplus(args: argparse.Namespace, logger: logging.Logger) -> dict
         "histoplus_revision": args.histoplus_revision,
         "histoplus_magnification": args.histoplus_magnification,
         "histoplus_weight_filename": filename,
-        "histoplus_weight_file": str(resolved_weight),
-        "histoplus_weight_identity": current_histoplus_weight_identity(args),
+        "histoplus_weight_file": filename,
+        "histoplus_weight_identity": publishable_histoplus_weight_identity(
+            current_histoplus_weight_identity(args)
+        ),
         "hf_token_supplied": bool(get_hf_token(args)),
     }
     write_json(main_output_base(args) / "histoplus_prefetch_summary.json", summary)
@@ -4613,7 +4642,7 @@ def main() -> None:
 
     if args.prefetch_histoplus:
         summary = prefetch_histoplus(args, logger)
-        logger.info("Prefetch complete. HistoPLUS weights ready at: %s", summary["histoplus_weight_file"])
+        logger.info("Prefetch complete. HistoPLUS weights are ready (%s).", summary["histoplus_weight_file"])
         return
 
     ensure_exports_ready(args, logger)
@@ -4635,7 +4664,7 @@ def main() -> None:
 
     # Fail fast on gated-model access before the first slide spends time on tissue tiling.
     prefetch_summary = prefetch_histoplus(args, logger)
-    logger.info("Using HistoPLUS weights at: %s", prefetch_summary["histoplus_weight_file"])
+    logger.info("Using verified HistoPLUS weights (%s).", prefetch_summary["histoplus_weight_file"])
 
     summaries = run_batch(jobs, args, logger)
     ok = sum(1 for row in summaries if row.get("status", "ok") != "failed")

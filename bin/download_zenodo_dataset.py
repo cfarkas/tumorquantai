@@ -445,10 +445,11 @@ def download_one(
         if verify_file(partial, row):
             os.replace(partial, target)
             return "verified-partial"
-        if not overwrite:
-            raise DownloadError(
-                f"Complete partial file has invalid checksums: {partial}; use --overwrite"
-            )
+        # A .part file is downloader-owned, resumable state rather than a
+        # published result. A complete-length file with the wrong digest
+        # cannot be resumed, so remove only this exact derived path and start
+        # the transfer again. Requiring --overwrite here used to wedge an
+        # otherwise safe retry even though the final target did not exist.
         partial.unlink()
 
     last_error: Exception | None = None
@@ -509,6 +510,11 @@ def download_one(
             f"Could not complete {row.zenodo_filename} after {retries + 1} attempts"
         ) from last_error
     if not verify_file(partial, row):
+        # Do not leave a complete but corrupt resumable file behind. An
+        # identical invocation can now retry from byte zero without requiring
+        # --overwrite; the final target is never touched on verification
+        # failure.
+        partial.unlink()
         raise DownloadError(f"Checksum verification failed for {row.zenodo_filename}")
     os.replace(partial, target)
     return "downloaded"
