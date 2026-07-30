@@ -79,20 +79,6 @@ writes coordinates, overlays, per-slide counts, and cohort matrices. It records
 the model/container identity, sampling percentage, random seed, and failed or
 incomplete samples.
 
-## What it does not do
-
-TumorQuantAI does not:
-
-- provide a diagnosis, clinical decision, or clinically validated biomarker;
-- include or grant access to the gated HistoPLUS weights;
-- infer trustworthy physical scale when source MPP is absent;
-- turn sampled-tile counts into whole-slide counts; or
-- make a failed or incomplete sample look like a biological zero.
-
-The public lymphoma collection has no diagnostic annotations or pathologist
-ground truth. It is a technical tutorial and reproducibility dataset, not a
-clinical benchmark.
-
 ## Three beginner paths
 
 | Goal | Command | Model/GPU needed? |
