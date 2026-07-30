@@ -43,24 +43,52 @@ theme:
 nav:
   - Home: index.md
   - Start here:
-      - Quick start: QUICKSTART.md
-      - Installation: INSTALL.md
-      - Inputs, L0/L2, and MPP: INPUTS_AND_MPP.md
-      - Fast versus full: RUN_MODES.md
-  - Run the workflow:
-      - Running, resume, and failures: RUNNING.md
-      - Commands and tools: TOOLS.md
-      - Understand the outputs: OUTPUT_SCHEMA.md
-  - Analyze a cohort:
-      - Clinical stratification and ML: CLINICAL_ML.md
-  - Lymphoma tutorial:
-      - End-to-end tutorial: TUTORIAL_LYMPHOMA_ZENODO.md
-      - Lymphoma teaching dataset: DATASET_LYMPHOMA_ZENODO.md
-      - Validation record: VALIDATION_LYMPHOMA.md
+      - Structural demo: start-here/demo.md
+      - Public one-slide quickstart: start-here/public-slide.md
+      - Inspect and run your own slide: start-here/own-slides.md
+  - Tutorials:
+      - One public slide (1%): tutorials/one-public-slide.md
+      - Four public slides (10%): tutorials/four-public-slides.md
+      - Full 21-slide collection: tutorials/full-collection.md
+  - How-to guides:
+      - Install and check the computer: how-to/install.md
+      - Configure HistoPLUS access: how-to/model-access.md
+      - Prepare TIFF inputs: how-to/prepare-tiff.md
+      - Download and convert MDS: how-to/download-mds.md
+      - Create a sample sheet: how-to/sample-sheet.md
+      - Choose smoke, fast, or full: how-to/choose-preset.md
+      - Resume an interrupted run: how-to/resume.md
+      - Review QC overlays: how-to/review-overlays.md
+      - Export to QuPath: how-to/qupath.md
+      - Move work and output safely: how-to/storage.md
+  - Explanation:
+      - What TumorQuantAI predicts: explanation/predictions.md
+      - WSI, pyramid levels, L0/L2: explanation/wsi-pyramid.md
+      - Source versus target MPP: explanation/mpp.md
+      - Sampling and reproducibility: explanation/sampling.md
+      - Counts versus fractions: explanation/counts-fractions.md
+      - Failed sample versus biological zero: explanation/failed-vs-zero.md
+      - Research limitations: explanation/research-limitations.md
   - Reference:
+      - CLI: reference/cli.md
+      - Configuration and environment: reference/configuration.md
+      - Input manifest schema: reference/input-manifest.md
+      - Output files and schema: reference/outputs.md
+      - Status/report JSON schema: reference/status-report-json.md
+      - Exit codes: reference/exit-codes.md
+      - Provenance fields: reference/provenance.md
+      - Citation guide: reference/citations.md
       - Glossary: GLOSSARY.md
+      - Advanced tools: TOOLS.md
+  - Troubleshooting: troubleshooting/index.md
+  - Advanced analysis:
+      - Clinical stratification and ML: CLINICAL_ML.md
   - Maintainers:
-      - Zenodo publication: ZENODO_PUBLISHING.md
+      - Usability benchmark: maintainers/USABILITY_BENCHMARK.md
+      - Release checklist: maintainers/RELEASE_CHECKLIST.md
+      - Dataset/Zenodo consistency: maintainers/DATASET_CONSISTENCY.md
+      - License decision status: maintainers/LICENSE_DECISION.md
+      - Zenodo publishing mechanics: ZENODO_PUBLISHING.md
 
 plugins:
   - search

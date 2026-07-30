@@ -5,16 +5,28 @@ on:
     branches: [main]
     paths:
       - README.md
+      - CITATION.cff
+      - CITATIONS.md
       - docs/**
       - mkdocs.yml
       - requirements-docs.txt
+      - requirements-tutorial.txt
+      - tumorquantai
+      - bin/tumorquantai_core.py
+      - scripts/check_repository_hygiene.py
       - .github/workflows/docs.yml
   pull_request:
     paths:
       - README.md
+      - CITATION.cff
+      - CITATIONS.md
       - docs/**
       - mkdocs.yml
       - requirements-docs.txt
+      - requirements-tutorial.txt
+      - tumorquantai
+      - bin/tumorquantai_core.py
+      - scripts/check_repository_hygiene.py
       - .github/workflows/docs.yml
   workflow_dispatch:
 

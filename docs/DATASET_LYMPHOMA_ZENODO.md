@@ -1,75 +1,45 @@
-# Lymphoma teaching dataset
+# Public lymphoma teaching dataset
 
-The TumorQuantAI teaching collection contains **21 H&E whole-slide images** in
-Motic `.mds` format.
+The TumorQuantAI teaching collection contains 21 privacy-sanitized H&E
+whole-slide images in Motic MDS format.
 
 | Property | Value |
 | --- | --- |
+| Public record | [21466410](https://zenodo.org/records/21466410) |
+| DOI | [`10.5281/zenodo.21466410`](https://doi.org/10.5281/zenodo.21466410) |
+| Dataset version on record | v2 |
+| Dataset license | Creative Commons Attribution 4.0 International (CC BY 4.0) |
+| Dataset-matched software | `v0.4.0` |
 | MDS files | 21 |
-| MDS bytes | 17,370,771,968 (17.371 GB) |
-| Stain | H&E only |
+| MDS bytes | 17,370,771,968 |
 | Source resolution | 0.261780 µm/pixel at level 0 |
 | Public names | `TumorQuantAI_LymphomaWSI_NNN.mds` |
-| Record | `<PUBLISHED_VERSION_RECORD_OR_VERSION_DOI>` |
-| Planned software release | `v0.4.0` |
-| Intended use | TumorQuantAI technical tutorial and reproducibility |
+| Intended use | Technical tutorial and reproducibility |
 
-One structurally corrupt MDS and one probable repeat acquisition were excluded.
-Different H&E sections from the same specimen remain separate slides.
-
-## Privacy treatment
-
-Preparation creates independent copies and writes only non-pixel OLE streams:
-
-- embedded label and macro images are replaced by deterministic neutral images;
-- acquisition, barcode, scanner, and other non-pixel streams are neutralized;
-- the `DSI0` pixel-stream roster and count must remain unchanged;
-- a streaming aggregate SHA-256 over every ordered `DSI0` stream name, length,
-  and byte is computed for source and sanitized copies and must match;
-- a deterministic per-level sampled fingerprint is retained as a supplemental
-  diagnostic;
-- each sanitized MDS is reopened and its dimensions are checked;
-- source accession markers are scanned in ASCII and UTF-16; and
-- the final file receives exact SHA-256 and MD5 checksums.
-
-Every `DSI0` byte contributes to the full aggregate digest; the sampled
-fingerprint is not the preservation gate. A real slide was additionally
-cross-checked against the previous ASlide TIFF export as described in
-[validation](VALIDATION_LYMPHOMA.md).
-
-The record excludes private source mappings, original labels, sidecars,
-clinical data, unrelated project material, special stains, model weights, and
-tokens.
+One structurally corrupt source and one probable repeat acquisition were
+excluded during curation. The collection has no diagnostic annotations or
+pathologist ground truth and does not establish lymphoma subtype, prognosis,
+treatment response, or clinical validity.
 
 ## Authoritative manifest
 
-The Zenodo record includes
-`tumorquantai_lymphoma_mds_manifest.csv` alongside the 21 MDS files. Its strict
-schema version is `2`; unrecognized columns are rejected before upload. Each
-row records:
+The record includes `tumorquantai_lymphoma_mds_manifest.csv`. Strict
+schema-version-2 rows contain the public alias/filename, exact size/SHA-256/MD5,
+source MPP, pyramid geometry, pixel-stream identities, and sanitization profile.
+The downloader fetches this manifest from record 21466410 and requires any
+repository copy to match byte-for-byte.
 
-- public alias and filename;
-- exact size, SHA-256, and MD5;
-- source MPP, pyramid-level count, and level dimensions;
-- pixel-stream count, supplemental `pixel_sample_sha256`, and full aggregate
-  `pixel_full_sha256` over all `DSI0` streams; and
-- sanitization profile `pixel-preserving-nonpixel-redaction-v2`.
+## Privacy treatment
 
-The downloader obtains this manifest from the same version-specific Zenodo
-record. If a local
-copy is supplied, it must match the record byte-for-byte.
+Preparation replaced label, macro, acquisition, barcode, scanner, and other
+non-pixel streams with deterministic neutral content while requiring the
+ordered full aggregate SHA-256 over every `DSI0` pixel stream name, length, and
+byte to match. Private mappings, source labels, clinical data, model weights,
+tokens, and unrelated material are not in the record.
 
-## Limits
+The record metadata declares CC BY 4.0. Follow its attribution and notice
+requirements for any permitted reuse or derivative. This repository does not
+redistribute slide-derived tutorial thumbnails.
 
-The collection has no diagnostic annotations or pathologist ground truth. It
-is not a clinical benchmark and does not establish lymphoma subtype,
-prognosis, treatment response, or clinical validity.
-
-## Current release state
-
-Local sanitization, staging, checksums, and upload of the 21 sanitized
-H&E MDS files plus their authoritative manifest are complete. The record
-remains restricted and unpublished, and no public record ID or DOI is claimed.
-The tutorial download therefore remains gated. An explicitly authorized
-dataset license and separate human governance and privacy review are still
-required before any publication action.
+See the [dataset consistency contract](maintainers/DATASET_CONSISTENCY.md) and
+[technical validation record](VALIDATION_LYMPHOMA.md).

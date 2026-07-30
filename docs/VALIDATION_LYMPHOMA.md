@@ -87,13 +87,15 @@ TumorQuantAI run and aggregation. Alias 022 completed the one-slide smoke path.
 These are technical workflow checks, not clinical validation. No new full
 21-slide inference was run because it can take days.
 
-## Remaining external release checks
+## Public release state
 
-- provide a Zenodo token with `deposit:write`;
-- provide the exact authorized dataset license before publication;
-- create and verify the restricted, unpublished Zenodo draft;
-- complete accountable human ownership, governance, and privacy review;
-- publish only after that authorization;
-- run download → conversion → one/four-slide acceptance from the final record;
-  and
-- record the exact TumorQuantAI tag/commit, container, and model identity.
+The dataset is public at Zenodo record `21466410` with DOI
+`10.5281/zenodo.21466410` and identifies TumorQuantAI `v0.4.0` as its matched
+software. The public manifest and 21 MDS files are downloadable without a
+Zenodo credential.
+
+Future acceptance records must separate download/checksum, conversion,
+model-free inspection, and gated inference status. A skipped inference because
+authorized HistoPLUS access or suitable resources are absent is “not run,” not
+a dataset or code failure. Record the exact TumorQuantAI commit/tag, container,
+model identity, MPP, sampling seed, and aggregation audit for any new run.

@@ -22,8 +22,8 @@ is not analyzed as a separate sample.
 ## MPP
 
 **Micrometres per pixel.** A physical pixel-size measurement.
-`--slide-mpp` describes the source image; `--mpp` describes the target model
-tile scale.
+`--source-mpp` in the beginner CLI (legacy `run.sh --slide-mpp`) describes the
+source image; engine `--mpp` describes the target model tile scale.
 
 ## Tissue tile
 
@@ -80,6 +80,30 @@ changed. TumorQuantAI enables it by default.
 
 A deliberately small first run, usually one slide at 1%, used to verify the
 environment, scale, visual alignment, outputs, and resume behavior.
+
+## Model weight
+
+A learned parameter file used by a model during inference. HistoPLUS weights
+are gated and are not included in TumorQuantAI. An authorized local weight is
+referenced read-only and never copied to outputs.
+
+## Container
+
+A packaged runtime filesystem used to keep software dependencies reproducible.
+TumorQuantAI pins CPU/GPU container images by immutable digest. A container
+does not include the gated model weight or study slides.
+
+## Work directory
+
+Nextflow's resumable task/cache area. It can be much larger than final results.
+The beginner CLI keeps it on the selected output-associated filesystem by
+default. Retain it while resume is useful.
+
+## Structural demo
+
+A credential-free run made from synthetic fixtures and a stub worker. It tests
+software structure, failure auditing, aggregation, status, and reporting; its
+counts/images have no biological or validation meaning.
 
 ## Clinical ML
 
