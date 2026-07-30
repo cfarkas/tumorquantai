@@ -1,0 +1,1215 @@
+{
+  "schema_version": 1,
+  "collected_at": "2026-07-30T13:02:13Z",
+  "source": "GitHub REST API v3 via authenticated gh api",
+  "method": {
+    "required_repository_count": 14,
+    "additional_repository_count": 2,
+    "tree_scan": "default branch recursive Git tree at collection time",
+    "readme_window": "first approximately 100 source lines",
+    "manual_review": "landing README and directly linked documentation",
+    "discovery_result_limit_per_query": 10
+  },
+  "discovery": [
+    {
+      "query": "topic:digital-pathology archived:false",
+      "top_results": [
+        {
+          "repository": "mahmoodlab/CLAM",
+          "stars": 1717,
+          "archived": false
+        },
+        {
+          "repository": "qupath/qupath",
+          "stars": 1411,
+          "archived": false
+        },
+        {
+          "repository": "mahmoodlab/UNI",
+          "stars": 763,
+          "archived": false
+        },
+        {
+          "repository": "TissueImageAnalytics/tiatoolbox",
+          "stars": 542,
+          "archived": false
+        },
+        {
+          "repository": "mahmoodlab/CONCH",
+          "stars": 519,
+          "archived": false
+        },
+        {
+          "repository": "FAST-Imaging/FAST",
+          "stars": 514,
+          "archived": false
+        },
+        {
+          "repository": "rapidsai/cucim",
+          "stars": 466,
+          "archived": false
+        },
+        {
+          "repository": "histolab/histolab",
+          "stars": 462,
+          "archived": false
+        },
+        {
+          "repository": "Dana-Farber-AIOS/pathml",
+          "stars": 460,
+          "archived": false
+        },
+        {
+          "repository": "rendeirolab/LazySlide",
+          "stars": 311,
+          "archived": false
+        }
+      ]
+    },
+    {
+      "query": "topic:whole-slide-imaging archived:false",
+      "top_results": [
+        {
+          "repository": "mahmoodlab/CLAM",
+          "stars": 1717,
+          "archived": false
+        },
+        {
+          "repository": "qupath/qupath",
+          "stars": 1411,
+          "archived": false
+        },
+        {
+          "repository": "baidu-research/NCRF",
+          "stars": 759,
+          "archived": false
+        },
+        {
+          "repository": "computationalpathologygroup/ASAP",
+          "stars": 681,
+          "archived": false
+        },
+        {
+          "repository": "cgohlke/tifffile",
+          "stars": 659,
+          "archived": false
+        },
+        {
+          "repository": "TissueImageAnalytics/tiatoolbox",
+          "stars": 542,
+          "archived": false
+        },
+        {
+          "repository": "openslide/openslide",
+          "stars": 509,
+          "archived": false
+        },
+        {
+          "repository": "binli123/dsmil-wsi",
+          "stars": 467,
+          "archived": false
+        },
+        {
+          "repository": "ome/bioformats",
+          "stars": 426,
+          "archived": false
+        },
+        {
+          "repository": "slideflow/slideflow",
+          "stars": 368,
+          "archived": false
+        }
+      ]
+    },
+    {
+      "query": "topic:computational-pathology archived:false",
+      "top_results": [
+        {
+          "repository": "mahmoodlab/CLAM",
+          "stars": 1717,
+          "archived": false
+        },
+        {
+          "repository": "qupath/qupath",
+          "stars": 1411,
+          "archived": false
+        },
+        {
+          "repository": "mahmoodlab/UNI",
+          "stars": 763,
+          "archived": false
+        },
+        {
+          "repository": "mahmoodlab/HIPT",
+          "stars": 621,
+          "archived": false
+        },
+        {
+          "repository": "TissueImageAnalytics/tiatoolbox",
+          "stars": 542,
+          "archived": false
+        },
+        {
+          "repository": "mahmoodlab/CONCH",
+          "stars": 519,
+          "archived": false
+        },
+        {
+          "repository": "Dana-Farber-AIOS/pathml",
+          "stars": 460,
+          "archived": false
+        },
+        {
+          "repository": "mahmoodlab/HEST",
+          "stars": 424,
+          "archived": false
+        },
+        {
+          "repository": "slideflow/slideflow",
+          "stars": 368,
+          "archived": false
+        },
+        {
+          "repository": "mahmoodlab/TITAN",
+          "stars": 360,
+          "archived": false
+        }
+      ]
+    },
+    {
+      "query": "topic:histopathology archived:false",
+      "top_results": [
+        {
+          "repository": "mahmoodlab/CLAM",
+          "stars": 1717,
+          "archived": false
+        },
+        {
+          "repository": "mahmoodlab/UNI",
+          "stars": 763,
+          "archived": false
+        },
+        {
+          "repository": "mahmoodlab/HIPT",
+          "stars": 621,
+          "archived": false
+        },
+        {
+          "repository": "maduc7/Histopathology-Datasets",
+          "stars": 564,
+          "archived": false
+        },
+        {
+          "repository": "TissueImageAnalytics/tiatoolbox",
+          "stars": 542,
+          "archived": false
+        },
+        {
+          "repository": "mahmoodlab/CONCH",
+          "stars": 519,
+          "archived": false
+        },
+        {
+          "repository": "binli123/dsmil-wsi",
+          "stars": 467,
+          "archived": false
+        },
+        {
+          "repository": "Dana-Farber-AIOS/pathml",
+          "stars": 460,
+          "archived": false
+        },
+        {
+          "repository": "slideflow/slideflow",
+          "stars": 368,
+          "archived": false
+        },
+        {
+          "repository": "mahmoodlab/TITAN",
+          "stars": 360,
+          "archived": false
+        }
+      ]
+    },
+    {
+      "query": "topic:nextflow archived:false",
+      "top_results": [
+        {
+          "repository": "nextflow-io/nextflow",
+          "stars": 3453,
+          "archived": false
+        },
+        {
+          "repository": "nf-core/rnaseq",
+          "stars": 1348,
+          "archived": false
+        },
+        {
+          "repository": "nextflow-io/awesome-nextflow",
+          "stars": 629,
+          "archived": false
+        },
+        {
+          "repository": "nf-core/sarek",
+          "stars": 589,
+          "archived": false
+        },
+        {
+          "repository": "bactopia/bactopia",
+          "stars": 520,
+          "archived": false
+        },
+        {
+          "repository": "nf-core/modules",
+          "stars": 423,
+          "archived": false
+        },
+        {
+          "repository": "nextflow-io/patterns",
+          "stars": 373,
+          "archived": false
+        },
+        {
+          "repository": "nf-core/scrnaseq",
+          "stars": 345,
+          "archived": false
+        },
+        {
+          "repository": "nf-core/tools",
+          "stars": 318,
+          "archived": false
+        },
+        {
+          "repository": "nf-core/mag",
+          "stars": 309,
+          "archived": false
+        }
+      ]
+    },
+    {
+      "query": "topic:scientific-workflow archived:false",
+      "top_results": [
+        {
+          "repository": "OpenNSWM-Lab/FAROS",
+          "stars": 3077,
+          "archived": false
+        },
+        {
+          "repository": "xuzhougeng/wisp-science",
+          "stars": 675,
+          "archived": false
+        },
+        {
+          "repository": "Light0305/Light-skills",
+          "stars": 497,
+          "archived": false
+        },
+        {
+          "repository": "drpedapati/sciclaw",
+          "stars": 86,
+          "archived": false
+        },
+        {
+          "repository": "hyperflow-wms/hyperflow",
+          "stars": 68,
+          "archived": false
+        },
+        {
+          "repository": "labclaw/labclaw",
+          "stars": 12,
+          "archived": false
+        },
+        {
+          "repository": "maxwellsdm1867/wheeler",
+          "stars": 10,
+          "archived": false
+        },
+        {
+          "repository": "bhjia-phys/AITP-Research-Protocol",
+          "stars": 8,
+          "archived": false
+        },
+        {
+          "repository": "nlesc-nano/nano-CAT",
+          "stars": 5,
+          "archived": false
+        },
+        {
+          "repository": "lhy0718/AutoLabOS",
+          "stars": 5,
+          "archived": false
+        }
+      ]
+    }
+  ],
+  "repositories": [
+    {
+      "repository": "lh3/minimap2",
+      "url": "https://github.com/lh3/minimap2",
+      "description": "A versatile pairwise aligner for genomic and spliced nucleotide sequences",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 2224,
+        "forks": 470,
+        "watchers_api": 2224,
+        "subscribers": 81
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-05-19T22:40:40Z",
+        "latest_release_date": "2026-05-19T22:40:40Z",
+        "latest_release_tag": "v2.31"
+      },
+      "metadata": {
+        "license_spdx_api": "NOASSERTION",
+        "license_identifier": "MIT",
+        "license_basis": "repository license or terms notice",
+        "primary_language": "C",
+        "repository_homepage": "https://lh3.github.io/minimap2",
+        "documentation_url": "https://lh3.github.io/minimap2",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "master",
+        "has_pages": true
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": false,
+        "citation_metadata": false,
+        "sample_data": false,
+        "first_100_readme_lines_have_install_or_quickstart_command": true
+      },
+      "usability_assessment": {
+        "first_result_command_count": 2,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": true,
+        "one_sample_path": true,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": false,
+        "troubleshooting_guide": true,
+        "output_reference": true,
+        "research_use_limitations": null,
+        "model_or_data_license_guidance": null,
+        "sample_data": true,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "nf-core/rnaseq",
+      "url": "https://github.com/nf-core/rnaseq",
+      "description": "RNA sequencing analysis pipeline using STAR, RSEM, HISAT2 or Salmon with gene/isoform counts and extensive quality control.",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 1348,
+        "forks": 886,
+        "watchers_api": 1348,
+        "subscribers": 159
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-07-24T15:04:40Z",
+        "latest_release_date": "2026-05-07T15:29:56Z",
+        "latest_release_tag": "3.26.0"
+      },
+      "metadata": {
+        "license_spdx_api": "MIT",
+        "license_identifier": "MIT",
+        "license_basis": "GitHub repository API",
+        "primary_language": "Nextflow",
+        "repository_homepage": "https://nf-co.re/rnaseq",
+        "documentation_url": "https://nf-co.re/rnaseq",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "master",
+        "has_pages": false
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": true,
+        "citation_metadata": false,
+        "sample_data": false,
+        "first_100_readme_lines_have_install_or_quickstart_command": true
+      },
+      "usability_assessment": {
+        "first_result_command_count": 2,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": true,
+        "one_sample_path": true,
+        "doctor_or_preflight": true,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": true,
+        "output_reference": true,
+        "research_use_limitations": null,
+        "model_or_data_license_guidance": null,
+        "sample_data": true,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "nf-core/tools",
+      "url": "https://github.com/nf-core/tools",
+      "description": "Python package with helper tools for the nf-core community.",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 318,
+        "forks": 251,
+        "watchers_api": 318,
+        "subscribers": 148
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-07-30T12:07:15Z",
+        "latest_release_date": "2026-07-29T14:08:00Z",
+        "latest_release_tag": "4.1.0"
+      },
+      "metadata": {
+        "license_spdx_api": "MIT",
+        "license_identifier": "MIT",
+        "license_basis": "GitHub repository API",
+        "primary_language": "Python",
+        "repository_homepage": "https://nf-co.re",
+        "documentation_url": "https://nf-co.re/docs/nf-core-tools/",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "main",
+        "has_pages": false
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": true,
+        "citation_metadata": true,
+        "sample_data": true,
+        "first_100_readme_lines_have_install_or_quickstart_command": true
+      },
+      "usability_assessment": {
+        "first_result_command_count": 2,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": true,
+        "one_sample_path": false,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": false,
+        "troubleshooting_guide": true,
+        "output_reference": true,
+        "research_use_limitations": null,
+        "model_or_data_license_guidance": null,
+        "sample_data": true,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "nextflow-io/nextflow",
+      "url": "https://github.com/nextflow-io/nextflow",
+      "description": "A DSL for data-driven computational pipelines",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 3453,
+        "forks": 800,
+        "watchers_api": 3453,
+        "subscribers": 83
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-07-30T11:59:54Z",
+        "latest_release_date": "2026-07-15T19:41:47Z",
+        "latest_release_tag": "v25.10.7"
+      },
+      "metadata": {
+        "license_spdx_api": "Apache-2.0",
+        "license_identifier": "Apache-2.0",
+        "license_basis": "GitHub repository API",
+        "primary_language": "Groovy",
+        "repository_homepage": "http://nextflow.io",
+        "documentation_url": "https://docs.seqera.io/nextflow/",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "master",
+        "has_pages": false
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": true,
+        "citation_metadata": true,
+        "sample_data": true,
+        "first_100_readme_lines_have_install_or_quickstart_command": true
+      },
+      "usability_assessment": {
+        "first_result_command_count": 3,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": true,
+        "one_sample_path": true,
+        "doctor_or_preflight": true,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": true,
+        "output_reference": true,
+        "research_use_limitations": null,
+        "model_or_data_license_guidance": null,
+        "sample_data": true,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "mahmoodlab/TRIDENT",
+      "url": "https://github.com/mahmoodlab/TRIDENT",
+      "description": "Toolkit for large-scale whole-slide image processing. ",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 603,
+        "forks": 136,
+        "watchers_api": 603,
+        "subscribers": 6
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-07-24T06:41:39Z",
+        "latest_release_date": "2026-06-22T10:04:58Z",
+        "latest_release_tag": "v0.3.1"
+      },
+      "metadata": {
+        "license_spdx_api": "NOASSERTION",
+        "license_identifier": "CC-BY-NC-ND-4.0",
+        "license_basis": "repository license or terms notice",
+        "primary_language": "Python",
+        "repository_homepage": "https://trident-docs.readthedocs.io",
+        "documentation_url": "https://trident-docs.readthedocs.io/en/latest/",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "main",
+        "has_pages": false
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": true,
+        "citation_metadata": false,
+        "sample_data": false,
+        "first_100_readme_lines_have_install_or_quickstart_command": true
+      },
+      "usability_assessment": {
+        "first_result_command_count": 3,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": false,
+        "one_sample_path": true,
+        "doctor_or_preflight": true,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": true,
+        "output_reference": true,
+        "research_use_limitations": true,
+        "model_or_data_license_guidance": true,
+        "sample_data": false,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "mahmoodlab/CLAM",
+      "url": "https://github.com/mahmoodlab/CLAM",
+      "description": "Open source tools for computational pathology - Nature BME",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 1717,
+        "forks": 512,
+        "watchers_api": 1717,
+        "subscribers": 21
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2025-04-14T19:42:01Z",
+        "latest_release_date": null,
+        "latest_release_tag": null
+      },
+      "metadata": {
+        "license_spdx_api": "GPL-3.0",
+        "license_identifier": "GPL-3.0",
+        "license_basis": "GitHub repository API",
+        "primary_language": "Python",
+        "repository_homepage": "http://clam.mahmoodlab.org",
+        "documentation_url": "http://clam.mahmoodlab.org",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "master",
+        "has_pages": false
+      },
+      "repository_signals": {
+        "releases": false,
+        "ci": false,
+        "tests": false,
+        "issue_templates": false,
+        "citation_metadata": false,
+        "sample_data": true,
+        "first_100_readme_lines_have_install_or_quickstart_command": true
+      },
+      "usability_assessment": {
+        "first_result_command_count": 4,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": true,
+        "one_sample_path": true,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": false,
+        "output_reference": true,
+        "research_use_limitations": true,
+        "model_or_data_license_guidance": true,
+        "sample_data": true,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "TissueImageAnalytics/tiatoolbox",
+      "url": "https://github.com/TissueImageAnalytics/tiatoolbox",
+      "description": "Computational Pathology Toolbox developed by TIA Centre, University of Warwick.",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 542,
+        "forks": 108,
+        "watchers_api": 542,
+        "subscribers": 8
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-07-27T19:41:07Z",
+        "latest_release_date": "2026-07-21T14:17:12Z",
+        "latest_release_tag": "v2.1.3"
+      },
+      "metadata": {
+        "license_spdx_api": "NOASSERTION",
+        "license_identifier": "BSD-3-Clause",
+        "license_basis": "repository license or terms notice",
+        "primary_language": "Python",
+        "repository_homepage": "https://warwick.ac.uk/tia",
+        "documentation_url": "https://tia-toolbox.readthedocs.io/en/stable/",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "develop",
+        "has_pages": false
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": false,
+        "citation_metadata": true,
+        "sample_data": false,
+        "first_100_readme_lines_have_install_or_quickstart_command": true
+      },
+      "usability_assessment": {
+        "first_result_command_count": 3,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": true,
+        "one_sample_path": true,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": false,
+        "output_reference": true,
+        "research_use_limitations": false,
+        "model_or_data_license_guidance": true,
+        "sample_data": true,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "SBU-BMI/wsinfer",
+      "url": "https://github.com/SBU-BMI/wsinfer",
+      "description": "🔥 🚀 Blazingly fast pipeline for patch-based classification in whole slide images",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 86,
+        "forks": 14,
+        "watchers_api": 86,
+        "subscribers": 3
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2024-07-11T03:44:46Z",
+        "latest_release_date": "2024-02-22T20:49:07Z",
+        "latest_release_tag": "v0.6.1"
+      },
+      "metadata": {
+        "license_spdx_api": "Apache-2.0",
+        "license_identifier": "Apache-2.0",
+        "license_basis": "GitHub repository API",
+        "primary_language": "Python",
+        "repository_homepage": "https://wsinfer.readthedocs.io",
+        "documentation_url": "https://wsinfer.readthedocs.io/",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "main",
+        "has_pages": false
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": false,
+        "citation_metadata": false,
+        "sample_data": false,
+        "first_100_readme_lines_have_install_or_quickstart_command": true
+      },
+      "usability_assessment": {
+        "first_result_command_count": 1,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": false,
+        "one_sample_path": true,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": false,
+        "output_reference": true,
+        "research_use_limitations": true,
+        "model_or_data_license_guidance": true,
+        "sample_data": false,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "qupath/qupath",
+      "url": "https://github.com/qupath/qupath",
+      "description": "QuPath - Open-source bioimage analysis for research",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 1411,
+        "forks": 354,
+        "watchers_api": 1411,
+        "subscribers": 53
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-07-27T09:24:52Z",
+        "latest_release_date": "2026-03-02T15:07:30Z",
+        "latest_release_tag": "v0.7.0"
+      },
+      "metadata": {
+        "license_spdx_api": "GPL-3.0",
+        "license_identifier": "GPL-3.0",
+        "license_basis": "GitHub repository API",
+        "primary_language": "Java",
+        "repository_homepage": "https://qupath.github.io",
+        "documentation_url": "https://qupath.readthedocs.io/",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "main",
+        "has_pages": false
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": true,
+        "citation_metadata": false,
+        "sample_data": true,
+        "first_100_readme_lines_have_install_or_quickstart_command": false
+      },
+      "usability_assessment": {
+        "first_result_command_count": null,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": true,
+        "one_sample_path": true,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": true,
+        "output_reference": true,
+        "research_use_limitations": true,
+        "model_or_data_license_guidance": null,
+        "sample_data": true,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "Project-MONAI/MONAI",
+      "url": "https://github.com/Project-MONAI/MONAI",
+      "description": "AI Toolkit for Healthcare Imaging",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 8546,
+        "forks": 1591,
+        "watchers_api": 8546,
+        "subscribers": 100
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-07-30T10:04:54Z",
+        "latest_release_date": "2026-06-11T01:51:38Z",
+        "latest_release_tag": "1.6.0"
+      },
+      "metadata": {
+        "license_spdx_api": "Apache-2.0",
+        "license_identifier": "Apache-2.0",
+        "license_basis": "GitHub repository API",
+        "primary_language": "Python",
+        "repository_homepage": "https://project-monai.github.io/",
+        "documentation_url": "https://monai.readthedocs.io/en/latest/",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "dev",
+        "has_pages": true
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": true,
+        "citation_metadata": true,
+        "sample_data": true,
+        "first_100_readme_lines_have_install_or_quickstart_command": true
+      },
+      "usability_assessment": {
+        "first_result_command_count": 3,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": true,
+        "one_sample_path": true,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": true,
+        "output_reference": true,
+        "research_use_limitations": false,
+        "model_or_data_license_guidance": true,
+        "sample_data": true,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "rendeirolab/LazySlide",
+      "url": "https://github.com/rendeirolab/LazySlide",
+      "description": "Accessible and interoperable whole slide image analysis",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 311,
+        "forks": 30,
+        "watchers_api": 311,
+        "subscribers": 6
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-07-28T09:08:02Z",
+        "latest_release_date": "2026-06-22T11:24:04Z",
+        "latest_release_tag": "v0.12.0"
+      },
+      "metadata": {
+        "license_spdx_api": "MIT",
+        "license_identifier": "MIT",
+        "license_basis": "GitHub repository API",
+        "primary_language": "Python",
+        "repository_homepage": "https://lazyslide.rtfd.io/",
+        "documentation_url": "https://lazyslide.readthedocs.io/en/stable/",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "main",
+        "has_pages": false
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": true,
+        "citation_metadata": false,
+        "sample_data": false,
+        "first_100_readme_lines_have_install_or_quickstart_command": false
+      },
+      "usability_assessment": {
+        "first_result_command_count": 3,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": true,
+        "one_sample_path": true,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": true,
+        "output_reference": true,
+        "research_use_limitations": false,
+        "model_or_data_license_guidance": true,
+        "sample_data": true,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "slideflow/slideflow",
+      "url": "https://github.com/slideflow/slideflow",
+      "description": "Powerful, open-source AI tools for digital pathology.",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 368,
+        "forks": 66,
+        "watchers_api": 368,
+        "subscribers": 14
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-05-07T10:35:43Z",
+        "latest_release_date": "2024-10-18T17:36:16Z",
+        "latest_release_tag": "3.0.2"
+      },
+      "metadata": {
+        "license_spdx_api": "Apache-2.0",
+        "license_identifier": "Apache-2.0",
+        "license_basis": "GitHub repository API",
+        "primary_language": "Python",
+        "repository_homepage": "https://slideflow.dev",
+        "documentation_url": "https://slideflow.dev/",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "master",
+        "has_pages": true
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": true,
+        "citation_metadata": false,
+        "sample_data": false,
+        "first_100_readme_lines_have_install_or_quickstart_command": true
+      },
+      "usability_assessment": {
+        "first_result_command_count": 3,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": true,
+        "one_sample_path": true,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": true,
+        "output_reference": true,
+        "research_use_limitations": false,
+        "model_or_data_license_guidance": true,
+        "sample_data": true,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "openslide/openslide",
+      "url": "https://github.com/openslide/openslide",
+      "description": "C library for reading virtual slide images",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 509,
+        "forks": 269,
+        "watchers_api": 509,
+        "subscribers": 31
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-06-28T07:25:26Z",
+        "latest_release_date": "2026-06-08T04:17:50Z",
+        "latest_release_tag": "v4.0.1"
+      },
+      "metadata": {
+        "license_spdx_api": "LGPL-2.1",
+        "license_identifier": "LGPL-2.1",
+        "license_basis": "GitHub repository API",
+        "primary_language": "C",
+        "repository_homepage": "https://openslide.org/",
+        "documentation_url": "https://openslide.org/#documentation",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "main",
+        "has_pages": false
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": true,
+        "citation_metadata": false,
+        "sample_data": false,
+        "first_100_readme_lines_have_install_or_quickstart_command": false
+      },
+      "usability_assessment": {
+        "first_result_command_count": null,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": false,
+        "one_sample_path": false,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": false,
+        "troubleshooting_guide": false,
+        "output_reference": true,
+        "research_use_limitations": null,
+        "model_or_data_license_guidance": null,
+        "sample_data": false,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "computationalpathologygroup/ASAP",
+      "url": "https://github.com/computationalpathologygroup/ASAP",
+      "description": "Program for the analysis and visualization of whole-slide images in digital pathology",
+      "required_set": true,
+      "selection": "required benchmark set",
+      "visibility": {
+        "stars": 681,
+        "forks": 178,
+        "watchers_api": 681,
+        "subscribers": 25
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2023-09-12T13:51:10Z",
+        "latest_release_date": "2023-08-12T13:04:29Z",
+        "latest_release_tag": "ASAP-2.2-(Nightly)"
+      },
+      "metadata": {
+        "license_spdx_api": "GPL-2.0",
+        "license_identifier": "GPL-2.0",
+        "license_basis": "GitHub repository API",
+        "primary_language": "C++",
+        "repository_homepage": "https://computationalpathologygroup.github.io/ASAP/",
+        "documentation_url": "https://computationalpathologygroup.github.io/ASAP/",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "develop",
+        "has_pages": true
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": false,
+        "citation_metadata": false,
+        "sample_data": false,
+        "first_100_readme_lines_have_install_or_quickstart_command": false
+      },
+      "usability_assessment": {
+        "first_result_command_count": null,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": false,
+        "one_sample_path": true,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": false,
+        "output_reference": true,
+        "research_use_limitations": false,
+        "model_or_data_license_guidance": null,
+        "sample_data": false,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "histolab/histolab",
+      "url": "https://github.com/histolab/histolab",
+      "description": "Library for Digital Pathology Image Processing",
+      "required_set": false,
+      "selection": "active computational-pathology toolkit found in topic search",
+      "visibility": {
+        "stars": 462,
+        "forks": 66,
+        "watchers_api": 462,
+        "subscribers": 6
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-07-28T03:18:29Z",
+        "latest_release_date": "2024-02-25T00:33:30Z",
+        "latest_release_tag": "v0.7.0"
+      },
+      "metadata": {
+        "license_spdx_api": "Apache-2.0",
+        "license_identifier": "Apache-2.0",
+        "license_basis": "GitHub repository API",
+        "primary_language": "Python",
+        "repository_homepage": "http://histolab.readthedocs.io",
+        "documentation_url": "https://histolab.readthedocs.io/en/latest/",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "main",
+        "has_pages": true
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": true,
+        "citation_metadata": true,
+        "sample_data": true,
+        "first_100_readme_lines_have_install_or_quickstart_command": false
+      },
+      "usability_assessment": {
+        "first_result_command_count": 3,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": true,
+        "one_sample_path": true,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": false,
+        "output_reference": true,
+        "research_use_limitations": false,
+        "model_or_data_license_guidance": true,
+        "sample_data": true,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    },
+    {
+      "repository": "Dana-Farber-AIOS/pathml",
+      "url": "https://github.com/Dana-Farber-AIOS/pathml",
+      "description": "Tools for computational pathology",
+      "required_set": false,
+      "selection": "active computational-pathology toolkit found in topic search",
+      "visibility": {
+        "stars": 460,
+        "forks": 87,
+        "watchers_api": 460,
+        "subscribers": 11
+      },
+      "activity": {
+        "archived": false,
+        "pushed_at": "2026-07-17T20:14:18Z",
+        "latest_release_date": "2026-07-09T17:18:18Z",
+        "latest_release_tag": "v3.0.7"
+      },
+      "metadata": {
+        "license_spdx_api": "GPL-2.0",
+        "license_identifier": "GPL-2.0",
+        "license_basis": "GitHub repository API",
+        "primary_language": "Python",
+        "repository_homepage": "https://pathml.org",
+        "documentation_url": "https://pathml.readthedocs.io/en/latest/",
+        "documentation_url_basis": "landing README or official repository homepage",
+        "default_branch": "master",
+        "has_pages": true
+      },
+      "repository_signals": {
+        "releases": true,
+        "ci": true,
+        "tests": true,
+        "issue_templates": true,
+        "citation_metadata": true,
+        "sample_data": true,
+        "first_100_readme_lines_have_install_or_quickstart_command": true
+      },
+      "usability_assessment": {
+        "first_result_command_count": 3,
+        "first_result_command_count_basis": "manual conservative count from landing-page or directly linked quickstart; null means no single comparable CLI path",
+        "zero_credential_demo": true,
+        "one_sample_path": true,
+        "doctor_or_preflight": false,
+        "expected_output_visual_or_tree": true,
+        "troubleshooting_guide": false,
+        "output_reference": true,
+        "research_use_limitations": false,
+        "model_or_data_license_guidance": false,
+        "sample_data": true,
+        "review_basis": "manual landing-page/direct-doc review at snapshot date"
+      }
+    }
+  ],
+  "github_rate_limit_after_collection": {
+    "core": {
+      "limit": 5000,
+      "remaining": 4999,
+      "reset_epoch": 1785418840
+    },
+    "search": {
+      "limit": 30,
+      "remaining": 30,
+      "reset_epoch": 1785416651
+    }
+  },
+  "limitations": [
+    "Stars, forks, subscribers, releases, and recent pushes are imperfect visibility and activity proxies; they are not usage or quality measurements.",
+    "GitHub watchers_count currently aliases stargazers_count; subscribers is the distinct notification-watch metric.",
+    "Path and README heuristics can miss documentation hosted elsewhere or classify fixture assets as sample data.",
+    "First-result command counts are conservative manual comparisons and are not meaningful for GUI-first projects or low-level libraries.",
+    "Feature presence records discoverability, not correctness, accessibility, scientific validity, or clinical fitness.",
+    "Repository contents and metrics change after the timestamp; this compact snapshot intentionally excludes README bodies and personal data."
+  ]
+}
