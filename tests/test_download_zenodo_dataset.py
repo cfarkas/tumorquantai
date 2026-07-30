@@ -219,6 +219,79 @@ class DownloadZenodoDatasetTests(unittest.TestCase):
         self.assertEqual(result["statuses"], {"verified-partial": 1, "downloaded": 1})
         self.assertEqual(target.read_bytes(), self.payloads[0])
 
+    def test_complete_corrupt_partial_is_restarted_without_overwrite(self) -> None:
+        output = self.root / "dataset"
+        alias = "TumorQuantAI_LymphomaWSI_001"
+        target = output / "slides" / alias / "1_L0_rgb.tif"
+        target.parent.mkdir(parents=True)
+        part = target.with_name(f".{target.name}.part")
+        part.write_bytes(b"x" * len(self.payloads[0]))
+        session = QueueSession(
+            [
+                response(200, self.record_payload()),
+                response(200, self.payloads[0]),
+                response(200, self.payloads[2]),
+            ]
+        )
+
+        result = download.download_dataset(
+            manifest=self.manifest,
+            record="12345",
+            output_dir=output,
+            api_url="https://zenodo.example/api",
+            retries=0,
+            session=session,
+        )
+
+        self.assertEqual(result["statuses"], {"downloaded": 2})
+        self.assertEqual(target.read_bytes(), self.payloads[0])
+        self.assertFalse(part.exists())
+        self.assertIsNone(session.calls[1][2]["headers"])
+
+    def test_final_checksum_failure_removes_partial_for_identical_retry(self) -> None:
+        output = self.root / "dataset"
+        alias = "TumorQuantAI_LymphomaWSI_001"
+        target = output / "slides" / alias / "1_L0_rgb.tif"
+        part = target.with_name(f".{target.name}.part")
+        corrupt = b"x" * len(self.payloads[0])
+        first_session = QueueSession(
+            [response(200, self.record_payload()), response(200, corrupt)]
+        )
+
+        with self.assertRaisesRegex(download.DownloadError, "Checksum verification failed"):
+            download.download_dataset(
+                manifest=self.manifest,
+                record="12345",
+                output_dir=output,
+                api_url="https://zenodo.example/api",
+                retries=0,
+                session=first_session,
+            )
+
+        self.assertFalse(target.exists())
+        self.assertFalse(part.exists())
+
+        retry_session = QueueSession(
+            [
+                response(200, self.record_payload()),
+                response(200, self.payloads[0]),
+                response(200, self.payloads[2]),
+            ]
+        )
+        result = download.download_dataset(
+            manifest=self.manifest,
+            record="12345",
+            output_dir=output,
+            api_url="https://zenodo.example/api",
+            retries=0,
+            session=retry_session,
+        )
+
+        self.assertEqual(result["statuses"], {"downloaded": 2})
+        self.assertEqual(target.read_bytes(), self.payloads[0])
+        self.assertFalse(part.exists())
+        self.assertIsNone(retry_session.calls[1][2]["headers"])
+
     def test_rejects_existing_symlink_even_when_it_points_inside_output(self) -> None:
         output = self.root / "dataset"
         alias = "TumorQuantAI_LymphomaWSI_001"

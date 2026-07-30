@@ -8,7 +8,12 @@ OUTPUT_DIR=""
 SAMPLE_SHEET=""
 PROFILE="auto"
 CONTAINER_IMAGE="${CONTAINER_IMAGE:-}"
-HF_TOKEN_FILE="${HF_TOKEN_FILE:-${HOME}/.config/lazyslide-histoplus/hf_token}"
+CANONICAL_HF_TOKEN_FILE="${HOME}/.config/tumorquantai/hf_token"
+LEGACY_HF_TOKEN_FILE="${HOME}/.config/lazyslide-histoplus/hf_token"
+CONFIGURED_TUMORQUANTAI_TOKEN_FILE="${TUMORQUANTAI_HF_TOKEN_FILE:-}"
+LEGACY_AUTOMATION_TOKEN_FILE="${HF_TOKEN_FILE:-}"
+HF_TOKEN_FILE="${CANONICAL_HF_TOKEN_FILE}"
+HF_TOKEN_FILE_EXPLICIT="false"
 HF_CACHE="${HF_HOME:-${HOME}/.cache/lazyslide-histoplus/huggingface}"
 HISTOPLUS_CACHE="${HISTOPLUS_CACHE:-${HOME}/.cache/lazyslide-histoplus/histoplus}"
 HISTOPLUS_REVISION="${HISTOPLUS_REVISION:-cde2eee81af9e39b03802fc33d4f284733b5ee5e}"
@@ -97,7 +102,8 @@ Inference/resources:
   --compressed-coordinates        Write cell coordinates as csv.gz
 
 Authentication/cache:
-  --hf-token-file FILE            Default: ~/.config/lazyslide-histoplus/hf_token
+  --hf-token-file FILE            Default: TUMORQUANTAI_HF_TOKEN_FILE or
+                                  ~/.config/tumorquantai/hf_token; legacy path supported
   --hf-cache DIR                  Hugging Face cache mounted into Docker
   --histoplus-cache DIR           Resolved HistoPLUS weight cache
   --histoplus-weight-file FILE     Existing gated 20x/40x weight; never copied into outputs
@@ -207,7 +213,7 @@ while [[ $# -gt 0 ]]; do
     --time) need_value "$@"; TIME_LIMIT="$2"; shift 2 ;;
     --qc-patch-count) need_value "$@"; QC_PATCH_COUNT="$2"; shift 2 ;;
     --collage) need_value "$@"; COLLAGE="$2"; shift 2 ;;
-    --hf-token-file) need_value "$@"; HF_TOKEN_FILE="$2"; shift 2 ;;
+    --hf-token-file) need_value "$@"; HF_TOKEN_FILE="$2"; HF_TOKEN_FILE_EXPLICIT="true"; shift 2 ;;
     --hf-cache) need_value "$@"; HF_CACHE="$2"; shift 2 ;;
     --histoplus-cache) need_value "$@"; HISTOPLUS_CACHE="$2"; shift 2 ;;
     --histoplus-weight-file) need_value "$@"; HISTOPLUS_WEIGHT_FILE="$2"; shift 2 ;;
@@ -321,25 +327,62 @@ if [[ -n "${SAMPLE_SHEET}" ]]; then
   [[ -f "${SAMPLE_SHEET}" ]] || die "Sample sheet does not exist: ${SAMPLE_SHEET}"
 fi
 
-if [[ -n "${HISTOPLUS_WEIGHT_FILE}" ]]; then
-  HISTOPLUS_WEIGHT_FILE="$(absolute_path "${HISTOPLUS_WEIGHT_FILE}")"
-  [[ -f "${HISTOPLUS_WEIGHT_FILE}" ]] || die "HistoPLUS weight file does not exist: ${HISTOPLUS_WEIGHT_FILE}"
-  HISTOPLUS_WEIGHT_SHA256="$(sha256sum -- "${HISTOPLUS_WEIGHT_FILE}" | awk '{print $1}')"
-  [[ "${HISTOPLUS_WEIGHT_SHA256}" =~ ^[0-9a-f]{64}$ ]] || \
-    die "Could not compute the HistoPLUS weight SHA-256"
+if [[ "${DRY_RUN}" == "true" ]]; then
+  # Discovery does not need gated model access. Do not read, hash, or forward
+  # any credential or authorized local-weight path in this mode.
+  unset HF_TOKEN TUMORQUANTAI_HF_TOKEN_FILE HF_TOKEN_FILE HISTOPLUS_WEIGHT_FILE
+  HISTOPLUS_WEIGHT_FILE=""
+  HISTOPLUS_WEIGHT_SHA256=""
+else
+  if [[ -n "${HISTOPLUS_WEIGHT_FILE}" ]]; then
+    # A local authorized weight is sufficient. Prevent unrelated credentials
+    # from entering Nextflow, a local worker, or Docker.
+    unset HF_TOKEN TUMORQUANTAI_HF_TOKEN_FILE HF_TOKEN_FILE
+    HF_TOKEN_FILE=""
+  elif [[ -n "${CONFIGURED_TUMORQUANTAI_TOKEN_FILE}" ]]; then
+    HF_TOKEN_FILE="${CONFIGURED_TUMORQUANTAI_TOKEN_FILE}"
+  elif [[ "${HF_TOKEN_FILE_EXPLICIT}" == "true" ]]; then
+    :
+  elif [[ -f "${CANONICAL_HF_TOKEN_FILE}" ]]; then
+    HF_TOKEN_FILE="${CANONICAL_HF_TOKEN_FILE}"
+  elif [[ -n "${LEGACY_AUTOMATION_TOKEN_FILE}" ]]; then
+    printf 'WARNING: HF_TOKEN_FILE is deprecated; use TUMORQUANTAI_HF_TOKEN_FILE.\n' >&2
+    HF_TOKEN_FILE="${LEGACY_AUTOMATION_TOKEN_FILE}"
+  elif [[ -f "${LEGACY_HF_TOKEN_FILE}" ]]; then
+    printf 'WARNING: using deprecated HistoPLUS token path; move it to ~/.config/tumorquantai/hf_token.\n' >&2
+    HF_TOKEN_FILE="${LEGACY_HF_TOKEN_FILE}"
+  else
+    HF_TOKEN_FILE="${CANONICAL_HF_TOKEN_FILE}"
+  fi
+
+  if [[ -n "${HISTOPLUS_WEIGHT_FILE}" ]]; then
+    HISTOPLUS_WEIGHT_FILE="$(absolute_path "${HISTOPLUS_WEIGHT_FILE}")"
+    [[ -f "${HISTOPLUS_WEIGHT_FILE}" ]] || die "HistoPLUS weight file does not exist: ${HISTOPLUS_WEIGHT_FILE}"
+    HISTOPLUS_WEIGHT_SHA256="$(sha256sum -- "${HISTOPLUS_WEIGHT_FILE}" | awk '{print $1}')"
+    [[ "${HISTOPLUS_WEIGHT_SHA256}" =~ ^[0-9a-f]{64}$ ]] || \
+      die "Could not compute the HistoPLUS weight SHA-256"
+  fi
+
+  if [[ -z "${HISTOPLUS_WEIGHT_FILE}" && -f "${HF_TOKEN_FILE}" ]]; then
+    HF_TOKEN="$(tr -d '\r\n' < "${HF_TOKEN_FILE}")"
+    export HF_TOKEN
+  fi
+  if [[ -z "${HF_TOKEN:-}" && -z "${HISTOPLUS_WEIGHT_FILE}" ]]; then
+    printf 'WARNING: HF_TOKEN is unset; gated HistoPLUS weight download may fail.\n' >&2
+  fi
 fi
 
-if [[ -z "${HF_TOKEN:-}" && -f "${HF_TOKEN_FILE}" ]]; then
-  HF_TOKEN="$(tr -d '\r\n' < "${HF_TOKEN_FILE}")"
-  export HF_TOKEN
-fi
-if [[ "${DRY_RUN}" != "true" && -z "${HF_TOKEN:-}" && -z "${HISTOPLUS_WEIGHT_FILE}" ]]; then
-  printf 'WARNING: HF_TOKEN is unset; gated HistoPLUS weight download may fail.\n' >&2
-fi
+# These paths are launcher inputs, not worker environment variables. Keep only
+# the HF_TOKEN value exported when a gated download actually needs it.
+unset TUMORQUANTAI_HF_TOKEN_FILE
+export -n HF_TOKEN_FILE HISTOPLUS_WEIGHT_FILE 2>/dev/null || true
 
 case "${PROFILE}" in
   auto)
-    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+    DOCKER_RUNTIMES="$(docker info --format '{{json .Runtimes}}' 2>/dev/null || true)"
+    if command -v nvidia-smi >/dev/null 2>&1 \
+      && nvidia-smi >/dev/null 2>&1 \
+      && [[ "${DOCKER_RUNTIMES,,}" == *nvidia* ]]; then
       NF_PROFILE="docker_gpu"
       DEVICE="cuda"
     else
@@ -391,7 +434,9 @@ if [[ "${NF_PROFILE}" != "local" ]]; then
       die "Docker bind-mount paths cannot contain whitespace or : characters: ${HISTOPLUS_WEIGHT_FILE}"
     HISTOPLUS_WEIGHT_MOUNT="-v ${HISTOPLUS_WEIGHT_FILE}:${HISTOPLUS_WEIGHT_FILE}:ro"
   fi
-  DOCKER_RUN_OPTIONS="-u $(id -u):$(id -g) -e HOME=/home/lazyslide -e HF_TOKEN -e HF_HOME=/home/lazyslide/.cache/huggingface -e HUGGINGFACE_HUB_CACHE=/home/lazyslide/.cache/huggingface/hub -v ${INPUT_DIR}:${INPUT_DIR}:ro -v ${OUTPUT_DIR}:${OUTPUT_DIR} -v ${HF_CACHE}:/home/lazyslide/.cache/huggingface -v ${HISTOPLUS_CACHE}:/home/lazyslide/.cache/histoplus ${SAMPLE_SHEET_MOUNT} ${HISTOPLUS_WEIGHT_MOUNT}"
+  HF_TOKEN_DOCKER_OPTION=""
+  [[ -n "${HF_TOKEN:-}" ]] && HF_TOKEN_DOCKER_OPTION="-e HF_TOKEN"
+  DOCKER_RUN_OPTIONS="-u $(id -u):$(id -g) -e HOME=/home/lazyslide ${HF_TOKEN_DOCKER_OPTION} -e HF_HOME=/home/lazyslide/.cache/huggingface -e HUGGINGFACE_HUB_CACHE=/home/lazyslide/.cache/huggingface/hub -v ${INPUT_DIR}:${INPUT_DIR}:ro -v ${OUTPUT_DIR}:${OUTPUT_DIR} -v ${HF_CACHE}:/home/lazyslide/.cache/huggingface -v ${HISTOPLUS_CACHE}:/home/lazyslide/.cache/histoplus ${SAMPLE_SHEET_MOUNT} ${HISTOPLUS_WEIGHT_MOUNT}"
 fi
 
 NF_ARGS=(
