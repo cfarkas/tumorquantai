@@ -7,12 +7,13 @@ to TumorQuantAI `v0.4.0`.
 
 Choose the checkpoint:
 
-1. [One public slide at 1%](tutorials/one-public-slide.md) — prominent beginner
-   route; only alias 022, no Zenodo credential.
-2. [Four fixed public slides at 10%](tutorials/four-public-slides.md) —
-   advanced expansion after one-slide review.
-3. [Full 21-slide collection](tutorials/full-collection.md) — advanced,
-   storage/compute-intensive route.
+1. [Run one public slide at 1%](start-here/public-slide.md) — first checkpoint;
+   only alias 022 and no Zenodo credential.
+2. [Review the one-slide results](tutorials/one-public-slide.md) before
+   expanding the cohort.
+3. [Run four fixed public slides at 10%](tutorials/four-public-slides.md).
+4. [Run the full 21-slide collection](tutorials/full-collection.md) only with
+   reviewed storage and compute capacity.
 
 `./tumorquantai quickstart` is deliberately capped at alias
 `TumorQuantAI_LymphomaWSI_022` and cannot download four or 21 slides.

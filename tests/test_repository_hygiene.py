@@ -26,6 +26,21 @@ def scan_paths(monkeypatch: pytest.MonkeyPatch, root: Path, paths: list[str]) ->
     return errors
 
 
+def scan_text_path(
+    monkeypatch: pytest.MonkeyPatch,
+    root: Path,
+    relative: str,
+    text: str,
+) -> list[str]:
+    monkeypatch.setattr(HYGIENE, "ROOT", root)
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    errors: list[str] = []
+    HYGIENE.check_forbidden_artifacts([path], errors)
+    return errors
+
+
 @pytest.mark.parametrize(
     "relative",
     [
@@ -72,3 +87,30 @@ def test_output_named_like_documentation_asset_is_not_broadly_allowed(
     invented = "docs/assets/zoom_overlay_celltypes.png"
     errors = scan_paths(monkeypatch, tmp_path, [invented])
     assert any("generated patient/workflow output" in error for error in errors)
+
+
+def test_server_specific_path_is_rejected_in_production_script(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    errors = scan_text_path(
+        monkeypatch,
+        tmp_path,
+        "scripts/run_analysis.py",
+        "input_root = '/media/server/private-cohort'\n",
+    )
+    assert any("server-specific absolute path" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    "relative",
+    ["tests/test_private_path_fixture.py", "scripts/check_docs_language.py"],
+)
+def test_local_path_pattern_literals_are_narrowly_allowed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, relative: str
+) -> None:
+    assert scan_text_path(
+        monkeypatch,
+        tmp_path,
+        relative,
+        "pattern = r'/home/server/'\n",
+    ) == []

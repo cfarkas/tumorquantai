@@ -1,131 +1,224 @@
-# Public one-slide quickstart
+# Run one public slide
 
-| | |
-| --- | --- |
-| **For** | A first real-WSI preparation and optional 1% inference check |
-| **Hands-on steps** | Preflight, download one file, verify, convert L0/L2, inspect, optionally infer |
-| **Prerequisites** | Linux, Python 3.10+ with `requirements-tutorial.txt`, ample space on a verified mounted filesystem; Java/Nextflow/Docker and authorized HistoPLUS access only for inference |
-| **Download** | Exactly 125,350,400 bytes plus the small authoritative manifest |
-| **Storage** | Budget download, L0/L2 conversion, Nextflow work, and results separately; check the plan printed by the command |
-| **Writes to** | The path supplied with `--output`; work stays associated with that filesystem |
+This page downloads one public whole-slide image (WSI), converts the Motic MDS
+file into Tagged Image File Format (TIFF), inspects it without inference, and
+shows the optional 1% HistoPLUS command.
 
-This route uses public [Zenodo record
-21466410](https://zenodo.org/records/21466410), DOI
-[`10.5281/zenodo.21466410`](https://doi.org/10.5281/zenodo.21466410), matched
-to software `v0.4.0`.
+The data are on Zenodo record 21466410, digital object identifier (DOI)
+10.5281/zenodo.21466410, and are matched to TumorQuantAI v0.4.0. Zenodo access
+is public. HistoPLUS model access is gated separately.
 
-| Fixed item | Value |
-| --- | --- |
-| Sample | `TumorQuantAI_LymphomaWSI_022` |
-| File | `TumorQuantAI_LymphomaWSI_022.mds` |
-| Size | `125350400` bytes |
-| MD5 | `94bb5b08ccf1957f8c42a579e8b33cfb` |
-| SHA-256 | `db2988b5c6bc791510cec4127106509e604e577feafdb15b94c149043ed7067a` |
-| Source MPP | `0.261780` µm/pixel |
-| Conversion levels | L0 and L2 |
-| L0 dimensions | 37,888 × 26,112 pixels |
-| L2 dimensions | 9,728 × 6,656 pixels |
-| Smoke sampling | Seeded 1% |
+## Requirements
 
-No Zenodo token is needed. HistoPLUS remains gated separately.
+For download, conversion, and inspection you need Linux, Python 3.10 or newer,
+the packages in requirements-tutorial.txt, and writable mounted storage. For
+inference you also need Java 17 or newer, Nextflow 24.10 or newer, Docker 24 or
+newer (or a prepared local environment), and authorized HistoPLUS access.
 
-## 1. Check the plan and mount
+The MDS download is 125,350,400 bytes. Converted image-pyramid levels L0 and
+L2, the Nextflow work directory, model cache, and results need additional
+space. L0 is the highest-resolution image used for analysis; L2 is its lower-resolution
+companion.
 
-Choose an output on a mounted storage filesystem, not inside the repository:
+Replace /data in the commands with the mount selected for the analysis.
 
-```bash
-export TQA_TUTORIAL=/mounted/storage/tumorquantai-one-slide
+## Check storage
 
-mkdir -p "$TQA_TUTORIAL"
-findmnt -T "$TQA_TUTORIAL"
-df -hT "$TQA_TUTORIAL"
-test -w "$TQA_TUTORIAL"
-./tumorquantai quickstart --output "$TQA_TUTORIAL" --cpu --dry-run
-```
+Run this from the repository root. It creates the data directory and a small
+Python environment on the selected filesystem.
 
-If the host dependencies are missing, follow [Install and check the
-computer](../how-to/install.md). The command checks these dependencies before
-making a network request.
+~~~bash
+export TQA_REPO="$PWD"
+export TQA_DATA="/data/tumorquantai-one-slide"
 
-The dry run prints distinct estimates for the MDS download, converted TIFFs,
-work cache, and final results. Resolve any `FAIL` before continuing.
+mkdir -p "$TQA_DATA"
+findmnt -T "$TQA_DATA"
+df -hT "$TQA_DATA"
+test -w "$TQA_DATA"
 
-## 2. Prepare the slide without inference
+python3 -m venv "$TQA_DATA/.venv"
+. "$TQA_DATA/.venv/bin/activate"
+python -m pip install -r "$TQA_REPO/requirements-tutorial.txt"
+~~~
 
-```bash
-./tumorquantai quickstart \
-  --output "$TQA_TUTORIAL" \
-  --no-inference
-```
+Success means findmnt identifies the intended mounted filesystem, df reports
+enough free space, and test exits without output.
 
-The command fetches the authoritative 10,108-byte manifest from the same
-version-specific record, downloads only alias 022 with resume support, and
-verifies file size, MD5, SHA-256, manifest identity, and safe paths. Conversion
-writes only L0/L2 and keeps resumable state. Inspection confirms source MPP
-`0.261780`.
+## Download with wget
 
-Expected completion when model access is absent or inference is disabled:
+Use these two commands to download only the manifest and sample 022. The -c
+option resumes a partial file.
 
-```text
-One-slide data preparation and model-free inspection complete.
-Open first: /mounted/storage/tumorquantai-one-slide/START_HERE.html
-```
+~~~bash
+export TQA_DATA="/data/tumorquantai-one-slide"
 
-Missing gated access is a readiness state, not corrupted data.
-Without `--no-inference`, an otherwise ready preparation with no authorized
-model prints `Data preparation is complete. Authorized HistoPLUS access is not
-configured; the data are not corrupt.` and exits successfully.
+cd "$TQA_DATA"
+wget -c -O tumorquantai_lymphoma_mds_manifest.csv \
+  "https://zenodo.org/records/21466410/files/tumorquantai_lymphoma_mds_manifest.csv?download=1"
+wget -c -O TumorQuantAI_LymphomaWSI_022.mds \
+  "https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_022.mds?download=1"
+~~~
 
-The bounded output remains separated:
+## Download with curl
 
-```text
-tumorquantai-one-slide/
-├── download/                    # public manifest and alias 022 only
-├── converted/                   # verified L0/L2 and conversion state
-├── inspection/                  # model-free manifest and INSPECTION.html
-├── smoke-results/               # appears after authorized inference
-├── .tumorquantai-work/          # resumable Nextflow work
-├── tumorquantai_report.json
-└── START_HERE.html
-```
+Use this block instead of the wget block, not in addition to it. The commands
+follow redirects, fail on HTTP errors, and retry transient failures. They
+replace an existing destination file rather than attempting an ambiguous
+resume of a completed file.
 
-## 3. Continue when HistoPLUS access is authorized
+~~~bash
+export TQA_DATA="/data/tumorquantai-one-slide"
 
-Follow [Configure authorized HistoPLUS access](../how-to/model-access.md), then
-rerun the same command:
+cd "$TQA_DATA"
+curl -L --fail --retry 5 \
+  -o tumorquantai_lymphoma_mds_manifest.csv \
+  "https://zenodo.org/records/21466410/files/tumorquantai_lymphoma_mds_manifest.csv?download=1"
+curl -L --fail --retry 5 \
+  -o TumorQuantAI_LymphomaWSI_022.mds \
+  "https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_022.mds?download=1"
+~~~
 
-```bash
-./tumorquantai quickstart --output "$TQA_TUTORIAL" --cpu
-```
+## Check the download
 
-Use `--cpu` when the GPU is unavailable or reserved by another workload. Use
-`--gpu` only when `doctor` confirms the NVIDIA host and container path. These
-flags are mutually exclusive aliases for the compatible `--profile cpu` and
-`--profile gpu` forms.
+MD5 means Message-Digest Algorithm 5. SHA-256 means Secure Hash Algorithm
+256-bit. The following checks validate the published manifest checksum, slide
+size, slide MD5, and slide SHA-256.
 
-The prepared files are verified and reused. The inference stage selects exactly
-one slide, uses a seeded 1% tissue-tile sample, and fails fast. After inference,
-the command requires exactly one included sample and zero excluded samples in
-`smoke-results/aggregated_celltypes/sample_aggregation_audit.csv`.
+~~~bash
+export TQA_DATA="/data/tumorquantai-one-slide"
 
-Open the printed `START_HERE.html` and review the overlay, source/target MPP,
-sampling percentage and seed before treating the smoke run as technically
-successful. This is not clinical or biological validation.
+cd "$TQA_DATA"
+echo "ad9a9472e8beb302f8b9ba2b3359bacc  tumorquantai_lymphoma_mds_manifest.csv" | md5sum -c -
+test "$(stat -c %s TumorQuantAI_LymphomaWSI_022.mds)" -eq 125350400
+echo "94bb5b08ccf1957f8c42a579e8b33cfb  TumorQuantAI_LymphomaWSI_022.mds" | md5sum -c -
+echo "db2988b5c6bc791510cec4127106509e604e577feafdb15b94c149043ed7067a  TumorQuantAI_LymphomaWSI_022.mds" | sha256sum -c -
+~~~
 
-## Stop, resume, and clean up
+The three checksum commands print OK. The size test is silent on success. Stop
+if any command fails; do not convert an unverified file.
 
-Press **Ctrl+C** to stop. Repeat the identical command with the same output to
-resume downloads, conversion, and valid Nextflow tasks. For stage control:
+## Convert the MDS file
 
-```bash
-./tumorquantai quickstart --output "$TQA_TUTORIAL" --download-only
-./tumorquantai quickstart --output "$TQA_TUTORIAL" --convert-only
-./tumorquantai quickstart --output "$TQA_TUTORIAL" --no-inference
-```
+The converter accepts the ordinary filename downloaded from Zenodo. It verifies
+the manifest row before writing L0/L2 TIFF files and preserves resumable
+conversion state.
 
-To clean up, print and verify `TQA_TUTORIAL`, then remove only that tutorial
-root. Keep the work directory while resume is useful. Never run
-`nextflow clean -f` before verifying and backing up results.
+~~~bash
+export TQA_REPO="${TQA_REPO:-$PWD}"
+export TQA_DATA="/data/tumorquantai-one-slide"
 
-**Next:** [understand the one-slide outputs](../tutorials/one-public-slide.md)
-or [inspect your own slide](own-slides.md).
+python "$TQA_REPO/bin/mds_to_tiff.py" \
+  --input "$TQA_DATA/TumorQuantAI_LymphomaWSI_022.mds" \
+  --manifest "$TQA_DATA/tumorquantai_lymphoma_mds_manifest.csv" \
+  --output-dir "$TQA_DATA/slides" \
+  --levels 0 2 \
+  --sample-id TumorQuantAI_LymphomaWSI_022 \
+  --expected-count 1 \
+  --source-mpp 0.261780 \
+  --resume
+~~~
+
+Success writes:
+
+~~~text
+slides/
+├── TumorQuantAI_LymphomaWSI_022/
+│   ├── 1_L0_rgb.tif
+│   └── 1_L2_rgb.tif
+├── mds_conversion_manifest.json
+└── samples.csv
+~~~
+
+The manifest is JavaScript Object Notation (JSON). Do not delete it while
+resume is useful.
+
+## Inspect the slide
+
+Inspection does not load HistoPLUS and works without a graphics processing unit
+(GPU).
+
+~~~bash
+export TQA_REPO="${TQA_REPO:-$PWD}"
+export TQA_DATA="/data/tumorquantai-one-slide"
+
+cd "$TQA_REPO"
+./tumorquantai inspect "$TQA_DATA/slides" \
+  --sample-sheet "$TQA_DATA/slides/samples.csv" \
+  --output "$TQA_DATA/inspection"
+~~~
+
+Success writes inspection/INSPECTION.html and
+inspection/inspection_manifest.csv. CSV means comma-separated values. Confirm
+one sample, one L0 primary file, one L2 companion, and source resolution
+0.261780 micrometres per pixel (MPP).
+
+## Run 1% of the tissue tiles
+
+Source MPP describes the physical scale of the input. Target/model MPP is the
+separate scale used to form model tiles. The smoke preset selects a seeded 1%
+of detected tissue tiles; its counts are not whole-slide counts and must not be
+multiplied by 100. Public Zenodo access does not authorize HistoPLUS inference.
+
+The result directory contains outputs. The separate Nextflow work directory
+contains resumable tasks and can be larger. Configure
+[authorized HistoPLUS access](../how-to/model-access.md), then run:
+
+~~~bash
+export TQA_REPO="${TQA_REPO:-$PWD}"
+export TQA_DATA="/data/tumorquantai-one-slide"
+
+cd "$TQA_REPO"
+./tumorquantai run "$TQA_DATA/slides" \
+  --sample-sheet "$TQA_DATA/slides/samples.csv" \
+  --output "$TQA_DATA/results-1-percent" \
+  --work-dir "$TQA_DATA/work-1-percent" \
+  --preset smoke \
+  --sample TumorQuantAI_LymphomaWSI_022 \
+  --source-mpp 0.261780 \
+  --profile auto
+~~~
+
+The auto profile selects an available execution path. Use --cpu to force the
+central processing unit (CPU), or --gpu to select the GPU profile after doctor
+confirms the NVIDIA runtime.
+
+## Check the results
+
+Open these files in order:
+
+1. results-1-percent/START_HERE.html
+2. results-1-percent/TumorQuantAI_LymphomaWSI_022/overlays/celltypes_overview_and_zoom.png
+3. results-1-percent/TumorQuantAI_LymphomaWSI_022/summary/summary.json
+4. results-1-percent/aggregated_celltypes/sample_aggregation_audit.csv
+5. results-1-percent/aggregated_celltypes/celltype_fractions_by_sample.csv
+6. results-1-percent/aggregated_celltypes/celltype_counts_by_sample.csv
+
+The overlay is for visual quality control (QC). The summary must record source
+MPP, target MPP, 1% sampling, seed, model revision, and completion. The audit
+must contain exactly one included sample and no failed or incomplete sample.
+
+A zero cell class is valid only for a completed sample. A failed, missing, or
+incomplete sample has no numeric matrix column and remains in the audit.
+
+## Resume a run
+
+Press Ctrl+C to stop. Repeat the same conversion or inference command with the
+same paths. Conversion --resume reuses verified TIFF files, and inference
+resume reuses valid Nextflow tasks.
+
+~~~bash
+export TQA_REPO="${TQA_REPO:-$PWD}"
+export TQA_DATA="/data/tumorquantai-one-slide"
+
+cd "$TQA_REPO"
+./tumorquantai status "$TQA_DATA/results-1-percent"
+~~~
+
+Status prints the first relevant log and the exact resume command.
+
+To remove this example after review, first print and verify the exact value of
+TQA_DATA and its mount. Remove only /data/tumorquantai-one-slide; retain the
+work directory if another resume may be needed.
+
+Next, read [the one-slide results](../tutorials/one-public-slide.md) or
+[run your slides](own-slides.md).

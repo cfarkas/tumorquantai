@@ -12,7 +12,7 @@ OUTPUT/
 ├── workflow_metadata/
 │   ├── slides.tsv
 │   ├── slides.json
-│   ├── tumorquantai_run.json               # beginner command/provenance
+│   ├── tumorquantai_run.json               # main command/provenance
 │   ├── nextflow.log                         # canonical local execution log
 │   ├── nextflow_report_<run>.html
 │   ├── nextflow_trace_<run>.tsv

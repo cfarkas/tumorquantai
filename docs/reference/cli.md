@@ -1,6 +1,6 @@
 # CLI reference
 
-`./tumorquantai` is the short beginner interface. It wraps the existing
+`./tumorquantai` is the main command-line interface. It wraps the existing
 `run.sh` and Nextflow workflow rather than reimplementing inference. The
 installed script's `--help` output is authoritative.
 

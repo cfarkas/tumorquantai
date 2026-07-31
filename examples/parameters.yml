@@ -1,0 +1,76 @@
+# Complete public TumorQuantAI parameter example.
+#
+# This file enumerates all 54 public keys from nextflow_schema.json. It starts
+# in discovery-only mode. Set paths for the selected mounted filesystem, review
+# every non-default value, and change dry_run only when model access and storage
+# are ready. The container, device, and HistoPLUS batch size form a conservative
+# CPU configuration. Do not add tokens or the three internal parameters
+# documented in docs/reference/parameters.md.
+
+# Input and sample selection
+input_dir: /mounted/storage/slides
+output_dir: /mounted/storage/tumorquantai-results
+sample_sheet: null
+slide_patterns:
+  - "*_L0_rgb.tif"
+  - "*_L0_rgb.tiff"
+include: "*"
+exclude: ""
+dry_run: true
+
+# Container, resources, and failure handling
+container_image: "carlosfarkas/lazyslide-histoplus@sha256:413bed6b55bc86923321c61453c18ece678da3c125ae44dcbd5f6c3bce7115d4"
+docker_shm_size: "2g"
+cpus: 8
+memory: "32 GB"
+time: "120h"
+max_retries: 1
+max_parallel_slides: 1
+continue_on_error: true
+
+# Sampling, scale, and tiling
+mpp: 0.5
+slide_mpp: null
+tile_px: 840
+overlap: 0.2
+background_fraction: 0.95
+percent_slide: 100.0
+patch_random_seed: 20260709
+max_sampled_patches: 0
+collage: null
+
+# Execution and HistoPLUS
+device: "cpu"
+num_workers: 2
+run_cells_stage: false
+cells_model: "instanseg"
+cells_batch_size: 4
+celltypes_batch_size: 1
+histoplus_magnification: "20x"
+histoplus_revision: "cde2eee81af9e39b03802fc33d4f284733b5ee5e"
+histoplus_weight_file: null
+histoplus_cache_dir: "/home/lazyslide/.cache/histoplus"
+amp: false
+
+# Pyramidal TIFF conversion
+convert_to_pyramidal: true
+pyramidal_tile: 512
+pyramidal_compression: "lzw"
+pyramidal_jpeg_q: 90
+
+# Overlays, exports, and aggregation
+zoom_size: 2000
+overlay_alpha: 0.35
+overlay_style: "outline_centroid"
+overlay_outline_width: 2
+overlay_halo_width: 4
+overlay_draw_order: "small-last"
+cell_marker_radius: 3
+figure_dpi: 300
+qc_patch_count: 0
+qc_patch_size: 1024
+plain_csv: true
+export_qupath: false
+save_json: false
+log_level: "INFO"
+allow_mixed_sampling: false

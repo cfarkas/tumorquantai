@@ -64,12 +64,13 @@ jobs:
       - name: Compile Python tools
         run: python -m py_compile tumorquantai lazyslide_histoplus_wsi_celltype.py bin/*.py scripts/*.py
 
-      - name: Beginner CLI and repository hygiene
+      - name: CLI, documentation, and repository hygiene
         run: |
           ./tumorquantai --help >/dev/null
           for command in doctor demo inspect run status report quickstart; do
             ./tumorquantai "$command" --help >/dev/null
           done
+          python scripts/check_docs_language.py
           python scripts/check_repository_hygiene.py
 
       - name: Model-free fixture inspection

@@ -22,7 +22,7 @@ is not analyzed as a separate sample.
 ## MPP
 
 **Micrometres per pixel.** A physical pixel-size measurement.
-`--source-mpp` in the beginner CLI (legacy `run.sh --slide-mpp`) describes the
+`--source-mpp` in the main CLI (legacy `run.sh --slide-mpp`) describes the
 source image; engine `--mpp` describes the target model tile scale.
 
 ## Tissue tile
@@ -96,7 +96,7 @@ does not include the gated model weight or study slides.
 ## Work directory
 
 Nextflow's resumable task/cache area. It can be much larger than final results.
-The beginner CLI keeps it on the selected output-associated filesystem by
+The main CLI keeps it on the selected output-associated filesystem by
 default. Retain it while resume is useful.
 
 ## Structural demo

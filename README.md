@@ -1,7 +1,11 @@
 # TumorQuantAI
 
-Turn H&E whole-slide images into reproducible HistoPLUS cell coordinates,
-review overlays, per-slide counts, and cohort tables.
+TumorQuantAI processes hematoxylin and eosin (H&E) whole-slide images (WSIs)
+with HistoPLUS and writes reproducible cell coordinates, quality-control
+overlays, per-slide summaries, and cohort tables.
+The public tutorial dataset has digital object identifier (DOI)
+`10.5281/zenodo.21466410`.
+
 
 [![CI](https://github.com/cfarkas/tumorquantai/actions/workflows/ci.yml/badge.svg)](https://github.com/cfarkas/tumorquantai/actions/workflows/ci.yml)
 [![Documentation](https://github.com/cfarkas/tumorquantai/actions/workflows/docs.yml/badge.svg)](https://cfarkas.github.io/tumorquantai/)
@@ -9,217 +13,241 @@ review overlays, per-slide counts, and cohort tables.
 [![Nextflow](https://img.shields.io/badge/workflow-Nextflow-0dc09d)](https://www.nextflow.io/)
 [![Dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21466410.svg)](https://doi.org/10.5281/zenodo.21466410)
 
-> [!WARNING]
+## Quick start
+
+This example downloads one public Motic MDS slide, converts image-pyramid
+levels L0 and L2 to Tagged Image File Format (TIFF), and inspects the result
+without running the model. L0 is the highest-resolution image used for
+analysis; L2 is its lower-resolution companion. Replace /data with a writable
+directory on a mounted data filesystem.
+
+~~~bash
+git clone https://github.com/cfarkas/tumorquantai.git
+cd tumorquantai
+
+export TQA_REPO="$PWD"
+export TQA_DATA="/data/tumorquantai-one-slide"
+
+mkdir -p "$TQA_DATA"
+findmnt -T "$TQA_DATA"
+df -hT "$TQA_DATA"
+test -w "$TQA_DATA"
+
+python3 -m venv "$TQA_DATA/.venv"
+. "$TQA_DATA/.venv/bin/activate"
+python -m pip install -r "$TQA_REPO/requirements-tutorial.txt"
+
+cd "$TQA_DATA"
+wget -c -O tumorquantai_lymphoma_mds_manifest.csv \
+  "https://zenodo.org/records/21466410/files/tumorquantai_lymphoma_mds_manifest.csv?download=1"
+wget -c -O TumorQuantAI_LymphomaWSI_022.mds \
+  "https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_022.mds?download=1"
+
+echo "ad9a9472e8beb302f8b9ba2b3359bacc  tumorquantai_lymphoma_mds_manifest.csv" | md5sum -c -
+test "$(stat -c %s TumorQuantAI_LymphomaWSI_022.mds)" -eq 125350400
+echo "94bb5b08ccf1957f8c42a579e8b33cfb  TumorQuantAI_LymphomaWSI_022.mds" | md5sum -c -
+echo "db2988b5c6bc791510cec4127106509e604e577feafdb15b94c149043ed7067a  TumorQuantAI_LymphomaWSI_022.mds" | sha256sum -c -
+
+cd "$TQA_REPO"
+python bin/mds_to_tiff.py \
+  --input "$TQA_DATA/TumorQuantAI_LymphomaWSI_022.mds" \
+  --manifest "$TQA_DATA/tumorquantai_lymphoma_mds_manifest.csv" \
+  --output-dir "$TQA_DATA/slides" \
+  --levels 0 2 \
+  --sample-id TumorQuantAI_LymphomaWSI_022 \
+  --expected-count 1 \
+  --source-mpp 0.261780 \
+  --resume
+
+./tumorquantai inspect "$TQA_DATA/slides" \
+  --sample-sheet "$TQA_DATA/slides/samples.csv" \
+  --output "$TQA_DATA/inspection"
+~~~
+
+If `wget` is unavailable, use these `curl` commands instead of the two `wget`
+commands above. They keep the same direct Zenodo filenames; after they finish,
+continue with the checksum, conversion, and inspection commands.
+
+~~~bash
+export TQA_DATA="/data/tumorquantai-one-slide"
+
+cd "$TQA_DATA"
+curl -L --fail --retry 5 \
+  -o tumorquantai_lymphoma_mds_manifest.csv \
+  "https://zenodo.org/records/21466410/files/tumorquantai_lymphoma_mds_manifest.csv?download=1"
+curl -L --fail --retry 5 \
+  -o TumorQuantAI_LymphomaWSI_022.mds \
+  "https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_022.mds?download=1"
+~~~
+
+Successful downloads print OK for each checksum. MD5 means Message-Digest
+Algorithm 5; SHA-256 means Secure Hash Algorithm 256-bit. Successful conversion
+writes slides/TumorQuantAI_LymphomaWSI_022/1_L0_rgb.tif,
+slides/TumorQuantAI_LymphomaWSI_022/1_L2_rgb.tif, and slides/samples.csv.
+Inspection writes inspection/INSPECTION.html and inspection/inspection_manifest.csv.
+
+Public data access does not require a Zenodo credential. HistoPLUS model access
+is gated separately and is required only for inference; see
+[configure HistoPLUS access](https://cfarkas.github.io/tumorquantai/how-to/model-access/).
+
+After model access, Java, Nextflow, and Docker have been configured, process a
+seeded 1% of the detected tissue tiles:
+
+~~~bash
+export TQA_REPO="${TQA_REPO:-$PWD}"
+export TQA_DATA="/data/tumorquantai-one-slide"
+
+cd "$TQA_REPO"
+./tumorquantai run "$TQA_DATA/slides" \
+  --sample-sheet "$TQA_DATA/slides/samples.csv" \
+  --output "$TQA_DATA/results-1-percent" \
+  --work-dir "$TQA_DATA/work-1-percent" \
+  --preset smoke \
+  --sample TumorQuantAI_LymphomaWSI_022 \
+  --source-mpp 0.261780 \
+  --profile auto
+~~~
+
+Use --cpu to force central processing unit (CPU) execution or --gpu to select
+the graphics processing unit (GPU) profile. The result directory contains the
+scientific outputs; the separate Nextflow work directory contains resumable
+task state and can be much larger.
+
 > **Research use only.** TumorQuantAI is not a diagnostic device. HistoPLUS
 > predictions are not diagnoses or pathologist ground truth. Review image
 > quality, physical scale, sampling, overlays, failures, and biological
-> interpretation; never use these outputs for patient-care decisions.
+> interpretation before research use.
 
-## Quick start
+The public data are fixed at [Zenodo record
+21466410](https://zenodo.org/records/21466410), digital object identifier (DOI)
+[10.5281/zenodo.21466410](https://doi.org/10.5281/zenodo.21466410), and are
+matched to TumorQuantAI v0.4.0. Sample 022 has a source resolution of 0.261780
+micrometres per pixel (MPP). The model target MPP is a separate workflow
+setting and does not replace the verified source MPP.
 
-No GPU, model weights, account, or network connection is needed after cloning:
-
-```bash
-git clone https://github.com/cfarkas/tumorquantai.git
-cd tumorquantai
-./tumorquantai demo
-```
-
-Expected final message (the last line uses your absolute checkout path):
-
-```text
-TumorQuantAI structural demo complete.
-No HistoPLUS inference ran; values have no biological meaning.
-Included fixture samples: 2; intentional failed fixture: 1; completed zero fixture: 1
-Open first: /your/checkout/tumorquantai-demo/START_HERE.html
-```
-
-This is a **structural software demo**, not a biological prediction or
-validation dataset. Open `tumorquantai-demo/START_HERE.html` in a browser.
-
-Next, choose one path:
-
-```bash
-# Public real slide; inference continues when authorized HistoPLUS access exists
-./tumorquantai quickstart --output /mounted/storage/tutorial-one-slide --cpu
-
-# Inspect your own slides without inference
-./tumorquantai inspect /data/slides --output /data/tumorquantai-inspection
-```
-
-The quickstart refuses repository, home-directory, root-filesystem, or
-unverifiable data locations. Replace `/mounted/storage` with your verified
-mounted storage path.
-
-The one-slide path fetches only
-`TumorQuantAI_LymphomaWSI_022.mds` (125,350,400 bytes) from public
-[Zenodo record 21466410](https://zenodo.org/records/21466410), verifies it,
-converts levels L0/L2, and prepares a 1% smoke test. Zenodo credentials are not
-needed. Gated HistoPLUS access is needed only for inference.
-
-[Start here](https://cfarkas.github.io/tumorquantai/start-here/demo/) ·
-[Public one-slide guide](https://cfarkas.github.io/tumorquantai/start-here/public-slide/) ·
-[Model access](https://cfarkas.github.io/tumorquantai/how-to/model-access/) ·
-[Troubleshooting](https://cfarkas.github.io/tumorquantai/troubleshooting/)
+For the same procedure with a curl alternative and resume instructions, see
+[run one public slide](https://cfarkas.github.io/tumorquantai/start-here/public-slide/).
 
 ## What TumorQuantAI does
 
-```text
-H&E whole-slide image
-        │
-        ├─ discover input and establish physical scale
-        ├─ select tissue tiles reproducibly
-        ├─ run HistoPLUS cell typing
-        └─ write reviewable per-slide and cohort outputs
-```
+TumorQuantAI discovers primary slides, validates physical scale, selects tissue
+tiles deterministically, runs HistoPLUS cell typing, and writes one result
+directory per slide. It records slide fingerprints, source and target MPP,
+sampling percentage, random seed, software/model/container identities, and
+sample failures.
 
-TumorQuantAI discovers primary slides without inference, processes them
-independently with retry/resume, records fingerprints and physical scale, and
-writes coordinates, overlays, per-slide counts, and cohort matrices. It records
-the model/container identity, sampling percentage, random seed, and failed or
-incomplete samples.
+The workflow preserves per-slide isolation and Nextflow cache reuse. A failed
+or incomplete sample remains in the aggregation audit and is excluded from
+numeric matrices; it is never converted to a completed sample with zero cells.
 
-## Three beginner paths
+## Run your slides
 
-| Goal | Command | Model/GPU needed? |
-| --- | --- | --- |
-| Check the software structure | `./tumorquantai demo` | No |
-| Prepare and smoke-test one public WSI | `./tumorquantai quickstart --output PATH --cpu` | Only for inference |
-| Review your own slide roster and MPP | `./tumorquantai inspect INPUT --output PATH` | No |
+Inspect an input directory before inference:
 
-Run `./tumorquantai doctor` before real inference to check the host, Java,
-Nextflow, Docker, GPU/CPU path, caches, and configured model readiness. Its
-default storage probe uses the current path; add `--output PATH` and optionally
-`--work-dir PATH` to check the intended mount. `--online` checks pinned public
-metadata, not account authorization.
+~~~bash
+export TQA_INPUT="/data/slides"
+export TQA_INSPECTION="/data/tumorquantai-inspection"
 
-## Input expectations
+./tumorquantai inspect "$TQA_INPUT" --output "$TQA_INSPECTION"
+~~~
 
-The portable layout is a highest-resolution L0 TIFF and lower-resolution L2
-companion:
+The portable input layout is:
 
-```text
+~~~text
 /data/slides/
 └── case_001/
-    ├── 1_L0_rgb.tif   # primary image analyzed
-    └── 1_L2_rgb.tif   # companion for sampled reports
-```
+    ├── 1_L0_rgb.tif
+    └── 1_L2_rgb.tif
+~~~
 
-**WSI** means whole-slide image. **MPP** means micrometres per pixel. L0 is the
-highest-resolution image; L2 is a lower-resolution pyramid level. The source
-MPP describes the input; the target MPP describes model tiles. TumorQuantAI
-fails closed when a required source scale cannot be established—do not copy an
-MPP from another slide.
+Use a verified source MPP from scanner or export provenance. TumorQuantAI stops
+when a required physical scale cannot be established.
 
-Alternative paths and controlled sample IDs are supported through an input
-manifest/sample sheet. Inspect every roster before inference:
+Three presets control the fraction of detected tissue tiles:
 
-```bash
-./tumorquantai inspect /data/slides --output /data/tumorquantai-inspection
-```
-
-## Choose a preset
-
-| Preset | Tissue tiles | Use |
+| Preset | Tiles processed | Typical use |
 | --- | ---: | --- |
-| `smoke` | Seeded 1% from one selected slide | First real run and environment check |
-| `fast` | Seeded 10% by default | Exploratory composition and iteration |
-| `full` | 100% of detected tissue tiles | Exhaustive processing after review |
+| smoke | Seeded 1% from one selected slide | Installation and scale check |
+| fast | Seeded 10% by default | Reproducible sampled analysis |
+| full | 100% | All detected tissue tiles |
 
-```bash
-./tumorquantai run /data/slides \
-  --output /data/tumorquantai-smoke \
-  --preset smoke \
-  --source-mpp "$SOURCE_MPP" \
-  --cpu
-```
+Counts from 1% or 10% runs describe only the sampled tiles. They are not
+whole-slide counts and must not be multiplied by 100 / percent_slide.
 
-Use `--cpu` to force the CPU path or `--gpu` to select the NVIDIA profile. They
-are mutually exclusive. The existing `--profile auto|cpu|gpu|local` form
-remains supported for scripts and expert workflows. Run `doctor` before GPU
-work; the worker retains the established device-resolution safeguards.
+## Check the results
 
-Beginner runs place resumable Nextflow work inside the selected output by
-default. Use different output/work directories for `fast` and `full`; the CLI
-refuses unsafe mixing. Advanced `run.sh`, direct `nextflow run`, and existing
-worker overrides remain supported.
-
-## Inspect these outputs first
-
-| Path | What it tells you |
+| File | Contents |
 | --- | --- |
-| `START_HERE.html` | Portable run summary and links to outputs that exist |
-| `<sample>/overlays/celltypes_overview_and_zoom.png` | Overview plus annotated zoom for visual QC |
-| `<sample>/summary/summary.json` | Completion, MPP, sampling, seed, cells, and provenance |
-| `<sample>/cell_types/class_counts.csv` | Counts in processed tissue tiles for one completed slide |
-| `aggregated_celltypes/sample_aggregation_audit.csv` | Included, failed, and incomplete samples |
-| `aggregated_celltypes/celltype_fractions_by_sample.csv` | Within-sample cell-type fractions |
-| `aggregated_celltypes/celltype_counts_by_sample.csv` | Raw detected-cell counts in processed tiles |
+| START_HERE.html | Local run summary and links to files that exist |
+| SAMPLE/overlays/celltypes_overview_and_zoom.png | Overview and annotated zoom for visual quality control (QC) |
+| SAMPLE/summary/summary.json | Completion, scale, sampling, seed, cells, and provenance in JavaScript Object Notation (JSON) |
+| SAMPLE/cell_types/class_counts.csv | Counts in processed tiles as comma-separated values (CSV) |
+| aggregated_celltypes/sample_aggregation_audit.csv | Included, failed, and incomplete samples |
+| aggregated_celltypes/celltype_fractions_by_sample.csv | Within-sample cell-type fractions |
+| aggregated_celltypes/celltype_counts_by_sample.csv | Raw detected-cell counts in processed tiles |
 
-Counts from 1% or 10% runs describe sampled tiles. They are not validated
-whole-slide estimates and must not be multiplied by `100 / percent_slide`.
+A zero for a class is interpretable only for a completed sample. A missing,
+failed, or incomplete sample has no numeric matrix column and remains visible
+in sample_aggregation_audit.csv.
 
-An absent class in a **completed** slide is a biological zero. A failed,
-missing, or incomplete slide has no numeric matrix column and remains visible
-in `sample_aggregation_audit.csv`.
+~~~bash
+export TQA_RESULTS="/data/tumorquantai-one-slide/results-1-percent"
 
-```bash
-./tumorquantai status /data/tumorquantai-smoke
-./tumorquantai report /data/tumorquantai-smoke
-```
+./tumorquantai status "$TQA_RESULTS"
+./tumorquantai report "$TQA_RESULTS"
+~~~
 
-Human `status` identifies the first log and prints the exact local resume
-command. `status --json` and `report` redact sensitive filesystem paths and
-never record credential locations; the report uses relative output links.
+Repeat the original run command to resume after interruption. Resume is enabled
+by default and reuses valid cached tasks.
 
-## Requirements at a glance
+## Test without downloading data
+
+The synthetic test needs Linux and Python 3, but no model, Docker, GPU, or
+public slide:
+
+~~~bash
+git clone https://github.com/cfarkas/tumorquantai.git
+cd tumorquantai
+./tumorquantai demo
+~~~
+
+The generated counts and failures test software structure only and have no
+biological meaning. Open tumorquantai-demo/START_HERE.html.
+
+## Requirements
 
 | Task | Requirements |
 | --- | --- |
-| Demo | Linux and Python 3; no network, GPU, Docker, or model |
-| Inspect | Python 3; optional slide readers improve metadata reporting |
-| Real inference | Linux, Java 17+, Nextflow 24.10+, Docker 24+ or prepared local environment, authorized HistoPLUS access |
-| GPU inference | Compatible NVIDIA driver and container runtime |
+| Download and inspect | Linux, Python 3.10+, requirements-tutorial.txt, mounted storage |
+| CPU inference | Java 17+, Nextflow 24.10+, Docker 24+ or a prepared local environment, authorized HistoPLUS access |
+| GPU inference | CPU requirements plus a compatible NVIDIA driver and container runtime |
 
-Before a download, conversion, or run, verify the destination mount and budget
-space separately for downloads, converted TIFFs, Nextflow work, and final
-results. See [storage and mounts](https://cfarkas.github.io/tumorquantai/how-to/storage/).
+Before conversion or inference, check download, converted TIFF, work, cache,
+and result space separately. See [storage and work
+directories](https://cfarkas.github.io/tumorquantai/how-to/storage/).
 
-## Documentation and help
+## Documentation
 
-- [Credential-free structural demo](https://cfarkas.github.io/tumorquantai/start-here/demo/)
-- [Public one-slide quickstart](https://cfarkas.github.io/tumorquantai/start-here/public-slide/)
-- [Inspect and run your own slide](https://cfarkas.github.io/tumorquantai/start-here/own-slides/)
-- [Outputs and filenames](https://cfarkas.github.io/tumorquantai/reference/outputs/)
-- [Resume an interrupted run](https://cfarkas.github.io/tumorquantai/how-to/resume/)
+- [Quick start](https://cfarkas.github.io/tumorquantai/start-here/public-slide/)
+- [Run four public slides](https://cfarkas.github.io/tumorquantai/tutorials/four-public-slides/)
+- [Run all 21 public slides](https://cfarkas.github.io/tumorquantai/tutorials/full-collection/)
+- [Run your slides](https://cfarkas.github.io/tumorquantai/start-here/own-slides/)
+- [Parameters](https://cfarkas.github.io/tumorquantai/reference/parameters/)
+- [Results](https://cfarkas.github.io/tumorquantai/reference/outputs/)
 - [Troubleshooting](https://cfarkas.github.io/tumorquantai/troubleshooting/)
-- [CLI reference](https://cfarkas.github.io/tumorquantai/reference/cli/)
+- [Command-line interface](https://cfarkas.github.io/tumorquantai/reference/cli/)
 
-When reporting a bug, attach redacted `doctor --json` and `status --json`
-output. Never attach tokens, model weights, raw WSI, PHI, patient-level tables,
-or unredacted logs.
-
-## Reproducibility
-
-The workflow pins the HistoPLUS revision and container identity, fingerprints
-source slides and relevant companions, records deterministic sampling and MPP,
-and isolates each slide for retry/cache reuse. Keep `summary.json`, workflow
-metadata, aggregation audit, and command provenance with every analysis.
-
-The public dataset is fixed at DOI
-[`10.5281/zenodo.21466410`](https://doi.org/10.5281/zenodo.21466410) and is
-matched to software release `v0.4.0`.
+Bug reports should include redacted ./tumorquantai doctor --json and
+./tumorquantai status RESULTS --json output. Do not attach tokens, model
+weights, raw WSI files, protected health information (PHI), patient-level
+tables, or unredacted logs.
 
 ## Citation and license status
 
-Cite each resource you actually use separately: TumorQuantAI software, the
-public Zenodo tutorial dataset, LazySlide, and HistoPLUS. See
-[CITATIONS.md](CITATIONS.md) for non-conflated guidance. The dataset DOI is not
-a software DOI. The Zenodo dataset declares CC BY 4.0; that dataset license is
-separate from repository source and gated model terms.
+Cite TumorQuantAI software, the public dataset, LazySlide, and HistoPLUS
+separately. See [CITATIONS.md](CITATIONS.md). The dataset DOI is not a software
+DOI.
 
-This repository currently has **no declared open-source license**. The source
-is visible, but absence of a license does not grant permission to copy, modify,
-or redistribute it. The owner decision is tracked in
-[LICENSE_DECISION.md](docs/maintainers/LICENSE_DECISION.md); no license has
-been selected on the owner's behalf.
+The repository currently has no declared open-source license. Source visibility
+does not grant permission to copy, modify, or redistribute it. The dataset and
+the gated model have their own terms.

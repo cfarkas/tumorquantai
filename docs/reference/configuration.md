@@ -1,6 +1,6 @@
 # Configuration and environment variables
 
-Beginner CLI arguments take precedence over ordinary defaults. Credential
+Main CLI arguments take precedence over ordinary defaults. Credential
 resolution deliberately prefers `TUMORQUANTAI_HF_TOKEN_FILE` when it is set.
 Use files and paths for credentials; never place token values in command
 arguments.
@@ -24,7 +24,7 @@ not copied into result outputs.
 Selecting a local weight also removes unrelated token variables from the
 launched Nextflow/worker environment.
 An already configured `HF_TOKEN` remains supported for legacy automation but is
-not the recommended beginner setup.
+not the recommended setup.
 
 ## Cache, work, and expert compatibility variables
 
@@ -40,8 +40,8 @@ not the recommended beginner setup.
 Put caches that may grow on a verified mounted filesystem, outside the
 repository and result directory. The canonical CLI explicitly passes
 `OUTPUT/.tumorquantai-work` (or `--work-dir`), a sibling output-associated
-model cache, and the pinned container/model identities. Those safe beginner
-choices take precedence over the direct-`run.sh` environment defaults above.
+model cache, and the pinned container/model identities. Those reviewed
+defaults take precedence over the direct-`run.sh` environment defaults above.
 A deliberate expert path or identity change requires review, a separate output
 root, and complete provenance; direct `run.sh` remains the explicit expert
 route.

@@ -1,26 +1,509 @@
 #!/usr/bin/env python3
-"""Beginner-first command-line interface for TumorQuantAI."""
+"""Main command-line interface for TumorQuantAI."""
 
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import importlib.util
 import json
 import math
 import os
+import re
 import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
+
+import yaml
 
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "bin"))
 
 import tumorquantai_core as core  # noqa: E402
+
+SCHEMA = json.loads((ROOT / "nextflow_schema.json").read_text(encoding="utf-8"))
+SCHEMA_PROPERTIES: dict[str, dict[str, Any]] = SCHEMA["properties"]
+INTERNAL_SCHEMA_PARAMETERS = frozenset(
+    SCHEMA["x-tumorquantai-visibility"]["internal"]
+)
+
+# Explicit, stable mapping from every public Nextflow parameter to the main
+# command line. Types, defaults, ranges, and descriptions remain authoritative
+# in nextflow_schema.json; the coverage checker rejects drift in either file.
+PUBLIC_PARAMETER_OPTIONS: dict[str, tuple[str, ...]] = {
+    "input_dir": ("INPUT",),
+    "output_dir": ("--output", "--outdir"),
+    "sample_sheet": ("--sample-sheet",),
+    "slide_patterns": ("--pattern",),
+    "include": ("--include",),
+    "exclude": ("--exclude",),
+    "dry_run": ("--dry-run",),
+    "container_image": ("--container-image",),
+    "docker_shm_size": ("--shm-size", "--docker-shm-size"),
+    "cpus": ("--cpus",),
+    "memory": ("--memory",),
+    "time": ("--time",),
+    "max_retries": ("--max-retries",),
+    "max_parallel_slides": ("--max-parallel-slides",),
+    "continue_on_error": ("--continue-on-error", "--fail-fast"),
+    "mpp": ("--mpp", "--target-mpp"),
+    "slide_mpp": ("--source-mpp", "--slide-mpp"),
+    "tile_px": ("--tile-px",),
+    "overlap": ("--overlap",),
+    "background_fraction": ("--background-fraction",),
+    "percent_slide": ("--percent-slide",),
+    "patch_random_seed": ("--seed", "--patch-random-seed"),
+    "max_sampled_patches": ("--max-sampled-patches",),
+    "collage": ("--collage",),
+    "device": ("--device",),
+    "num_workers": ("--num-workers",),
+    "run_cells_stage": ("--run-cells-stage", "--no-run-cells-stage"),
+    "cells_model": ("--cells-model",),
+    "cells_batch_size": ("--cells-batch-size",),
+    "celltypes_batch_size": ("--celltypes-batch-size",),
+    "histoplus_magnification": ("--histoplus-magnification",),
+    "histoplus_revision": ("--histoplus-revision",),
+    "histoplus_weight_file": ("--local-weight", "--histoplus-weight-file"),
+    "histoplus_cache_dir": ("--histoplus-cache-dir",),
+    "amp": ("--amp", "--no-amp"),
+    "convert_to_pyramidal": ("--convert-to-pyramidal", "--no-convert-to-pyramidal"),
+    "pyramidal_tile": ("--pyramidal-tile",),
+    "pyramidal_compression": ("--pyramidal-compression",),
+    "pyramidal_jpeg_q": ("--pyramidal-jpeg-q",),
+    "zoom_size": ("--zoom-size",),
+    "overlay_alpha": ("--overlay-alpha",),
+    "overlay_style": ("--overlay-style",),
+    "overlay_outline_width": ("--overlay-outline-width",),
+    "overlay_halo_width": ("--overlay-halo-width",),
+    "overlay_draw_order": ("--overlay-draw-order",),
+    "cell_marker_radius": ("--cell-marker-radius",),
+    "figure_dpi": ("--figure-dpi",),
+    "qc_patch_count": ("--qc-patch-count",),
+    "qc_patch_size": ("--qc-patch-size",),
+    "plain_csv": ("--plain-csv", "--compressed-coordinates"),
+    "export_qupath": ("--export-qupath", "--no-export-qupath"),
+    "save_json": ("--save-json", "--no-save-json"),
+    "log_level": ("--log-level",),
+    "allow_mixed_sampling": ("--allow-mixed-sampling", "--no-allow-mixed-sampling"),
+}
+
+LAUNCHER_PARAMETER_OPTIONS: dict[str, tuple[str, ...]] = {
+    "preset": ("--preset",), "sample": ("--sample",),
+    "profile": ("--profile", "--cpu", "--gpu"),
+    "work_dir": ("--work-dir",), "cache_dir": ("--cache-dir",),
+    "hf_cache": ("--hf-cache",), "histoplus_cache": ("--histoplus-cache",),
+    "resume": ("--resume", "--no-resume"), "token_file": ("--token-file",),
+    "params_file": ("--params-file",),
+}
+
+PARAMETER_GROUPS: dict[str, tuple[str, ...]] = {
+    "Input and sample selection": ("input_dir", "output_dir", "sample_sheet", "slide_patterns", "include", "exclude", "dry_run"),
+    "Sampling and image scale": ("mpp", "slide_mpp", "percent_slide", "patch_random_seed", "max_sampled_patches", "collage"),
+    "Tiling and tissue filtering": ("tile_px", "overlap", "background_fraction"),
+    "Execution profile and resources": ("docker_shm_size", "cpus", "memory", "time", "max_parallel_slides", "device", "num_workers"),
+    "HistoPLUS model settings": ("histoplus_magnification", "histoplus_revision", "histoplus_weight_file", "histoplus_cache_dir", "celltypes_batch_size", "amp"),
+    "Optional cell segmentation": ("run_cells_stage", "cells_model", "cells_batch_size"),
+    "Pyramidal TIFF conversion": ("convert_to_pyramidal", "pyramidal_tile", "pyramidal_compression", "pyramidal_jpeg_q"),
+    "Overlays and figures": ("zoom_size", "overlay_alpha", "overlay_style", "overlay_outline_width", "overlay_halo_width", "overlay_draw_order", "cell_marker_radius", "figure_dpi", "qc_patch_count", "qc_patch_size"),
+    "Output formats and exports": ("plain_csv", "export_qupath", "save_json", "log_level"),
+    "Retry, resume, and aggregation": ("max_retries", "continue_on_error", "allow_mixed_sampling"),
+    "Cache, container, and work paths": ("container_image",),
+}
+
+SCHEMA_PARAMETER_DESTINATIONS: dict[str, str] = {
+    "input_dir": "input",
+    "output_dir": "output",
+    "slide_patterns": "pattern",
+    "slide_mpp": "source_mpp",
+    "patch_random_seed": "seed",
+    "histoplus_weight_file": "local_weight",
+}
+LAUNCHER_DEFAULTS: dict[str, Any] = {
+    "preset": "smoke",
+    "sample": None,
+    "profile": "auto",
+    "work_dir": None,
+    "cache_dir": None,
+    "hf_cache": None,
+    "histoplus_cache": None,
+    "resume": True,
+    "token_file": None,
+}
+LAUNCHER_PATH_PARAMETERS = frozenset(
+    {"work_dir", "cache_dir", "hf_cache", "histoplus_cache", "token_file"}
+)
+PUBLIC_PATH_PARAMETERS = frozenset(
+    {"input_dir", "output_dir", "sample_sheet", "histoplus_weight_file"}
+)
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """Safe YAML loader that refuses ambiguous duplicate mappings."""
+
+
+def _construct_unique_mapping(
+    loader: _UniqueKeyLoader, node: yaml.MappingNode, deep: bool = False,
+) -> dict[Any, Any]:
+    result: dict[Any, Any] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in result:
+            raise ValueError(f"duplicate parameter key {key!r}")
+        result[key] = loader.construct_object(value_node, deep=deep)
+    return result
+
+
+_UniqueKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate parameter key {key!r}")
+        result[key] = value
+    return result
+
+
+def _parameter_error(message: str) -> core.TumorQuantAIError:
+    return core.TumorQuantAIError(message, core.EXIT_USAGE)
+
+
+def _load_parameter_file(path: Path) -> dict[str, Any]:
+    parameter_file = path.expanduser().resolve()
+    try:
+        text = parameter_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise _parameter_error(f"Could not read parameter file: {exc}") from exc
+    try:
+        if parameter_file.suffix.lower() == ".json":
+            data = json.loads(text, object_pairs_hook=_unique_json_object)
+        elif parameter_file.suffix.lower() in {".yaml", ".yml"}:
+            data = yaml.load(text, Loader=_UniqueKeyLoader)
+        else:
+            try:
+                data = json.loads(text, object_pairs_hook=_unique_json_object)
+            except (json.JSONDecodeError, ValueError):
+                data = yaml.load(text, Loader=_UniqueKeyLoader)
+    except (json.JSONDecodeError, yaml.YAMLError, ValueError) as exc:
+        raise _parameter_error(f"Invalid parameter file: {exc}") from exc
+    if data is None:
+        data = {}
+    if not isinstance(data, Mapping):
+        raise _parameter_error("Parameter file must contain a top-level mapping.")
+    if set(data) == {"params"}:
+        data = data["params"]
+        if not isinstance(data, Mapping):
+            raise _parameter_error("The parameter-file 'params' value must be a mapping.")
+
+    normalized: dict[str, Any] = {}
+    for raw_key, value in data.items():
+        if not isinstance(raw_key, str):
+            raise _parameter_error("Every parameter-file key must be a string.")
+        key = raw_key.replace("-", "_")
+        if key in normalized:
+            raise _parameter_error(
+                f"Parameter file defines {key!r} more than once after key normalization."
+            )
+        normalized[key] = value
+
+    allowed = set(PUBLIC_PARAMETER_OPTIONS) | set(LAUNCHER_DEFAULTS)
+    internal = sorted(set(normalized) & set(INTERNAL_SCHEMA_PARAMETERS))
+    if internal:
+        raise _parameter_error(
+            "Internal parameters cannot be set through tumorquantai: "
+            + ", ".join(internal)
+        )
+    unknown = sorted(set(normalized) - allowed)
+    if unknown:
+        raise _parameter_error(
+            "Unknown parameter-file key(s): " + ", ".join(unknown)
+        )
+    return normalized
+
+
+def _schema_type_matches(value: Any, expected: str) -> bool:
+    if expected == "null":
+        return value is None
+    if expected == "boolean":
+        return isinstance(value, bool)
+    if expected == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if expected == "number":
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+        )
+    if expected == "string":
+        return isinstance(value, str)
+    if expected == "array":
+        return isinstance(value, list)
+    if expected == "object":
+        return isinstance(value, Mapping)
+    return False
+
+
+def _schema_validation_error(value: Any, specification: Mapping[str, Any]) -> str | None:
+    if "oneOf" in specification:
+        matches = [
+            candidate for candidate in specification["oneOf"]
+            if _schema_validation_error(value, candidate) is None
+        ]
+        if len(matches) != 1:
+            return "does not match exactly one allowed form"
+        return None
+
+    expected = specification.get("type")
+    expected_types = [expected] if isinstance(expected, str) else list(expected or [])
+    if expected_types and not any(
+        _schema_type_matches(value, expected_type) for expected_type in expected_types
+    ):
+        return "must have type " + " or ".join(expected_types)
+    if value is None:
+        return None
+    if "enum" in specification and value not in specification["enum"]:
+        return "must be one of " + ", ".join(map(str, specification["enum"]))
+    if isinstance(value, str):
+        if len(value) < int(specification.get("minLength", 0)):
+            return f"must contain at least {specification['minLength']} character(s)"
+        pattern = specification.get("pattern")
+        if pattern and re.search(str(pattern), value) is None:
+            return f"must match {pattern}"
+    if (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    ):
+        if "minimum" in specification and value < specification["minimum"]:
+            return f"must be at least {specification['minimum']}"
+        if "maximum" in specification and value > specification["maximum"]:
+            return f"must be at most {specification['maximum']}"
+        if "exclusiveMinimum" in specification and value <= specification["exclusiveMinimum"]:
+            return f"must be greater than {specification['exclusiveMinimum']}"
+        if "exclusiveMaximum" in specification and value >= specification["exclusiveMaximum"]:
+            return f"must be less than {specification['exclusiveMaximum']}"
+    if isinstance(value, list):
+        if len(value) < int(specification.get("minItems", 0)):
+            return f"must contain at least {specification['minItems']} item(s)"
+        item_specification = specification.get("items")
+        if item_specification:
+            for index, item in enumerate(value):
+                error = _schema_validation_error(item, item_specification)
+                if error:
+                    return f"item {index + 1} {error}"
+    return None
+
+
+def _validate_launcher_parameter(name: str, value: Any) -> None:
+    if name == "preset" and value not in {"smoke", "fast", "full"}:
+        raise _parameter_error("Parameter 'preset' must be smoke, fast, or full.")
+    if name == "profile" and value not in {"auto", "gpu", "cpu", "local"}:
+        raise _parameter_error("Parameter 'profile' must be auto, gpu, cpu, or local.")
+    if name == "resume" and not isinstance(value, bool):
+        raise _parameter_error("Parameter 'resume' must be a boolean.")
+    if name == "sample" and value is not None and not isinstance(value, str):
+        raise _parameter_error("Parameter 'sample' must be a string or null.")
+    if name in LAUNCHER_PATH_PARAMETERS and value is not None:
+        if not isinstance(value, (str, Path)) or not str(value):
+            raise _parameter_error(f"Parameter {name!r} must be a non-empty path or null.")
+
+
+def _available_memory_default() -> str:
+    memory_gb = 16
+    try:
+        available_kib = int(next(
+            line.split()[1]
+            for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines()
+            if line.startswith("MemAvailable:")
+        ))
+        memory_gb = max(4, min(16, available_kib // 1024 // 1024))
+    except (OSError, StopIteration, ValueError):
+        pass
+    return f"{memory_gb} GB"
+
+
+def _preset_defaults(preset: str) -> dict[str, Any]:
+    defaults: dict[str, Any] = {
+        "percent_slide": {"smoke": 1.0, "fast": 10.0, "full": 100.0}[preset],
+        "cpus": min(4, max(1, os.cpu_count() or 1)),
+        "memory": _available_memory_default(),
+        "max_parallel_slides": 1,
+        "num_workers": 2,
+    }
+    if preset == "smoke":
+        defaults["continue_on_error"] = False
+    return defaults
+
+
+def compatible_device_for_profile(
+    profile: str, device: str, *, schema_default: bool,
+) -> str:
+    """Return the effective device or reject an impossible profile pairing."""
+    if schema_default:
+        if profile == "gpu":
+            return "cuda"
+        if profile in {"cpu", "local"}:
+            return "cpu"
+        return device
+    if profile == "cpu" and (
+        device == "gpu" or device.startswith("cuda")
+    ):
+        raise _parameter_error(
+            f"Execution profile 'cpu' is incompatible with device {device!r}."
+        )
+    if profile == "gpu" and device == "cpu":
+        raise _parameter_error(
+            "Execution profile 'gpu' is incompatible with device 'cpu'."
+        )
+    return device
+
+
+def explicit_run_parameter_keys(arguments: Sequence[str]) -> set[str]:
+    """Return canonical keys explicitly represented on a parsed run command."""
+    keys = {"input_dir", "output_dir"}
+    option_to_key = {
+        option: key
+        for key, options in {
+            **PUBLIC_PARAMETER_OPTIONS, **LAUNCHER_PARAMETER_OPTIONS,
+        }.items()
+        for option in options
+        if option.startswith("--")
+    }
+    for argument in arguments[1:]:
+        if not argument.startswith("--"):
+            continue
+        option = argument.split("=", 1)[0]
+        key = option_to_key.get(option)
+        if key:
+            keys.add(key)
+    return keys
+
+
+def _namespace_explicit_keys(args: argparse.Namespace) -> set[str]:
+    """Best-effort compatibility for callers that construct a Namespace."""
+    result = {"input_dir", "output_dir"}
+    values = vars(args)
+    for key in PUBLIC_PARAMETER_OPTIONS:
+        destination = SCHEMA_PARAMETER_DESTINATIONS.get(key, key)
+        if destination not in values or values[destination] is None:
+            continue
+        if key == "slide_patterns" and not values[destination]:
+            continue
+        result.add(key)
+    for key in LAUNCHER_DEFAULTS:
+        if key in values and values[key] is not None:
+            result.add(key)
+    if "no_resume" in values:
+        result.add("resume")
+    return result
+
+
+def resolve_run_parameters(
+    args: argparse.Namespace, explicit_keys: set[str] | None = None,
+) -> argparse.Namespace:
+    """Apply defaults, preset, parameter-file, and explicit-CLI precedence."""
+    if getattr(args, "_configuration_resolved", False):
+        return args
+    explicit = set(explicit_keys or _namespace_explicit_keys(args))
+    raw = vars(args)
+    parameter_values: dict[str, Any] = {}
+    parameter_path = raw.get("params_file")
+    if parameter_path is not None:
+        parameter_values = _load_parameter_file(Path(parameter_path))
+
+    launcher = copy.deepcopy(LAUNCHER_DEFAULTS)
+    for key in LAUNCHER_DEFAULTS:
+        if key in parameter_values:
+            _validate_launcher_parameter(key, parameter_values[key])
+            launcher[key] = parameter_values[key]
+    for key in explicit & set(LAUNCHER_DEFAULTS):
+        if key == "resume" and "resume" not in raw and "no_resume" in raw:
+            value = not bool(raw["no_resume"])
+        else:
+            value = raw.get(key)
+        _validate_launcher_parameter(key, value)
+        launcher[key] = value
+
+    preset = launcher["preset"]
+    public = {
+        key: copy.deepcopy(specification.get("default"))
+        for key, specification in SCHEMA_PROPERTIES.items()
+        if key not in INTERNAL_SCHEMA_PARAMETERS
+    }
+    sources = {key: "schema default" for key in public}
+    for key, value in _preset_defaults(preset).items():
+        public[key] = value
+        sources[key] = f"{preset} preset"
+    for key in PUBLIC_PARAMETER_OPTIONS:
+        if key in parameter_values:
+            public[key] = parameter_values[key]
+            sources[key] = "parameter file"
+    for key in explicit & set(PUBLIC_PARAMETER_OPTIONS):
+        destination = SCHEMA_PARAMETER_DESTINATIONS.get(key, key)
+        if destination not in raw:
+            continue
+        value = raw[destination]
+        if isinstance(value, Path):
+            value = str(value)
+        public[key] = value
+        sources[key] = "explicit CLI"
+
+    for key, value in public.items():
+        if isinstance(value, Path):
+            value = str(value)
+            public[key] = value
+        error = _schema_validation_error(value, SCHEMA_PROPERTIES[key])
+        if error:
+            raise _parameter_error(f"Invalid value for parameter {key!r}: {error}.")
+    if not public["input_dir"] or not public["output_dir"]:
+        raise _parameter_error("Parameters 'input_dir' and 'output_dir' are required.")
+
+    public["device"] = compatible_device_for_profile(
+        launcher["profile"],
+        str(public["device"]),
+        schema_default=sources["device"] == "schema default",
+    )
+
+    patterns = public["slide_patterns"]
+    if isinstance(patterns, str):
+        patterns = [item.strip() for item in patterns.split(",") if item.strip()]
+    if not patterns:
+        raise _parameter_error("Parameter 'slide_patterns' must contain a non-empty pattern.")
+    public["slide_patterns"] = patterns
+
+    for key in LAUNCHER_PATH_PARAMETERS:
+        value = launcher[key]
+        launcher[key] = Path(value) if value is not None else None
+    for key in PUBLIC_PATH_PARAMETERS:
+        value = public[key]
+        public[key] = Path(value) if value is not None else None
+
+    for key, value in public.items():
+        setattr(args, key, value)
+    args.input = public["input_dir"]
+    args.output = public["output_dir"]
+    args.sample_sheet = public["sample_sheet"]
+    args.pattern = list(public["slide_patterns"])
+    args.source_mpp = public["slide_mpp"]
+    args.seed = public["patch_random_seed"]
+    args.local_weight = public["histoplus_weight_file"]
+    for key, value in launcher.items():
+        setattr(args, key, value)
+    args.no_resume = not launcher["resume"]
+    args.params_file = Path(parameter_path) if parameter_path is not None else None
+    args.public_parameters = public
+    args._parameter_sources = sources
+    args._configuration_resolved = True
+    return args
 
 
 PROTECTED_EXPERT_OPTIONS = {
@@ -47,7 +530,7 @@ def positive_float(value: str) -> float:
 
 
 def add_execution_profile_options(command: argparse.ArgumentParser) -> None:
-    """Add beginner aliases without removing the compatible profile option."""
+    """Add execution aliases without removing the compatible profile option."""
     execution = command.add_mutually_exclusive_group()
     execution.add_argument(
         "--profile", choices=("auto", "gpu", "cpu", "local"),
@@ -73,7 +556,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
-            "Start safely:\n"
+            "Examples:\n"
             "  ./tumorquantai demo\n"
             "  ./tumorquantai inspect /data/slides --output /data/tqa-inspection\n"
             "  ./tumorquantai quickstart --output /mounted-storage/tutorial-one-slide --cpu"
@@ -91,7 +574,7 @@ def build_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--token-file", type=Path, help=argparse.SUPPRESS)
     doctor.add_argument("--local-weight", type=Path, help=argparse.SUPPRESS)
 
-    demo = subparsers.add_parser("demo", help="run a credential-free structural demo")
+    demo = subparsers.add_parser("demo", help="run the bundled structural test")
     demo.add_argument("--output", "--outdir", type=Path, default=Path("tumorquantai-demo"), help="small demo result directory (default: tumorquantai-demo)")
 
     inspect = subparsers.add_parser("inspect", help="inspect slides without inference or model access")
@@ -103,26 +586,115 @@ def build_parser() -> argparse.ArgumentParser:
     inspect.add_argument("--include", default="*", help="sample-ID glob to include")
     inspect.add_argument("--exclude", default="", help="sample-ID glob to exclude")
 
-    run = subparsers.add_parser("run", help="run a smoke, fast, or full analysis")
-    run.add_argument("input", type=Path, help="directory containing exported L0 slides")
-    run.add_argument(
-        "--output", "--outdir", type=Path, required=True,
-        help="result directory on a verified mounted storage filesystem",
+    run = subparsers.add_parser(
+        "run", help="run a smoke, fast, or full analysis",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    run.add_argument("--preset", choices=("smoke", "fast", "full"), default="smoke", help="1%%, 10%%, or 100%% of detected tissue tiles (default: smoke)")
-    run.add_argument("--source-mpp", "--slide-mpp", type=positive_float, help="verified source L0 micrometres per pixel")
-    run.add_argument("--sample", help="sample ID for the one-slide smoke preset")
-    add_execution_profile_options(run)
-    run.add_argument("--seed", type=int, default=core.DEFAULT_SEED, help=f"deterministic sampling seed (default: {core.DEFAULT_SEED})")
-    run.add_argument("--sample-sheet", type=Path)
-    run.add_argument("--pattern", action="append", default=[])
-    run.add_argument("--include", default="*")
-    run.add_argument("--exclude", default="")
-    run.add_argument("--work-dir", type=Path, help="default: OUTPUT/.tumorquantai-work")
-    run.add_argument("--dry-run", action="store_true", help="run discovery only; no HistoPLUS inference")
-    run.add_argument("--no-resume", action="store_true", help="disable Nextflow cache reuse")
-    run.add_argument("--token-file", type=Path, help="authorized token file path; never a token value")
-    run.add_argument("--local-weight", type=Path, help="authorized local HistoPLUS weight file")
+    suppressed = argparse.SUPPRESS
+
+    inputs = run.add_argument_group("Input and sample selection")
+    inputs.add_argument("input", nargs="?", metavar="INPUT", type=Path, default=suppressed, help="directory containing exported L0 slides (or set input_dir in --params-file)")
+    inputs.add_argument("--output", "--outdir", type=Path, default=suppressed, help="result directory on a verified mounted storage filesystem (or set output_dir in --params-file)")
+    inputs.add_argument("--sample-sheet", type=Path, default=suppressed, help="CSV or TSV mapping sample_id to slide_path")
+    inputs.add_argument("--pattern", action="append", default=suppressed, help="primary-slide glob; repeat for multiple patterns")
+    inputs.add_argument("--include", default=suppressed, help="sample-ID glob to include")
+    inputs.add_argument("--exclude", default=suppressed, help="sample-ID glob to exclude")
+    inputs.add_argument("--sample", default=suppressed, help="single sample ID selected by the smoke preset")
+    inputs.add_argument("--dry-run", action="store_true", default=suppressed, help="run discovery only; no HistoPLUS inference")
+    inputs.add_argument("--params-file", type=Path, default=suppressed, help="YAML or JSON parameters; explicit CLI flags take precedence")
+
+    sampling = run.add_argument_group("Sampling and image scale")
+    sampling.add_argument("--preset", choices=("smoke", "fast", "full"), default="smoke", help="named 1%%, 10%%, or 100%% defaults")
+    sampling.add_argument("--mpp", "--target-mpp", type=positive_float, default=suppressed, help="target model resolution in micrometres per pixel")
+    sampling.add_argument("--source-mpp", "--slide-mpp", type=positive_float, default=suppressed, help="verified source L0 micrometres per pixel")
+    sampling.add_argument("--percent-slide", type=float, default=suppressed, help="percentage of detected tissue tiles in (0, 100]")
+    sampling.add_argument("--seed", "--patch-random-seed", type=int, default=core.DEFAULT_SEED, help="deterministic sampling seed")
+    sampling.add_argument("--max-sampled-patches", type=int, default=suppressed, help="maximum sampled patches exported; 0 means no cap")
+    sampling.add_argument("--collage", default=suppressed, help="square sampled-patch collage such as 4x4")
+
+    tiling = run.add_argument_group("Tiling and tissue filtering")
+    tiling.add_argument("--tile-px", type=int, default=suppressed, help="requested model-tile edge in pixels")
+    tiling.add_argument("--overlap", type=float, default=suppressed, help="tile overlap ratio from 0 to 1")
+    tiling.add_argument("--background-fraction", type=float, default=suppressed, help="maximum background ratio for retained tiles")
+
+    execution = run.add_argument_group("Execution profile and resources")
+    add_execution_profile_options(execution)
+    execution.add_argument("--device", default=suppressed, help="worker inference device: auto, cpu, gpu, cuda, or cuda:N")
+    execution.add_argument("--cpus", type=int, default=suppressed, help="CPU cores requested per slide task")
+    execution.add_argument("--memory", default=suppressed, help="memory requested per slide task, for example '32 GB'")
+    execution.add_argument("--time", default=suppressed, help="time limit per slide task, for example 120h")
+    execution.add_argument("--max-parallel-slides", type=int, default=suppressed, help="maximum concurrent slide tasks")
+    execution.add_argument("--num-workers", type=int, default=suppressed, help="data-loader worker processes per slide")
+    execution.add_argument("--shm-size", "--docker-shm-size", dest="docker_shm_size", default=suppressed, help="Docker shared-memory size, for example 2g")
+
+    model = run.add_argument_group("HistoPLUS model settings")
+    model.add_argument("--celltypes-batch-size", type=int, default=suppressed, help="HistoPLUS typing batch size")
+    model.add_argument("--histoplus-magnification", choices=("20x", "40x"), default=suppressed, help="HistoPLUS model magnification")
+    model.add_argument("--histoplus-revision", default=suppressed, help="reviewed immutable 40-hex HistoPLUS commit")
+    model.add_argument("--local-weight", "--histoplus-weight-file", dest="local_weight", type=Path, default=suppressed, help="authorized local HistoPLUS weight file")
+    model.add_argument("--histoplus-cache-dir", default=suppressed, help="HistoPLUS cache path inside the task environment")
+    amp_group = model.add_mutually_exclusive_group()
+    amp_group.add_argument("--amp", dest="amp", action="store_true", default=suppressed, help="enable automatic mixed precision")
+    amp_group.add_argument("--no-amp", dest="amp", action="store_false", default=suppressed, help="disable automatic mixed precision")
+
+    cells = run.add_argument_group("Optional cell segmentation")
+    cell_stage = cells.add_mutually_exclusive_group()
+    cell_stage.add_argument("--run-cells-stage", dest="run_cells_stage", action="store_true", default=suppressed, help="run optional cell segmentation")
+    cell_stage.add_argument("--no-run-cells-stage", dest="run_cells_stage", action="store_false", default=suppressed, help="skip optional cell segmentation")
+    cells.add_argument("--cells-model", default=suppressed, help="optional cell-segmentation model name")
+    cells.add_argument("--cells-batch-size", type=int, default=suppressed, help="optional cell-segmentation batch size")
+
+    pyramidal = run.add_argument_group("Pyramidal TIFF conversion")
+    convert = pyramidal.add_mutually_exclusive_group()
+    convert.add_argument("--convert-to-pyramidal", dest="convert_to_pyramidal", action="store_true", default=suppressed, help="convert non-pyramidal input TIFF files")
+    convert.add_argument("--no-convert-to-pyramidal", dest="convert_to_pyramidal", action="store_false", default=suppressed, help="use input TIFF files directly")
+    pyramidal.add_argument("--pyramidal-tile", type=int, default=suppressed, help="pyramidal BigTIFF tile edge in pixels")
+    pyramidal.add_argument("--pyramidal-compression", choices=("none", "lzw", "deflate", "zstd", "jpeg"), default=suppressed, help="pyramidal BigTIFF compression")
+    pyramidal.add_argument("--pyramidal-jpeg-q", type=int, default=suppressed, help="JPEG quality from 1 to 100")
+
+    overlays = run.add_argument_group("Overlays and figures")
+    overlays.add_argument("--zoom-size", type=int, default=suppressed, help="automatic zoom-window edge in level-0 pixels")
+    overlays.add_argument("--overlay-alpha", type=float, default=suppressed, help="filled-overlay opacity from 0 to 1")
+    overlays.add_argument("--overlay-style", choices=("filled", "outline", "centroid", "outline_centroid", "filled_outline", "filled-outline"), default=suppressed, help="cell-type overlay style")
+    overlays.add_argument("--overlay-outline-width", type=int, default=suppressed, help="color-outline width in pixels")
+    overlays.add_argument("--overlay-halo-width", type=int, default=suppressed, help="black-halo width in pixels")
+    overlays.add_argument("--overlay-draw-order", choices=("input", "small-last", "large-last"), default=suppressed, help="polygon drawing order")
+    overlays.add_argument("--cell-marker-radius", type=int, default=suppressed, help="centroid-marker radius in pixels; 0 disables markers")
+    overlays.add_argument("--figure-dpi", type=int, default=suppressed, help="raster figure dots per inch")
+    overlays.add_argument("--qc-patch-count", type=int, default=suppressed, help="dense quality-control patch overlays per slide")
+    overlays.add_argument("--qc-patch-size", type=int, default=suppressed, help="quality-control patch edge in level-0 pixels")
+
+    exports = run.add_argument_group("Output formats and exports")
+    coordinates = exports.add_mutually_exclusive_group()
+    coordinates.add_argument("--plain-csv", dest="plain_csv", action="store_true", default=suppressed, help="write uncompressed coordinate CSV files")
+    coordinates.add_argument("--compressed-coordinates", dest="plain_csv", action="store_false", default=suppressed, help="write coordinate CSV files with gzip compression")
+    qupath = exports.add_mutually_exclusive_group()
+    qupath.add_argument("--export-qupath", dest="export_qupath", action="store_true", default=suppressed, help="write QuPath-compatible annotations")
+    qupath.add_argument("--no-export-qupath", dest="export_qupath", action="store_false", default=suppressed, help="skip QuPath export")
+    json_export = exports.add_mutually_exclusive_group()
+    json_export.add_argument("--save-json", dest="save_json", action="store_true", default=suppressed, help="write the optional per-cell JSON export")
+    json_export.add_argument("--no-save-json", dest="save_json", action="store_false", default=suppressed, help="skip the optional per-cell JSON export")
+    exports.add_argument("--log-level", choices=("DEBUG", "INFO", "WARNING", "ERROR"), default=suppressed, help="worker log verbosity")
+
+    retry = run.add_argument_group("Retry, resume, and aggregation")
+    retry.add_argument("--max-retries", type=int, default=suppressed, help="retry attempts after the first failed task")
+    failure = retry.add_mutually_exclusive_group()
+    failure.add_argument("--continue-on-error", dest="continue_on_error", action="store_true", default=suppressed, help="continue after a slide exhausts retries")
+    failure.add_argument("--fail-fast", dest="continue_on_error", action="store_false", default=suppressed, help="stop after a slide exhausts retries")
+    mixed = retry.add_mutually_exclusive_group()
+    mixed.add_argument("--allow-mixed-sampling", dest="allow_mixed_sampling", action="store_true", default=suppressed, help="allow aggregation across different sampling settings")
+    mixed.add_argument("--no-allow-mixed-sampling", dest="allow_mixed_sampling", action="store_false", default=suppressed, help="require consistent sampling settings")
+    resume = retry.add_mutually_exclusive_group()
+    resume.add_argument("--resume", dest="resume", action="store_true", default=suppressed, help="reuse valid cached Nextflow tasks")
+    resume.add_argument("--no-resume", dest="resume", action="store_false", default=suppressed, help="disable Nextflow cache reuse")
+
+    paths = run.add_argument_group("Cache, container, and work paths")
+    paths.add_argument("--container-image", default=suppressed, help="reviewed OCI container image reference")
+    paths.add_argument("--work-dir", type=Path, default=suppressed, help="Nextflow work directory; default: OUTPUT/.tumorquantai-work")
+    paths.add_argument("--cache-dir", type=Path, default=suppressed, help="host cache root; default: a directory beside OUTPUT")
+    paths.add_argument("--hf-cache", type=Path, default=suppressed, help="host Hugging Face cache directory")
+    paths.add_argument("--histoplus-cache", type=Path, default=suppressed, help="host HistoPLUS weight-cache directory")
+    paths.add_argument("--token-file", type=Path, default=suppressed, help="authorized token file path; never a token value")
 
     status = subparsers.add_parser("status", help="summarize completed, failed, incomplete, excluded, and pending samples")
     status.add_argument("output", type=Path, help="TumorQuantAI output directory")
@@ -191,7 +763,7 @@ def validate_expert_args(arguments: Sequence[str]) -> None:
             )
         if name in PROTECTED_EXPERT_OPTIONS or name.startswith("process_"):
             raise core.TumorQuantAIError(
-                f"Expert passthrough cannot override protected option {argument.split('=', 1)[0]!r}; use the documented beginner option or direct run.sh.",
+                f"Expert passthrough cannot override protected option {argument.split('=', 1)[0]!r}; use the documented run option or direct run.sh.",
                 core.EXIT_USAGE,
             )
 
@@ -249,7 +821,96 @@ def cmd_inspect(args: argparse.Namespace) -> int:
     return core.EXIT_OK
 
 
+RUN_SH_HANDLED_PUBLIC_PARAMETERS = frozenset({
+    "input_dir", "output_dir", "sample_sheet", "slide_patterns", "include",
+    "exclude", "dry_run", "container_image", "docker_shm_size", "cpus",
+    "memory", "time", "max_parallel_slides", "continue_on_error", "mpp",
+    "slide_mpp", "tile_px", "percent_slide", "patch_random_seed", "collage",
+    "device", "num_workers", "run_cells_stage", "celltypes_batch_size",
+    "histoplus_revision", "histoplus_weight_file", "amp",
+    "convert_to_pyramidal", "qc_patch_count", "plain_csv", "export_qupath",
+})
+
+RESUME_MANUAL_PUBLIC_PARAMETERS = frozenset({
+    "input_dir", "output_dir", "sample_sheet", "slide_patterns", "include",
+    "exclude", "mpp", "slide_mpp", "percent_slide", "patch_random_seed",
+    "cpus", "memory", "max_parallel_slides", "num_workers",
+})
+RESUME_SENSITIVE_PUBLIC_PARAMETERS = frozenset({"histoplus_weight_file"})
+RESUME_BOOLEAN_OPTIONS: dict[str, tuple[str, str | None]] = {
+    "dry_run": ("--dry-run", None),
+    "continue_on_error": ("--continue-on-error", "--fail-fast"),
+    "run_cells_stage": ("--run-cells-stage", "--no-run-cells-stage"),
+    "amp": ("--amp", "--no-amp"),
+    "convert_to_pyramidal": (
+        "--convert-to-pyramidal", "--no-convert-to-pyramidal",
+    ),
+    "plain_csv": ("--plain-csv", "--compressed-coordinates"),
+    "export_qupath": ("--export-qupath", "--no-export-qupath"),
+    "save_json": ("--save-json", "--no-save-json"),
+    "allow_mixed_sampling": (
+        "--allow-mixed-sampling", "--no-allow-mixed-sampling",
+    ),
+}
+
+
+def _explicit_public_resume_arguments(args: argparse.Namespace) -> list[str]:
+    """Render non-sensitive explicit public overrides in canonical schema order."""
+    arguments: list[str] = []
+    for key, options in PUBLIC_PARAMETER_OPTIONS.items():
+        if (
+            args._parameter_sources.get(key) != "explicit CLI"
+            or key in RESUME_MANUAL_PUBLIC_PARAMETERS
+            or key in RESUME_SENSITIVE_PUBLIC_PARAMETERS
+        ):
+            continue
+        value = args.public_parameters[key]
+        if isinstance(value, bool):
+            positive, negative = RESUME_BOOLEAN_OPTIONS[key]
+            option = positive if value else negative
+            if option is not None:
+                arguments.append(option)
+            continue
+        if value is None:
+            continue
+        option = next(item for item in options if item.startswith("--"))
+        values = value if isinstance(value, list) else [value]
+        for item in values:
+            if isinstance(item, float):
+                rendered = f"{item:.15g}"
+            else:
+                rendered = str(item)
+            arguments.extend([option, rendered])
+    return arguments
+
+
+def _nextflow_public_arguments(args: argparse.Namespace) -> list[str]:
+    """Render public parameters not handled directly by run.sh."""
+    arguments: list[str] = []
+    for key in PUBLIC_PARAMETER_OPTIONS:
+        if key in RUN_SH_HANDLED_PUBLIC_PARAMETERS:
+            continue
+        if (
+            key == "histoplus_cache_dir"
+            and args._parameter_sources[key] == "schema default"
+        ):
+            # run.sh selects the mounted container path or the local host path.
+            continue
+        value = args.public_parameters[key]
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            rendered = "true" if value else "false"
+        elif isinstance(value, float):
+            rendered = f"{value:.15g}"
+        else:
+            rendered = str(value)
+        arguments.extend([f"--{key}", rendered])
+    return arguments
+
+
 def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], list[str], dict[str, str]]:
+    resolve_run_parameters(args)
     expert_args = list(args.expert_args)
     if expert_args and expert_args[0] == "--":
         expert_args = expert_args[1:]
@@ -285,6 +946,11 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
         core.validate_large_data_root(work)
         core.validate_large_data_root(cache_root)
     requested_profile = resolve_profile(args.profile)
+    device = compatible_device_for_profile(
+        requested_profile,
+        str(args.device),
+        schema_default=args._parameter_sources["device"] == "schema default",
+    )
     for key, requested in (
         ("preset", args.preset), ("seed", args.seed),
         ("execution_profile", requested_profile),
@@ -402,42 +1068,59 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
                     core.EXIT_PREFLIGHT,
                 )
 
-    percent = {"smoke": 1.0, "fast": 10.0, "full": 100.0}[args.preset]
-    safe_cpus = min(4, max(1, os.cpu_count() or 1))
-    memory_gb = 16
-    try:
-        available_kib = int(next(
-            line.split()[1]
-            for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines()
-            if line.startswith("MemAvailable:")
-        ))
-        memory_gb = max(4, min(16, available_kib // 1024 // 1024))
-    except (OSError, StopIteration, ValueError):
-        pass
+    percent = float(args.percent_slide)
+    container_image = str(args.container_image)
+    if args._parameter_sources["container_image"] == "schema default":
+        container_image = core.GPU_CONTAINER if profile == "gpu" else core.CPU_CONTAINER
+    celltypes_batch_size = args.celltypes_batch_size
+    if (
+        args._parameter_sources["celltypes_batch_size"] == "schema default"
+        and profile == "cpu"
+    ):
+        celltypes_batch_size = 1
+    hf_cache = (args.hf_cache or cache_root / "huggingface").expanduser().resolve()
+    histoplus_cache = (
+        args.histoplus_cache or cache_root / "histoplus"
+    ).expanduser().resolve()
     command = [
         str(ROOT / "run.sh"), "--input-dir", str(input_root), "--output-dir", str(output),
         "--work-dir", str(work), "--profile", profile, "--percent-slide", f"{percent:g}",
         "--seed", str(args.seed), "--slide-mpp", f"{source_mpp:.9g}",
-        "--container-image", core.GPU_CONTAINER if profile == "gpu" else core.CPU_CONTAINER,
-        "--histoplus-revision", core.MODEL_REVISION,
-        "--hf-cache", str(cache_root / "huggingface"),
-        "--histoplus-cache", str(cache_root / "histoplus"),
-        "--cpus", str(safe_cpus), "--memory", f"{memory_gb} GB",
-        "--max-parallel-slides", "1", "--num-workers", "2",
-        "--celltypes-batch-size", "1" if profile == "cpu" else "2",
+        "--mpp", f"{float(args.mpp):.15g}", "--tile-px", str(args.tile_px),
+        "--device", device, "--container-image", container_image,
+        "--histoplus-revision", str(args.histoplus_revision),
+        "--hf-cache", str(hf_cache), "--histoplus-cache", str(histoplus_cache),
+        "--cpus", str(args.cpus), "--memory", str(args.memory),
+        "--time", str(args.time), "--shm-size", str(args.docker_shm_size),
+        "--max-parallel-slides", str(args.max_parallel_slides),
+        "--num-workers", str(args.num_workers),
+        "--celltypes-batch-size", str(celltypes_batch_size),
+        "--qc-patch-count", str(args.qc_patch_count),
     ]
     if args.preset == "smoke":
-        command.extend(["--fast", "--fail-fast", "--include", selected_samples[0]])
-    elif args.preset == "fast":
-        command.extend(["--fast", "--include", args.include])
+        command.extend(["--include", selected_samples[0]])
     else:
-        command.extend(["--full", "--include", args.include])
+        command.extend(["--include", args.include])
     if args.sample_sheet:
         command.extend(["--sample-sheet", str(args.sample_sheet.expanduser().resolve())])
     for pattern in args.pattern:
         command.extend(["--pattern", pattern])
     if args.exclude:
         command.extend(["--exclude", args.exclude])
+    if args.collage:
+        command.extend(["--collage", str(args.collage)])
+    if not args.continue_on_error:
+        command.append("--fail-fast")
+    if args.run_cells_stage:
+        command.append("--run-cells-stage")
+    if args.export_qupath:
+        command.append("--export-qupath")
+    if args.amp:
+        command.append("--amp")
+    if not args.convert_to_pyramidal:
+        command.append("--no-convert-to-pyramidal")
+    if not args.plain_csv:
+        command.append("--compressed-coordinates")
     if args.no_resume:
         command.append("--no-resume")
     if args.dry_run:
@@ -450,17 +1133,25 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
     elif access.get("token") and not args.dry_run:
         command.extend(["--hf-token-file", str(access["token"])])
         secret_values.append(str(access["token"]))
-    if expert_args:
+    nextflow_arguments = _nextflow_public_arguments(args)
+    if nextflow_arguments or expert_args:
         command.append("--")
+        command.extend(nextflow_arguments)
         command.extend(expert_args)
     display = core.shell_join(command, secret_values)
     resume_parts = [
         "./tumorquantai", "run", str(input_root), "--output", str(output),
         "--preset", args.preset, "--source-mpp", f"{source_mpp:.9g}",
+        "--percent-slide", f"{percent:g}", "--mpp", f"{float(args.mpp):.15g}",
         "--profile", profile, "--seed", str(args.seed), "--work-dir", str(work),
+        "--cpus", str(args.cpus), "--memory", str(args.memory),
+        "--max-parallel-slides", str(args.max_parallel_slides),
+        "--num-workers", str(args.num_workers),
     ]
     if args.preset == "smoke":
         resume_parts.extend(["--sample", selected_samples[0]])
+    if args.params_file:
+        resume_parts.extend(["--params-file", str(args.params_file.expanduser().resolve())])
     if args.sample_sheet:
         resume_parts.extend(["--sample-sheet", str(args.sample_sheet.expanduser().resolve())])
     for pattern in args.pattern:
@@ -468,6 +1159,9 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
     resume_parts.extend(["--include", args.include])
     if args.exclude:
         resume_parts.extend(["--exclude", args.exclude])
+    if args.no_resume:
+        resume_parts.append("--no-resume")
+    resume_parts.extend(_explicit_public_resume_arguments(args))
     if expert_args:
         resume_parts.append("--")
         resume_parts.extend(expert_args)
@@ -481,22 +1175,23 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
         "created_at_utc": core.utc_now(), "completion_status": "planned" if args.dry_run else "running",
         "preset": args.preset, "sampling_percent": percent, "seed": args.seed,
         "source_mpp": source_mpp, "source_mpp_provenance": "supplied" if args.source_mpp else "embedded TIFF metadata",
-        "target_mpp": core.TARGET_MPP, "execution_profile": profile,
+        "target_mpp": args.mpp, "execution_profile": profile,
         "container_identity": (
             "not used (local profile)" if profile == "local"
-            else (core.GPU_CONTAINER if profile == "gpu" else core.CPU_CONTAINER)
+            else container_image
         ),
-        "model_revision": core.MODEL_REVISION, "demonstration": False,
+        "model_revision": args.histoplus_revision, "demonstration": False,
         "selected_samples": selected_samples, "discovered_samples": sample_ids,
-        "input_signature": core.input_signature(slides), "resume_enabled": not args.no_resume,
+        "input_signature": core.input_signature(slides), "resume_enabled": args.resume,
         "resume_command": resume_display, "expanded_command": display,
         "credential_method": access["method"], "credential_source": token_source,
         "work_directory": ".tumorquantai-work" if work.parent == output else "external configured work directory",
         "cache_directory": "sibling output-associated cache",
         "expert_args_fingerprint": expert_fingerprint,
         "resources": {
-            "cpus": safe_cpus, "memory_gb": memory_gb,
-            "max_parallel_slides": 1, "num_workers": 2,
+            "cpus": args.cpus, "memory": args.memory,
+            "max_parallel_slides": args.max_parallel_slides,
+            "num_workers": args.num_workers,
         },
     }
     for key in (
@@ -522,7 +1217,7 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
     return plan, command, secret_values, environment
 
 
-def run_beginner(args: argparse.Namespace) -> int:
+def run_analysis(args: argparse.Namespace) -> int:
     plan, command, _secret_values, environment = _prepare_run(args)
     output = args.output.expanduser().resolve()
     core.write_run_manifest(output, plan)
@@ -705,7 +1400,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
     print(f"  required now: {core.format_bytes(required)} for the selected stage(s)")
     if not storage["ok"]:
         raise core.TumorQuantAIError("Quickstart storage preflight failed. Choose a writable mounted path with the displayed free space.", core.EXIT_PREFLIGHT)
-    print(f"Bounded public plan: Zenodo record {core.DATASET_RECORD}, exactly {core.TUTORIAL_FILE} ({core.TUTORIAL_SIZE} bytes).")
+    print(f"Public data plan: Zenodo record {core.DATASET_RECORD}, exactly {core.TUTORIAL_FILE} ({core.TUTORIAL_SIZE} bytes).")
     print("Conversion levels: L0 and L2. Inference preset: smoke (1%, deterministic seed).")
     if args.dry_run:
         print("Dry run complete: no network request, download, conversion, or inference was performed.")
@@ -806,7 +1501,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
         local_weight=args.local_weight, expert_args=[],
         cache_dir=core.associated_cache_directory(root),
     )
-    code = run_beginner(run_args)
+    code = run_analysis(run_args)
     if code != core.EXIT_OK:
         child_manifest = core.load_run_manifest(smoke_results)
         _write_quickstart_manifest(
@@ -855,6 +1550,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         separator = raw_arguments.index("--")
         expert_args = raw_arguments[separator + 1 :]
         raw_arguments = raw_arguments[:separator]
+    explicit_keys = (
+        explicit_run_parameter_keys(raw_arguments) if raw_arguments[:1] == ["run"] else set()
+    )
     args = parser.parse_args(raw_arguments)
     if args.command == "run":
         args.expert_args = expert_args
@@ -866,7 +1564,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "inspect":
             return cmd_inspect(args)
         if args.command == "run":
-            return run_beginner(args)
+            resolve_run_parameters(args, explicit_keys)
+            return run_analysis(args)
         if args.command == "status":
             return cmd_status(args)
         if args.command == "report":

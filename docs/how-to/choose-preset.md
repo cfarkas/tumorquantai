@@ -44,7 +44,7 @@ multiple slides and you need a specific smoke slide.
 ```
 
 Do not reuse one result root across fast and full. Counts from different
-processed areas are not directly comparable. The beginner CLI refuses an
+processed areas are not directly comparable. The main CLI refuses an
 unsafe accidental mixture.
 
 Sampling is deterministic for the same input fingerprint, percentage, and

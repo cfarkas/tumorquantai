@@ -1,71 +1,71 @@
-# Tutorial: one public slide at 1%
+# Review one public slide
 
-| | |
-| --- | --- |
-| **For** | Researchers reviewing the first real WSI workflow and outputs |
-| **Hands-on steps** | Plan, prepare alias 022, optionally infer 1%, inspect four files |
-| **Prerequisites** | Verified mounted storage; HistoPLUS access plus Java/Nextflow/Docker only for inference |
-| **Download** | One 125,350,400-byte MDS plus a small manifest |
-| **Storage** | Conversion and work need more than the download; use the command's per-category preflight estimate |
-| **Writes to** | `/mounted/storage/tqa-022/` in this example |
+This page explains the files produced by the 1% sample-022 run. Complete
+[run one public slide](../start-here/public-slide.md) before using these checks.
 
-This tutorial uses public Zenodo record `21466410`, DOI
-`10.5281/zenodo.21466410`, and the dataset-matched engine release `v0.4.0`.
-It contains no pathologist ground truth.
+## Check the inspection
 
-## Prepare and inspect
+Open inspection/INSPECTION.html and inspection/inspection_manifest.csv.
+Comma-separated values (CSV) in the manifest should identify exactly one
+whole-slide image (WSI), its image-pyramid levels L0 and L2 as Tagged Image
+File Format (TIFF) files, and source resolution 0.261780 micrometres per pixel
+(MPP). L0 is the highest-resolution image used for analysis; L2 is its
+lower-resolution companion.
 
-```bash
-export TQA_ONE=/mounted/storage/tqa-022
+Stop before inference if the sample is duplicated, either image is missing, or
+source MPP is absent or inconsistent.
 
-./tumorquantai quickstart --output "$TQA_ONE" --cpu --dry-run
-./tumorquantai quickstart --output "$TQA_ONE" --cpu --no-inference
-```
+## Check the overlay
 
-Preparation verifies:
+Open
+results-1-percent/TumorQuantAI_LymphomaWSI_022/overlays/celltypes_overview_and_zoom.png.
+This image supports visual quality control (QC): check orientation, tissue
+selection, and alignment of predicted points with cells.
 
-- `TumorQuantAI_LymphomaWSI_022.mds` is exactly `125350400` bytes;
-- MD5 `94bb5b08ccf1957f8c42a579e8b33cfb` and SHA-256
-  `db2988b5c6bc791510cec4127106509e604e577feafdb15b94c149043ed7067a`
-  agree with the authoritative manifest from record 21466410;
-- conversion is limited to L0 and L2 and has resumable state; and
-- manifest source MPP is `0.261780`.
+HistoPLUS classes are model predictions, not pathologist ground truth. The
+public dataset has no diagnostic annotations.
 
-Expected success is a readiness message and `$TQA_ONE/START_HERE.html`. No
-Zenodo token is used.
+## Check scale and sampling
 
-## Optional authorized 1% run
+Open
+results-1-percent/TumorQuantAI_LymphomaWSI_022/summary/summary.json.
+JSON means JavaScript Object Notation. Confirm:
 
-After [HistoPLUS access](../how-to/model-access.md) is configured:
+- source MPP is 0.261780;
+- target/model MPP is recorded separately;
+- sampling is 1% of detected tissue tiles;
+- the random seed is recorded;
+- the pinned model revision and container identity are present; and
+- the sample is complete.
 
-```bash
-./tumorquantai quickstart --output "$TQA_ONE" --cpu
-```
+Source MPP describes the input pixel size. Target MPP describes the scale
+presented to the model. Counts from this run describe sampled tiles, not the
+whole slide, and must not be multiplied by 100.
 
-The smoke preset uses one selected slide, 1% of tissue tiles, a recorded random
-seed, fail-fast behavior, conservative resources, and a work directory on the
-same selected filesystem. It requires exactly one included and zero excluded
-samples after aggregation.
+## Check the aggregation audit
 
-## Review in this order
+Open
+results-1-percent/aggregated_celltypes/sample_aggregation_audit.csv. It should
+contain one included sample and no failed or incomplete sample.
 
-1. `START_HERE.html` — confirm PASS/WARN/FAIL cards and run identity.
-2. `smoke-results/TumorQuantAI_LymphomaWSI_022/overlays/celltypes_overview_and_zoom.png` —
-   review orientation, selected region, and visual alignment.
-3. `smoke-results/TumorQuantAI_LymphomaWSI_022/summary/summary.json` — verify source MPP,
-   target MPP, 1% sampling, seed, model revision, and completion.
-4. `smoke-results/aggregated_celltypes/sample_aggregation_audit.csv` — require one included
-   sample and no failed/incomplete sample.
+A completed sample may contain zero cells of a class. A failed, missing, or
+incomplete sample has no numeric matrix column and cannot be interpreted as
+zero.
 
-The raw counts are detections in sampled tiles, not whole-slide counts. Do not
-multiply them by 100.
+## Check status or resume
 
-## Stop, resume, and clean up
+Run this from the repository root. Replace /data only if the example was stored
+elsewhere.
 
-Press **Ctrl+C**, then repeat the same quickstart command to resume. Use
-`./tumorquantai status "$TQA_ONE"` for the exact resume command and log. Keep
-the work directory until review is complete. To clean up, print and verify
-`TQA_ONE` and remove only that root; never clean an entire mount.
+~~~bash
+export TQA_DATA="/data/tumorquantai-one-slide"
 
-**Next:** use the [four-slide 10% tutorial](four-public-slides.md) only after
-the one-slide audit and overlay pass review.
+./tumorquantai status "$TQA_DATA/results-1-percent"
+./tumorquantai report "$TQA_DATA/results-1-percent"
+~~~
+
+If the run was interrupted, repeat the original run command with the same
+result and work directories. Nextflow reuses valid cached tasks.
+
+Next, [run four public slides](four-public-slides.md) only after the inspection,
+overlay, summary, and audit checks pass.

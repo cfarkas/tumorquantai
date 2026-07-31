@@ -12,12 +12,12 @@
 | Dataset-matched software | `v0.4.0` |
 | Files | 21 MDS plus `tumorquantai_lymphoma_mds_manifest.csv` |
 | MDS bytes | `17,370,771,968` |
-| Beginner sample | `TumorQuantAI_LymphomaWSI_022` |
-| Beginner file | `TumorQuantAI_LymphomaWSI_022.mds` |
-| Beginner size | `125350400` bytes |
-| Beginner MD5 | `94bb5b08ccf1957f8c42a579e8b33cfb` |
-| Beginner SHA-256 | `db2988b5c6bc791510cec4127106509e604e577feafdb15b94c149043ed7067a` |
-| Beginner source MPP | `0.261780` |
+| Tutorial sample | `TumorQuantAI_LymphomaWSI_022` |
+| Tutorial file | `TumorQuantAI_LymphomaWSI_022.mds` |
+| Tutorial size | `125350400` bytes |
+| Tutorial MD5 | `94bb5b08ccf1957f8c42a579e8b33cfb` |
+| Tutorial SHA-256 | `db2988b5c6bc791510cec4127106509e604e577feafdb15b94c149043ed7067a` |
+| Tutorial source MPP | `0.261780` |
 | Conversion | L0 and L2 only |
 | Smoke sampling | seeded 1% |
 
