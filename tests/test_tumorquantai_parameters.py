@@ -128,10 +128,22 @@ def test_json_params_wrapper_and_explicit_value_override(
 
     assert args.input == Path("/file/input")
     assert args.output == Path("/file/output")
+    assert args._parameter_sources["input_dir"] == "parameter file"
+    assert args._parameter_sources["output_dir"] == "parameter file"
     assert args.percent_slide == 7
     assert args.device == "cuda:2"
     assert args.save_json is True
     assert args.pattern == ["*.tif", "*.tiff"]
+
+
+def test_omitted_run_input_remains_suppressed(
+    cli_namespace: dict[str, Any],
+) -> None:
+    parsed = cli_namespace["build_parser"]().parse_args([
+        "run", "--params-file", "/parameters.json",
+    ])
+
+    assert not hasattr(parsed, "input")
 
 
 @pytest.mark.parametrize(

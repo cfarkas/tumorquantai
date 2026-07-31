@@ -593,7 +593,7 @@ def build_parser() -> argparse.ArgumentParser:
     suppressed = argparse.SUPPRESS
 
     inputs = run.add_argument_group("Input and sample selection")
-    inputs.add_argument("input", nargs="?", metavar="INPUT", type=Path, default=suppressed, help="directory containing exported L0 slides (or set input_dir in --params-file)")
+    inputs.add_argument("input", nargs="?", metavar="INPUT", default=suppressed, help="directory containing exported L0 slides (or set input_dir in --params-file)")
     inputs.add_argument("--output", "--outdir", type=Path, default=suppressed, help="result directory on a verified mounted storage filesystem (or set output_dir in --params-file)")
     inputs.add_argument("--sample-sheet", type=Path, default=suppressed, help="CSV or TSV mapping sample_id to slide_path")
     inputs.add_argument("--pattern", action="append", default=suppressed, help="primary-slide glob; repeat for multiple patterns")
