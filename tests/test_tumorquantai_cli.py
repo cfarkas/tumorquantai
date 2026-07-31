@@ -83,6 +83,65 @@ def test_every_help_command_is_available(tmp_path: Path, command: str | None) ->
     assert "usage:" in result.stdout
 
 
+@pytest.mark.parametrize("command", ("run", "quickstart"))
+def test_execution_help_shows_cpu_and_gpu_aliases(
+    tmp_path: Path, command: str,
+) -> None:
+    result = invoke(tmp_path, command, "--help")
+    assert result.returncode == core.EXIT_OK
+    assert "--cpu" in result.stdout
+    assert "--gpu" in result.stdout
+    assert "--profile" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected"),
+    [
+        (["run", "/input", "--output", "/output"], "auto"),
+        (["run", "/input", "--output", "/output", "--cpu"], "cpu"),
+        (["run", "/input", "--output", "/output", "--gpu"], "gpu"),
+        (["quickstart", "--output", "/output"], "auto"),
+        (["quickstart", "--output", "/output", "--cpu"], "cpu"),
+        (["quickstart", "--output", "/output", "--gpu"], "gpu"),
+        (["quickstart", "--output", "/output", "--profile", "local"], "local"),
+    ],
+)
+def test_execution_aliases_map_to_existing_profile(
+    arguments: list[str], expected: str,
+) -> None:
+    namespace = runpy.run_path(str(CLI), run_name="tumorquantai_profile_test")
+    parsed = namespace["build_parser"]().parse_args(arguments)
+    assert parsed.profile == expected
+
+
+def test_explicit_cpu_skips_gpu_auto_detection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    namespace = runpy.run_path(str(CLI), run_name="tumorquantai_cpu_test")
+
+    def unexpected_probe(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("explicit CPU selection must not probe NVIDIA or Docker")
+
+    monkeypatch.setattr(namespace["subprocess"], "run", unexpected_probe)
+    assert namespace["resolve_profile"]("cpu") == "cpu"
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["run", "/input", "--output", "/output", "--cpu", "--gpu"],
+        ["quickstart", "--output", "/output", "--cpu", "--gpu"],
+        ["quickstart", "--output", "/output", "--profile", "cpu", "--gpu"],
+    ],
+)
+def test_execution_aliases_are_mutually_exclusive(
+    tmp_path: Path, arguments: list[str],
+) -> None:
+    result = invoke(tmp_path, *arguments)
+    assert result.returncode == core.EXIT_USAGE
+    assert "not allowed with argument" in result.stderr
+
+
 def test_missing_command_uses_stable_usage_exit(tmp_path: Path) -> None:
     result = invoke(tmp_path)
     assert result.returncode == core.EXIT_USAGE

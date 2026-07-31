@@ -40,7 +40,7 @@ mkdir -p "$TQA_TUTORIAL"
 findmnt -T "$TQA_TUTORIAL"
 df -hT "$TQA_TUTORIAL"
 test -w "$TQA_TUTORIAL"
-./tumorquantai quickstart --output "$TQA_TUTORIAL" --dry-run
+./tumorquantai quickstart --output "$TQA_TUTORIAL" --cpu --dry-run
 ```
 
 If the host dependencies are missing, follow [Install and check the
@@ -95,8 +95,13 @@ Follow [Configure authorized HistoPLUS access](../how-to/model-access.md), then
 rerun the same command:
 
 ```bash
-./tumorquantai quickstart --output "$TQA_TUTORIAL"
+./tumorquantai quickstart --output "$TQA_TUTORIAL" --cpu
 ```
+
+Use `--cpu` when the GPU is unavailable or reserved by another workload. Use
+`--gpu` only when `doctor` confirms the NVIDIA host and container path. These
+flags are mutually exclusive aliases for the compatible `--profile cpu` and
+`--profile gpu` forms.
 
 The prepared files are verified and reused. The inference stage selects exactly
 one slide, uses a seeded 1% tissue-tile sample, and fails fast. After inference,

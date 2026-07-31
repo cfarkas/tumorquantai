@@ -18,8 +18,8 @@ It contains no pathologist ground truth.
 ```bash
 export TQA_ONE=/mounted/storage/tqa-022
 
-./tumorquantai quickstart --output "$TQA_ONE" --dry-run
-./tumorquantai quickstart --output "$TQA_ONE" --no-inference
+./tumorquantai quickstart --output "$TQA_ONE" --cpu --dry-run
+./tumorquantai quickstart --output "$TQA_ONE" --cpu --no-inference
 ```
 
 Preparation verifies:
@@ -39,7 +39,7 @@ Zenodo token is used.
 After [HistoPLUS access](../how-to/model-access.md) is configured:
 
 ```bash
-./tumorquantai quickstart --output "$TQA_ONE"
+./tumorquantai quickstart --output "$TQA_ONE" --cpu
 ```
 
 The smoke preset uses one selected slide, 1% of tissue tiles, a recorded random

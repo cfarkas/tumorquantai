@@ -18,7 +18,8 @@ installed script's `--help` output is authoritative.
 
 ./tumorquantai run INPUT --output DIR
                      [--preset smoke|fast|full] [--source-mpp FLOAT]
-                     [--sample ID] [--profile auto|gpu|cpu|local]
+                     [--sample ID]
+                     [--profile auto|gpu|cpu|local | --cpu | --gpu]
                      [--seed INT] [--sample-sheet CSV]
                      [--pattern GLOB]... [--include GLOB] [--exclude GLOB]
                      [--work-dir DIR]
@@ -32,7 +33,7 @@ installed script's `--help` output is authoritative.
 ./tumorquantai quickstart --output PATH
                           [--dry-run | --download-only | --convert-only |
                            --no-inference]
-                          [--profile auto|gpu|cpu|local]
+                          [--profile auto|gpu|cpu|local | --cpu | --gpu]
                           [--seed INT] [--local-weight FILE]
 ```
 
@@ -67,6 +68,13 @@ Maps `smoke` to one selected seeded 1% slide and fail-fast behavior, `fast` to
 seeded 10% by default, and `full` to 100% of detected tissue tiles. Resume is
 on unless `--no-resume` is used. The expanded command is printed with secrets
 redacted. Default work is `OUTPUT/.tumorquantai-work`.
+
+`--cpu` forces CPU execution and `--gpu` selects the NVIDIA execution profile;
+the two flags cannot be combined. They are concise aliases for `--profile cpu`
+and `--profile gpu`. The existing `--profile auto|gpu|cpu|local` option remains
+backward compatible. Run `doctor` before GPU work: the CLI checks host and
+container visibility, while the worker retains its established device
+resolution if CUDA later becomes unavailable.
 
 Use `--token-file` only with a token file, never a token value. `--local-weight`
 references an authorized local file read-only. Arguments after `--` are an

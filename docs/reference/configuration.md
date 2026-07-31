@@ -56,6 +56,7 @@ route.
 | `--preset full` | `--full` |
 | `--seed INT` | `--seed INT` |
 | `--profile auto|gpu|cpu|local` | same `run.sh` profile |
+| `--cpu` / `--gpu` | concise aliases for `--profile cpu` / `--profile gpu` |
 | `--work-dir DIR` | Nextflow work directory |
 
 The target model-tile MPP remains 0.5 unless an expert changes the existing

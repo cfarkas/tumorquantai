@@ -21,11 +21,16 @@
   --output /data/results-smoke \
   --preset smoke \
   --source-mpp "$SOURCE_MPP" \
+  --cpu \
   --dry-run
 ```
 
 The CLI prints the expanded `run.sh`/Nextflow mapping with secrets redacted and
 states CPU/GPU selection, sampling, seed, result path, and work path.
+
+Use exactly one of `--cpu` or `--gpu` when the execution path must be explicit.
+Omit both to retain automatic selection. Existing automation may continue to
+use `--profile cpu`, `--profile gpu`, `--profile auto`, or `--profile local`.
 
 Execute by removing `--dry-run`. Use `--sample SAMPLE_ID` when inspection found
 multiple slides and you need a specific smoke slide.
