@@ -41,7 +41,7 @@ Next, choose one path:
 
 ```bash
 # Public real slide; inference continues when authorized HistoPLUS access exists
-./tumorquantai quickstart --output /mounted/storage/tutorial-one-slide
+./tumorquantai quickstart --output /mounted/storage/tutorial-one-slide --cpu
 
 # Inspect your own slides without inference
 ./tumorquantai inspect /data/slides --output /data/tumorquantai-inspection
@@ -84,7 +84,7 @@ incomplete samples.
 | Goal | Command | Model/GPU needed? |
 | --- | --- | --- |
 | Check the software structure | `./tumorquantai demo` | No |
-| Prepare and smoke-test one public WSI | `./tumorquantai quickstart --output PATH` | Only for inference |
+| Prepare and smoke-test one public WSI | `./tumorquantai quickstart --output PATH --cpu` | Only for inference |
 | Review your own slide roster and MPP | `./tumorquantai inspect INPUT --output PATH` | No |
 
 Run `./tumorquantai doctor` before real inference to check the host, Java,
@@ -130,8 +130,14 @@ manifest/sample sheet. Inspect every roster before inference:
 ./tumorquantai run /data/slides \
   --output /data/tumorquantai-smoke \
   --preset smoke \
-  --source-mpp "$SOURCE_MPP"
+  --source-mpp "$SOURCE_MPP" \
+  --cpu
 ```
+
+Use `--cpu` to force the CPU path or `--gpu` to select the NVIDIA profile. They
+are mutually exclusive. The existing `--profile auto|cpu|gpu|local` form
+remains supported for scripts and expert workflows. Run `doctor` before GPU
+work; the worker retains the established device-resolution safeguards.
 
 Beginner runs place resumable Nextflow work inside the selected output by
 default. Use different output/work directories for `fast` and `full`; the CLI

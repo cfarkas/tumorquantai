@@ -50,9 +50,9 @@ docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi
 
 The second command may download a public test image. Use it only when approved.
 If the host sees the GPU but Docker does not, the NVIDIA Container Toolkit or
-runtime configuration needs administrator attention. `--profile cpu` is a
-supported fallback but can be much slower; doctor must state that path
-explicitly.
+runtime configuration needs administrator attention. `--cpu` (equivalent to
+`--profile cpu`) is a supported fallback but can be much slower; doctor must
+state that path explicitly.
 
 ## HistoPLUS access denied
 

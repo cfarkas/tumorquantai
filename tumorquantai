@@ -46,6 +46,24 @@ def positive_float(value: str) -> float:
     return parsed
 
 
+def add_execution_profile_options(command: argparse.ArgumentParser) -> None:
+    """Add beginner aliases without removing the compatible profile option."""
+    execution = command.add_mutually_exclusive_group()
+    execution.add_argument(
+        "--profile", choices=("auto", "gpu", "cpu", "local"),
+        help="execution profile (default: auto)",
+    )
+    execution.add_argument(
+        "--cpu", dest="profile", action="store_const", const="cpu",
+        help="force CPU execution (same as --profile cpu)",
+    )
+    execution.add_argument(
+        "--gpu", dest="profile", action="store_const", const="gpu",
+        help="select the NVIDIA GPU profile (same as --profile gpu)",
+    )
+    command.set_defaults(profile="auto")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="./tumorquantai",
@@ -58,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Start safely:\n"
             "  ./tumorquantai demo\n"
             "  ./tumorquantai inspect /data/slides --output /data/tqa-inspection\n"
-            "  ./tumorquantai quickstart --output /mounted-storage/tutorial-one-slide"
+            "  ./tumorquantai quickstart --output /mounted-storage/tutorial-one-slide --cpu"
         ),
     )
     parser.add_argument("--version", action="version", version=f"TumorQuantAI {core.VERSION}")
@@ -94,7 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--preset", choices=("smoke", "fast", "full"), default="smoke", help="1%%, 10%%, or 100%% of detected tissue tiles (default: smoke)")
     run.add_argument("--source-mpp", "--slide-mpp", type=positive_float, help="verified source L0 micrometres per pixel")
     run.add_argument("--sample", help="sample ID for the one-slide smoke preset")
-    run.add_argument("--profile", choices=("auto", "gpu", "cpu", "local"), default="auto")
+    add_execution_profile_options(run)
     run.add_argument("--seed", type=int, default=core.DEFAULT_SEED, help=f"deterministic sampling seed (default: {core.DEFAULT_SEED})")
     run.add_argument("--sample-sheet", type=Path)
     run.add_argument("--pattern", action="append", default=[])
@@ -121,7 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--download-only", action="store_true", help="download and verify only sample 022")
     mode.add_argument("--convert-only", action="store_true", help="convert an already downloaded sample 022")
     mode.add_argument("--no-inference", action="store_true", help="download, convert, and inspect; do not infer")
-    quickstart.add_argument("--profile", choices=("auto", "gpu", "cpu", "local"), default="auto")
+    add_execution_profile_options(quickstart)
     quickstart.add_argument("--seed", type=int, default=core.DEFAULT_SEED)
     quickstart.add_argument("--token-file", type=Path, help=argparse.SUPPRESS)
     quickstart.add_argument("--local-weight", type=Path, help="authorized local HistoPLUS weight file")
