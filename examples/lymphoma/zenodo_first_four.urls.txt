@@ -1,0 +1,4 @@
+https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_022.mds?download=1
+https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_002.mds?download=1
+https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_006.mds?download=1
+https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_016.mds?download=1

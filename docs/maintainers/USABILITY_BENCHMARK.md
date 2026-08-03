@@ -77,8 +77,8 @@ Feature labels are deliberately narrow: a demo must run without private credenti
 
 - **Popularity as a quality score:** stars and forks are retained only as dated visibility proxies; they do not justify scientific or UX claims.
 - **Badge-only evidence of readiness:** badges cannot replace a local, actionable doctor check and a fixture-based demo.
-- **Network, GPU, or gated weights in the first success path:** those dependencies make normal CI and beginner diagnosis fragile, so the first result must be structural and offline-capable.
-- **A magic wrapper that hides execution details:** a beginner façade is useful only if it preserves direct Nextflow/run-script access, prints the expanded command with secrets redacted, and records provenance.
+- **Network, GPU, or gated weights in the first success path:** those dependencies make normal CI and first-run diagnosis fragile, so the first result must be structural and offline-capable.
+- **A magic wrapper that hides execution details:** a high-level façade is useful only if it preserves direct Nextflow/run-script access, prints the expanded command with secrets redacted, and records provenance.
 - **GUI or notebook as the only reproducible interface:** both can be valuable teaching surfaces, but the canonical workflow must remain scriptable, resumable, and testable headlessly.
 - **Implicit permission from public source code:** a visible repository without a declared license does not grant broad reuse permission. TumorQuantAI's license remains an explicit owner decision.
 - **Copied project prose or visual branding:** this benchmark adopts interaction patterns only; labels are short categorical summaries and no README body is retained.

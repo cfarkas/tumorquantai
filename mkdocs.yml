@@ -1,5 +1,5 @@
 site_name: TumorQuantAI
-site_description: Beginner-friendly documentation for reproducible cell-type quantification in H&E whole-slide images
+site_description: Documentation for reproducible cell-type quantification in H&E whole-slide images
 site_author: TumorQuantAI developers
 site_url: https://cfarkas.github.io/tumorquantai/
 
@@ -47,8 +47,8 @@ nav:
       - Public one-slide quickstart: start-here/public-slide.md
       - Inspect and run your own slide: start-here/own-slides.md
   - Tutorials:
-      - One public slide (1%): tutorials/one-public-slide.md
-      - Four public slides (10%): tutorials/four-public-slides.md
+      - Review one public slide (1%): tutorials/one-public-slide.md
+      - Run four public slides (10%): tutorials/four-public-slides.md
       - Full 21-slide collection: tutorials/full-collection.md
   - How-to guides:
       - Install and check the computer: how-to/install.md
@@ -71,6 +71,7 @@ nav:
       - Research limitations: explanation/research-limitations.md
   - Reference:
       - CLI: reference/cli.md
+      - Parameters: reference/parameters.md
       - Configuration and environment: reference/configuration.md
       - Input manifest schema: reference/input-manifest.md
       - Output files and schema: reference/outputs.md

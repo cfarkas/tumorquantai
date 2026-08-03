@@ -121,16 +121,16 @@ HistoPLUS, and combined feature sets with repeated nested cross-validation.
 Patient grouping is supported with `--patient-id-column`; all preprocessing and
 tuning stay inside training folds. See [the clinical ML guide](CLINICAL_ML.md).
 
-## Current MDS tutorial tools
+## MDS utilities
 
-`bin/download_zenodo_mds.py` reads the strict schema-version-2 authoritative
-manifest from the same version-specific Zenodo record, downloads selected MDS
-files with resumable transfers, and
-verifies size, MD5, and SHA-256. `--expected-count` makes the one-, four-, and
-21-slide paths fail closed. Repeating a larger selection safely expands the
-local verified roster. Public record 21466410 needs no token; the optional
-mode-0600 token-file support is retained only for authorized restricted future
-records.
+Public walkthroughs use generated URL/checksum lists and standard direct
+`TumorQuantAI_LymphomaWSI_NNN.mds` filenames. `bin/download_zenodo_mds.py`
+remains a compatible programmatic downloader. It reads the strict
+schema-version-2 manifest, downloads selected MDS files with resumable
+transfers, and verifies size, MD5, and SHA-256. `--expected-count` makes
+one-, four-, and 21-slide selections fail closed. Public record 21466410 needs
+no token; the optional mode-0600 token-file support is retained only for
+authorized restricted future records.
 
 `bin/mds_to_tiff.py` converts only internal `DSI0` pixels to canonical L0/L2
 BigTIFF. Supply the downloaded MDS manifest so source checksums, MPP, level

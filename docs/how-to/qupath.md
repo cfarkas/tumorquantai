@@ -24,7 +24,7 @@ smoke sample in a separate result root:
   --profile auto
 ```
 
-QuPath export is an advanced `run.sh` option; the canonical beginner interface
+QuPath export is an advanced `run.sh` option; the main interface
 and direct Nextflow path remain compatible. Expected completion includes
 `<sample>/cell_types/cell_types_qupath.json`; requested large exports are
 validated before `summary.json` is published as the completion marker.

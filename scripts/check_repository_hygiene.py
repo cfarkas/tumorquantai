@@ -27,6 +27,10 @@ STALE_PATTERNS = {
 }
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 SECRET_VALUE = re.compile(r"\bhf_[A-Za-z0-9]{20,}\b")
+LOCAL_SERVER_PATH = re.compile(r"/(?:media|home)/server/")
+LOCAL_PATH_PATTERN_ALLOWLIST = {
+    Path("scripts/check_docs_language.py"),
+}
 
 # These are the only binary image/data assets intentionally kept in the
 # repository. Keep this allowlist literal: a broad tests/ or docs/assets/
@@ -255,6 +259,12 @@ def check_forbidden_artifacts(files: list[Path], errors: list[str]) -> None:
                 continue
             if SECRET_VALUE.search(text) and relative.parts[0] != "tests":
                 errors.append(f"possible Hugging Face token value in {relative}")
+            if (
+                LOCAL_SERVER_PATH.search(text)
+                and relative.parts[0] != "tests"
+                and relative not in LOCAL_PATH_PATTERN_ALLOWLIST
+            ):
+                errors.append(f"server-specific absolute path is tracked or unignored: {relative}")
 
 
 def check_metadata(files: list[Path], errors: list[str]) -> None:
@@ -314,14 +324,31 @@ def check_cli_reference(errors: list[str]) -> None:
                 errors.append(f"docs/reference/cli.md is missing {command} option {option}")
 
 
-def check_readme_demo(errors: list[str]) -> None:
+def check_readme_quickstart(errors: list[str]) -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    required = "git clone https://github.com/cfarkas/tumorquantai.git\ncd tumorquantai\n./tumorquantai demo"
-    if required not in readme:
-        errors.append("README must retain the exact three-command credential-free quickstart")
+    required_snippets = {
+        "repository clone": "git clone https://github.com/cfarkas/tumorquantai.git",
+        "standard downloader": "wget -c -O",
+        "manifest URL": "https://zenodo.org/records/21466410/files/tumorquantai_lymphoma_mds_manifest.csv?download=1",
+        "sample URL": "https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_022.mds?download=1",
+        "manifest checksum": "ad9a9472e8beb302f8b9ba2b3359bacc",
+        "sample checksum": "db2988b5c6bc791510cec4127106509e604e577feafdb15b94c149043ed7067a",
+        "direct converter": "python bin/mds_to_tiff.py",
+        "model-free inspection": "./tumorquantai inspect",
+        "1% run": "./tumorquantai run",
+    }
+    for label, snippet in required_snippets.items():
+        if snippet not in readme:
+            errors.append(f"README real one-slide quickstart is missing {label}: {snippet}")
+    download_position = readme.find("wget -c -O")
+    demo_position = readme.find("./tumorquantai demo")
+    if download_position < 0:
+        errors.append("README first quickstart must use wget")
+    elif demo_position >= 0 and demo_position < download_position:
+        errors.append("README synthetic demo must appear after the real WSI quickstart")
     line_count = len(readme.splitlines())
-    if not 150 <= line_count <= 250:
-        errors.append(f"README should stay concise (150-250 lines); observed {line_count}")
+    if not 120 <= line_count <= 400:
+        errors.append(f"README should stay concise (120-400 lines); observed {line_count}")
     if not os.access(ROOT / "tumorquantai", os.X_OK):
         errors.append("root tumorquantai command is not executable")
         return
@@ -334,12 +361,9 @@ def check_readme_demo(errors: list[str]) -> None:
             cwd=ROOT, text=True, capture_output=True, env=environment, check=False,
         )
         if completed.returncode != 0 or not (output / "START_HERE.html").is_file():
-            errors.append("README demo command failed to create START_HERE.html")
+            errors.append("synthetic demo failed to create START_HERE.html")
         if "TumorQuantAI structural demo complete." not in completed.stdout:
-            errors.append("README expected demo success text drifted from executable output")
-        fixture_line = "Included fixture samples: 2; intentional failed fixture: 1; completed zero fixture: 1"
-        if fixture_line not in completed.stdout or fixture_line not in readme:
-            errors.append("README expected demo fixture-count line drifted from executable output")
+            errors.append("synthetic demo success text drifted from executable output")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -355,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
     check_output_names(errors)
     check_cli_reference(errors)
     if not args.skip_demo:
-        check_readme_demo(errors)
+        check_readme_quickstart(errors)
     if errors:
         print("Repository hygiene checks failed:", file=sys.stderr)
         for error in errors:

@@ -2,8 +2,9 @@
 
 The current public dataset is Zenodo record `21466410`, DOI
 `10.5281/zenodo.21466410`, dataset version v2, matched to TumorQuantAI
-`v0.4.0`. Public downloads use `bin/download_zenodo_mds.py` and require no
-Zenodo credential.
+`v0.4.0`. Public walkthroughs use the standard direct Zenodo filenames and
+generated URL/checksum lists. The compatible downloader utility also requires
+no Zenodo credential.
 
 This page is only for an authorized curator creating a **future successor
 version draft**. It does not describe the current public record and does not

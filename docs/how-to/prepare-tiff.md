@@ -39,7 +39,7 @@ its companion, format/pyramid information when readable, embedded or supplied
 MPP, duplicate warnings, and storage estimates.
 
 If MPP is absent or unreliable, obtain it from the imaging facility and supply
-`--source-mpp` for the beginner run. Do not infer MPP from an unrelated slide or treat
+`--source-mpp` for the main run. Do not infer MPP from an unrelated slide or treat
 target MPP as source MPP.
 
 ## Stop and clean up

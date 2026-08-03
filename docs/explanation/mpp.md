@@ -5,7 +5,7 @@ by one image pixel.
 
 | Value | Meaning | CLI |
 | --- | --- | --- |
-| Source MPP | Physical resolution of the input L0 image | `--source-mpp` in the beginner CLI; `--slide-mpp` in `run.sh` |
+| Source MPP | Physical resolution of the input L0 image | `--source-mpp` in the main CLI; `--slide-mpp` in `run.sh` |
 | Target MPP | Physical resolution requested for model tiles | Existing engine `--mpp`; default 0.5 |
 
 They are not interchangeable. Target MPP tells the workflow how to resample

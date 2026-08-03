@@ -1,8 +1,8 @@
 # Quick start
 
-This stable URL now points to the task-specific beginner guides:
+This stable URL points to the task-specific guides:
 
-- [Credential-free structural demo](start-here/demo.md)
+- [Structural software demo](start-here/demo.md)
 - [Public one-slide quickstart](start-here/public-slide.md)
 - [Inspect and run your own slide](start-here/own-slides.md)
 

@@ -1,94 +1,160 @@
-# Tutorial: four public slides at 10%
+# Run four public slides
 
-| | |
-| --- | --- |
-| **For** | Users who completed and reviewed the one-slide path |
-| **Hands-on steps** | Verify mount, add three fixed MDS files, resume conversion, inspect four-slide roster, infer 10%, audit |
-| **Prerequisites** | Completed one-slide preparation, authorized HistoPLUS access, Java/Nextflow/Docker or prepared local environment |
-| **Download** | Four fixed MDS files total 917,772,288 bytes; existing alias 022 is reused |
-| **Storage** | Plan approximately 30 GB for raw, conversion, work, and results; verify actual free space first |
-| **Writes to** | Separate raw/conversion, `discovery-four`, `fast-four-slides`, and `work-fast` paths |
+This procedure downloads samples 022, 002, 006, and 016 from Zenodo record
+21466410 and processes a seeded 10% of detected tissue tiles.
 
-This advanced progression is not invoked by `quickstart`. The beginner command
-is deliberately capped at one slide. All files are public on Zenodo record
-`21466410`; no Zenodo token is required.
+## Requirements
 
-## Select the fixed four
+You need a Linux host, Python 3.10 or newer with requirements-tutorial.txt,
+mounted storage, and the inference requirements from the
+[installation guide](../how-to/install.md). The four Motic MDS files total
+917,772,288 bytes. Allow about 30 GB for downloads, converted Tagged Image File
+Format (TIFF) images, the Nextflow work directory, cache, and results; verify
+the local estimate before starting.
 
-The four aliases are 022, 002, 006, and 016:
+Public Zenodo access needs no credential. HistoPLUS access is gated separately.
+The images have source resolution 0.261780 micrometres per pixel (MPP).
 
-```bash
-export TQA_ROOT=/mounted/storage/tqa-lymphoma
-export TQA_RAW="$TQA_ROOT/data"
-export TQA_RUNS="$TQA_ROOT/runs"
-export TQA_MANIFEST="$PWD/examples/lymphoma/tumorquantai_lymphoma_mds_manifest.csv"
+## Download the four MDS files
 
-mkdir -p "$TQA_ROOT"
-findmnt -T "$TQA_ROOT"
-df -hT "$TQA_ROOT"
-test -w "$TQA_ROOT"
+Run from the repository root. Replace /data with the mounted storage selected
+for this run.
 
-python bin/download_zenodo_mds.py \
-  --record 21466410 \
-  --manifest "$TQA_MANIFEST" \
-  --output-dir "$TQA_RAW" \
-  --sample-id TumorQuantAI_LymphomaWSI_022 \
-  --sample-id TumorQuantAI_LymphomaWSI_002 \
-  --sample-id TumorQuantAI_LymphomaWSI_006 \
-  --sample-id TumorQuantAI_LymphomaWSI_016 \
-  --expected-count 4
-```
+~~~bash
+export TQA_REPO="$PWD"
+export TQA_DATA="/data/tumorquantai-four-slides"
 
-The downloader verifies any existing file before reuse and downloads only
-missing selections.
+mkdir -p "$TQA_DATA"
+findmnt -T "$TQA_DATA"
+df -hT "$TQA_DATA"
+test -w "$TQA_DATA"
 
-## Convert and inspect
+wget -c -O "$TQA_DATA/tumorquantai_lymphoma_mds_manifest.csv" \
+  "https://zenodo.org/records/21466410/files/tumorquantai_lymphoma_mds_manifest.csv?download=1"
+wget -c -O "$TQA_DATA/TumorQuantAI_LymphomaWSI_022.mds" \
+  "https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_022.mds?download=1"
+wget -c -O "$TQA_DATA/TumorQuantAI_LymphomaWSI_002.mds" \
+  "https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_002.mds?download=1"
+wget -c -O "$TQA_DATA/TumorQuantAI_LymphomaWSI_006.mds" \
+  "https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_006.mds?download=1"
+wget -c -O "$TQA_DATA/TumorQuantAI_LymphomaWSI_016.mds" \
+  "https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_016.mds?download=1"
+~~~
 
-```bash
-python bin/mds_to_tiff.py \
-  --input "$TQA_RAW/raw" \
-  --manifest "$TQA_MANIFEST" \
-  --output-dir "$TQA_RAW/slides" \
+Each -c download resumes a partial file and leaves the published filename
+visible.
+
+## Check the downloads
+
+MD5 means Message-Digest Algorithm 5. SHA-256 means Secure Hash Algorithm
+256-bit. The repository checksum file is generated from the authoritative
+manifest.
+
+~~~bash
+export TQA_REPO="${TQA_REPO:-$PWD}"
+export TQA_DATA="/data/tumorquantai-four-slides"
+
+cd "$TQA_DATA"
+echo "ad9a9472e8beb302f8b9ba2b3359bacc  tumorquantai_lymphoma_mds_manifest.csv" | md5sum -c -
+sha256sum -c "$TQA_REPO/examples/lymphoma/checksums_first_four.sha256"
+~~~
+
+Success prints OK for the manifest and all four slides. Stop if any check fails.
+
+## Convert the files
+
+The converter resolves ordinary Zenodo filenames through the manifest, rejects
+ambiguous candidates, verifies each checksum, and writes image-pyramid levels
+L0 and L2 as TIFF files. L0 is highest-resolution; L2 is its lower-resolution
+companion.
+
+~~~bash
+export TQA_REPO="${TQA_REPO:-$PWD}"
+export TQA_DATA="/data/tumorquantai-four-slides"
+
+python "$TQA_REPO/bin/mds_to_tiff.py" \
+  --input "$TQA_DATA" \
+  --manifest "$TQA_DATA/tumorquantai_lymphoma_mds_manifest.csv" \
+  --output-dir "$TQA_DATA/slides" \
   --levels 0 2 \
   --sample-id TumorQuantAI_LymphomaWSI_022 \
   --sample-id TumorQuantAI_LymphomaWSI_002 \
   --sample-id TumorQuantAI_LymphomaWSI_006 \
   --sample-id TumorQuantAI_LymphomaWSI_016 \
   --expected-count 4 \
+  --source-mpp 0.261780 \
   --resume
+~~~
 
-./tumorquantai inspect "$TQA_RAW/slides" \
-  --sample-sheet "$PWD/examples/lymphoma/sample_sheet_first4.csv" \
-  --output "$TQA_RUNS/discovery-four"
-```
+Success writes four alias directories, samples.csv, and
+mds_conversion_manifest.json. JSON means JavaScript Object Notation.
 
-Expected inspection finds exactly four unique L0/L2 pairs at source MPP
-`0.261780`.
+## Check the slide list
 
-## Run 10% into a distinct root
+Inspection does not run HistoPLUS.
 
-```bash
-./tumorquantai run "$TQA_RAW/slides" \
-  --sample-sheet "$PWD/examples/lymphoma/sample_sheet_first4.csv" \
-  --output "$TQA_RUNS/fast-four-slides" \
-  --work-dir "$TQA_RUNS/work-fast" \
+~~~bash
+export TQA_REPO="${TQA_REPO:-$PWD}"
+export TQA_DATA="/data/tumorquantai-four-slides"
+
+cd "$TQA_REPO"
+./tumorquantai inspect "$TQA_DATA/slides" \
+  --sample-sheet "$TQA_DATA/slides/samples.csv" \
+  --output "$TQA_DATA/inspection"
+~~~
+
+Open inspection/INSPECTION.html and inspection/inspection_manifest.csv.
+CSV means comma-separated values. Confirm exactly four distinct samples,
+complete L0/L2 pairs, and source MPP 0.261780.
+
+## Run 10% of tissue tiles
+
+Source MPP describes each input image. Target/model MPP is a separate setting.
+The fast preset selects a reproducible 10% of detected tissue tiles; its raw
+counts are not whole-slide counts and must not be multiplied by ten. Results
+and resumable Nextflow work use separate directories.
+
+After authorized HistoPLUS access is configured:
+
+~~~bash
+export TQA_REPO="${TQA_REPO:-$PWD}"
+export TQA_DATA="/data/tumorquantai-four-slides"
+
+cd "$TQA_REPO"
+./tumorquantai run "$TQA_DATA/slides" \
+  --sample-sheet "$TQA_DATA/slides/samples.csv" \
+  --output "$TQA_DATA/results-10-percent" \
+  --work-dir "$TQA_DATA/work-10-percent" \
   --preset fast \
-  --source-mpp 0.261780
+  --source-mpp 0.261780 \
+  --profile auto
+~~~
 
-./tumorquantai status "$TQA_RUNS/fast-four-slides"
-```
+The auto profile selects an available execution path. Use --cpu for a central
+processing unit (CPU), or --gpu for a graphics processing unit (GPU) after
+doctor confirms the NVIDIA runtime.
 
-Expected audit: four included, zero excluded. Review every slide overlay; a
-cohort matrix alone is not sufficient QC. Ten-percent counts are sampled-tile
-counts and must not be multiplied by ten.
+## Check the results
 
-## Stop, resume, and clean up
+~~~bash
+export TQA_DATA="/data/tumorquantai-four-slides"
 
-Press **Ctrl+C** and repeat the identical command. Existing verified downloads,
-conversion state, and valid Nextflow tasks are reused. Keep `work-fast` while
-resume matters. Remove only the named four-slide result/work paths after
-verification; retain shared raw/conversion data if continuing.
+./tumorquantai status "$TQA_DATA/results-10-percent"
+./tumorquantai report "$TQA_DATA/results-10-percent"
+~~~
 
-**Next:** read the [full-collection resource warning](full-collection.md)
-before deciding whether 100% processing is scientifically and operationally
-justified.
+Require four included samples and no excluded, failed, or incomplete sample in
+aggregated_celltypes/sample_aggregation_audit.csv. Review every overlay as
+visual quality control (QC) before comparing the count and fraction matrices.
+
+A completed sample with zero cells of a class is distinct from a failed or
+missing sample, which has no numeric matrix column.
+
+## Resume an interrupted run
+
+Press Ctrl+C to stop. Repeat the conversion or run command with the same paths.
+Verified TIFF files and valid Nextflow tasks are reused. Keep
+work-10-percent until resume is no longer needed. Remove only the named
+four-slide directory after verifying its mount.
+
+Next, read the [storage requirements for all 21 slides](full-collection.md).

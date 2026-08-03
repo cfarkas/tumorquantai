@@ -356,12 +356,47 @@ def sample_id_for(path: Path) -> str:
     return value
 
 
-def select_inputs(paths: list[Path], requested: list[str]) -> list[Path]:
+def manifest_sample_id_for(
+    path: Path, manifest_rows: dict[str, MdsManifestRow]
+) -> str:
+    """Resolve a public filename or downloader-created path to its manifest alias."""
+
+    matches = {
+        row.alias
+        for row in manifest_rows.values()
+        if path.name == row.zenodo_filename
+        or (
+            path.name.casefold() == "1.mds"
+            and path.parent.name == row.alias
+        )
+    }
+    if not matches:
+        raise MdsExportError(
+            "MDS input does not match a manifest zenodo_filename or "
+            f"legacy alias/1.mds path: {path}"
+        )
+    if len(matches) != 1:
+        raise MdsExportError(f"Ambiguous manifest identity for MDS input: {path}")
+    return next(iter(matches))
+
+
+def select_inputs(
+    paths: list[Path],
+    requested: list[str],
+    manifest_rows: dict[str, MdsManifestRow] | None = None,
+) -> list[Path]:
     by_sample: dict[str, Path] = {}
     for path in paths:
-        sample_id = sample_id_for(path)
+        sample_id = (
+            manifest_sample_id_for(path, manifest_rows)
+            if manifest_rows
+            else sample_id_for(path)
+        )
         if sample_id in by_sample:
-            raise MdsExportError(f"Duplicate sample ID in MDS inputs: {sample_id}")
+            raise MdsExportError(
+                f"Ambiguous MDS inputs for sample {sample_id}: "
+                f"{by_sample[sample_id]} and {path}"
+            )
         by_sample[sample_id] = path
     if not requested:
         return [by_sample[key] for key in sorted(by_sample)]
@@ -638,7 +673,12 @@ def _manifest_by_alias(path: Path | None) -> dict[str, MdsManifestRow]:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", required=True, type=Path, help="MDS file or directory")
+    parser.add_argument(
+        "--input",
+        required=True,
+        type=Path,
+        help="Downloaded MDS file, legacy raw tree, or directory of MDS files",
+    )
     parser.add_argument("--output-dir", required=True, type=Path)
     parser.add_argument(
         "--manifest",
@@ -684,7 +724,10 @@ def run(args: argparse.Namespace) -> list[dict[str, object]]:
     if not requested_levels or requested_levels[0] < 0:
         raise MdsExportError("--levels must contain non-negative integers")
     compression_settings(args.compression, args.compression_level)
-    inputs = select_inputs(discover_inputs(args.input), args.sample_id)
+    manifest_rows = _manifest_by_alias(args.manifest)
+    inputs = select_inputs(
+        discover_inputs(args.input), args.sample_id, manifest_rows or None
+    )
     if args.expected_count is not None:
         if args.expected_count <= 0:
             raise MdsExportError("--expected-count must be greater than zero")
@@ -692,7 +735,6 @@ def run(args: argparse.Namespace) -> list[dict[str, object]]:
             raise MdsExportError(
                 f"Expected {args.expected_count} selected MDS files, found {len(inputs)}"
             )
-    manifest_rows = _manifest_by_alias(args.manifest)
     if not manifest_rows and args.source_mpp is None:
         raise MdsExportError("Provide --manifest or --source-mpp")
 
@@ -712,7 +754,11 @@ def run(args: argparse.Namespace) -> list[dict[str, object]]:
     verified_keys: set[tuple[str, int]] = set()
 
     for path in inputs:
-        sample_id = sample_id_for(path)
+        sample_id = (
+            manifest_sample_id_for(path, manifest_rows)
+            if manifest_rows
+            else sample_id_for(path)
+        )
         manifest_row = manifest_rows.get(sample_id)
         if manifest_rows and manifest_row is None:
             raise MdsExportError(f"Input alias is absent from manifest: {sample_id}")

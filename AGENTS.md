@@ -7,12 +7,12 @@ not clinically validated.
 
 ## Entry points
 
-- Beginner interface: `./tumorquantai doctor|demo|inspect|run|status|report`
+- Main command-line interface: `./tumorquantai doctor|demo|inspect|run|status|report`
 - Public one-slide path: `./tumorquantai quickstart --output MOUNTED_PATH`
 - Compatible expert interfaces: `./run.sh` and `nextflow run .`
 - Scientific worker: `lazyslide_histoplus_wsi_celltype.py`
 
-Keep the beginner interface a thin, testable wrapper. Do not duplicate or
+Keep the main command-line interface a thin, testable wrapper. Do not duplicate or
 silently change the biological/image-analysis engine.
 
 ## Scientific invariants

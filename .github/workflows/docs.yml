@@ -8,12 +8,18 @@ on:
       - CITATION.cff
       - CITATIONS.md
       - docs/**
+      - examples/parameters.yml
+      - examples/lymphoma/*.sha256
+      - examples/lymphoma/*.urls.txt
       - mkdocs.yml
+      - nextflow_schema.json
       - requirements-docs.txt
       - requirements-tutorial.txt
       - tumorquantai
       - bin/tumorquantai_core.py
+      - scripts/check_docs_language.py
       - scripts/check_repository_hygiene.py
+      - scripts/generate_zenodo_download_files.py
       - .github/workflows/docs.yml
   pull_request:
     paths:
@@ -21,12 +27,18 @@ on:
       - CITATION.cff
       - CITATIONS.md
       - docs/**
+      - examples/parameters.yml
+      - examples/lymphoma/*.sha256
+      - examples/lymphoma/*.urls.txt
       - mkdocs.yml
+      - nextflow_schema.json
       - requirements-docs.txt
       - requirements-tutorial.txt
       - tumorquantai
       - bin/tumorquantai_core.py
+      - scripts/check_docs_language.py
       - scripts/check_repository_hygiene.py
+      - scripts/generate_zenodo_download_files.py
       - .github/workflows/docs.yml
   workflow_dispatch:
 
@@ -51,6 +63,9 @@ jobs:
 
       - name: Install documentation dependencies
         run: python -m pip install --requirement requirements-docs.txt
+
+      - name: Check documentation language and shell examples
+        run: python scripts/check_docs_language.py
 
       - name: Build documentation strictly
         run: python -m mkdocs build --strict --site-dir site

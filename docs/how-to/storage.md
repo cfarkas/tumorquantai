@@ -50,7 +50,7 @@ Use distinct paths:
 └── work-fast/
 ```
 
-When `--work-dir` is omitted, the beginner CLI chooses an output-associated
+When `--work-dir` is omitted, the main CLI chooses an output-associated
 location on the same selected filesystem. Fast and full must have distinct
 result/work pairs.
 

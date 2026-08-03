@@ -76,5 +76,13 @@
     "log_level": {"type": "string", "enum": ["DEBUG", "INFO", "WARNING", "ERROR"], "default": "INFO", "description": "Worker log verbosity."},
     "allow_mixed_sampling": {"type": "boolean", "default": false, "description": "Allow aggregation across differing percentages or seeds."}
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "x-tumorquantai-visibility": {
+    "default": "public",
+    "internal": {
+      "worker_script": "Executable-code override retained only for workflow tests and compatible direct Nextflow automation.",
+      "docker_run_options": "Trusted launcher-generated bind mounts; accepting user text here would permit unsafe Docker option injection.",
+      "histoplus_weight_sha256": "Computed by run.sh from the authorized local weight; user input would break provenance."
+    }
+  }
 }

@@ -22,3 +22,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/check_external_resources.py
+
+      - name: Probe direct Zenodo WSI URLs without downloading slides
+        run: python scripts/check_zenodo_wsi_urls.py

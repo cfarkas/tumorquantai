@@ -376,6 +376,37 @@ def test_include_is_forwarded_and_resume_command_is_complete_and_private_in_json
     assert "<absolute-path>" in shareable["resume_command"]
 
 
+def test_resume_command_preserves_explicit_public_overrides_without_weight_path(
+    tmp_path: Path,
+) -> None:
+    environment, _capture = fake_nextflow(tmp_path)
+    output = tmp_path / "resume-public-overrides"
+    private_weight = tmp_path / "private" / "weight.pt"
+    result = invoke(
+        tmp_path, "run", str(REPOSITORY / "tests/fixtures"),
+        "--output", str(output), "--source-mpp", "0.261780",
+        "--profile", "local", "--dry-run",
+        "--overlap", "0.6", "--pyramidal-jpeg-q", "77",
+        "--save-json", "--no-convert-to-pyramidal",
+        "--local-weight", str(private_weight),
+        environment=environment,
+    )
+    assert result.returncode == core.EXIT_OK, result.stderr
+
+    resume = core.load_run_manifest(output)["resume_command"]
+    for expected in (
+        "--overlap 0.6",
+        "--pyramidal-jpeg-q 77",
+        "--save-json",
+        "--no-convert-to-pyramidal",
+    ):
+        assert expected in resume
+    assert resume.count("--overlap") == 1
+    assert resume.count("--source-mpp") == 1
+    assert "--local-weight" not in resume
+    assert str(private_weight) not in resume
+
+
 def test_protected_expert_override_is_rejected_before_output_creation(tmp_path: Path) -> None:
     environment, _capture = fake_nextflow(tmp_path)
     output = tmp_path / "protected"
@@ -941,7 +972,7 @@ def test_quickstart_authorized_path_reaches_exact_one_sample_audit(
         "ready": True, "method": "token_file", "weight": None, "token": tmp_path / "token",
     })
 
-    def fake_beginner(args: SimpleNamespace) -> int:
+    def fake_analysis(args: SimpleNamespace) -> int:
         aggregate = args.output / "aggregated_celltypes"
         aggregate.mkdir(parents=True)
         (aggregate / "sample_aggregation_audit.csv").write_text(
@@ -961,7 +992,7 @@ def test_quickstart_authorized_path_reaches_exact_one_sample_audit(
         })
         return core.EXIT_OK
 
-    monkeypatch.setitem(namespace["cmd_quickstart"].__globals__, "run_beginner", fake_beginner)
+    monkeypatch.setitem(namespace["cmd_quickstart"].__globals__, "run_analysis", fake_analysis)
     code = namespace["cmd_quickstart"](_quickstart_args(tmp_path))
     assert code == core.EXIT_OK
     manifest = core.load_run_manifest(tmp_path / "mounted-tutorial")
@@ -981,7 +1012,7 @@ def test_quickstart_child_failure_is_visible_at_tutorial_root(
         "ready": True, "method": "token_file", "weight": None, "token": tmp_path / "token",
     })
 
-    def failed_beginner(args: SimpleNamespace) -> int:
+    def failed_analysis(args: SimpleNamespace) -> int:
         core.write_run_manifest(args.output, {
             "completion_status": "failed", "execution_profile": "cpu",
             "container_identity": core.CPU_CONTAINER,
@@ -989,7 +1020,7 @@ def test_quickstart_child_failure_is_visible_at_tutorial_root(
         return core.EXIT_WORKFLOW
 
     monkeypatch.setitem(
-        namespace["cmd_quickstart"].__globals__, "run_beginner", failed_beginner
+        namespace["cmd_quickstart"].__globals__, "run_analysis", failed_analysis
     )
     code = namespace["cmd_quickstart"](_quickstart_args(tmp_path))
     assert code == core.EXIT_WORKFLOW

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standard-library helpers for the beginner TumorQuantAI command.
+"""Standard-library helpers for the TumorQuantAI command.
 
 This module deliberately contains orchestration and reporting only.  Scientific
 image processing remains in the existing worker and Nextflow workflow.
