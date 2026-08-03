@@ -12,6 +12,45 @@ if old not in text:
     raise SystemExit("Unable to add Git to the versioned Conda environment")
 text = text.replace(old, new, 1)
 
+old = "prefix = config.split(marker, 1)[0]\nruntime_config = r'''process {\n"
+new = '''prefix = config.split(marker, 1)[0]
+if "    conda_environment = " not in prefix:
+    prefix = prefix.replace(
+        "    docker_shm_size = '2g'\\n",
+        "    docker_shm_size = '2g'\\n"
+        "    conda_environment = \\\"${projectDir}/environment.yml\\\"\\n",
+        1,
+    )
+runtime_config = r'''process {
+'''
+if old not in text:
+    raise SystemExit("Unable to add the configurable Conda environment path")
+text = text.replace(old, new, 1)
+
+old = '                conda = "${projectDir}/environment.yml"\n'
+new = '                conda = params.conda_environment\n'
+if old not in text:
+    raise SystemExit("Unable to make the Conda environment path configurable")
+text = text.replace(old, new, 1)
+
+marker = "# ---------------------------------------------------------------------------\n# Poetry launcher\n# ---------------------------------------------------------------------------\n"
+addition = '''write(
+    "environment-ci.yml",
+    """name: tumorquantai-runtime-ci
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pandas>=2.2,<3
+  - pyyaml>=6,<7
+""",
+)
+
+'''
+if marker not in text:
+    raise SystemExit("Unable to add the lightweight Conda route-test environment")
+text = text.replace(marker, addition + marker, 1)
+
 old = '''if [[ -z "${CONTAINER_IMAGE}" && ( "${BACKEND}" == "docker" || "${BACKEND}" == "singularity" ) ]]; then
   if [[ "${PROFILE}" == "gpu" ]]; then
     CONTAINER_IMAGE="carlosfarkas/lazyslide-histoplus@sha256:c4b02485d4549a56348cd09995ce0788a6acc8a3e1e600e986b644231a95bd25"
