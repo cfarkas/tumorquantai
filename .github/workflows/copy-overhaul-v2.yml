@@ -1,0 +1,69 @@
+name: Copy documentation overhaul onto current main
+
+on:
+  push:
+    branches:
+      - agent/oncotracer-style-overhaul
+    paths:
+      - .github/workflows/copy-overhaul-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: agent/oncotracer-style-overhaul
+          fetch-depth: 0
+
+      - name: Copy the overhaul files onto the clean main-based branch
+        run: |
+          git fetch origin main agent/oncotracer-style-overhaul-v2
+          git switch -C agent/oncotracer-style-overhaul-v2 \
+            origin/agent/oncotracer-style-overhaul-v2
+
+          git checkout origin/agent/oncotracer-style-overhaul -- \
+            README.md \
+            mkdocs.yml \
+            docs/index.md \
+            docs/installation.md \
+            docs/quick_start.md \
+            docs/full_tutorial.md \
+            docs/own_data.md \
+            docs/inputs.md \
+            docs/running.md \
+            docs/outputs.md \
+            docs/gallery.md \
+            docs/citation_research_use.md \
+            docs/developer_guide.md \
+            docs/QUICKSTART.md \
+            docs/TUTORIAL_LYMPHOMA_ZENODO.md \
+            docs/start-here/public-slide.md \
+            docs/start-here/own-slides.md \
+            docs/tutorials/one-public-slide.md \
+            docs/tutorials/four-public-slides.md \
+            docs/tutorials/full-collection.md \
+            docs/stylesheets/tumorquantai.css \
+            docs/assets/tutorial/quickstart_wsi_flow.svg \
+            docs/assets/tutorial/full_lymphoma_flow.svg \
+            docs/assets/tutorial/input_layout.svg \
+            docs/assets/tutorial/sampling_presets.svg \
+            docs/assets/tutorial/output_map.svg \
+            examples/quickstart/README.md \
+            examples/quickstart/verify_outputs.py \
+            examples/lymphoma/README.md \
+            examples/lymphoma/verify_fast21_outputs.py \
+            scripts/check_docs_language.py \
+            scripts/check_oncotracer_style_docs.py \
+            .github/workflows/docs-style.yml \
+            .github/workflows/quickstart-one-wsi.yml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          git commit -m "Docs: rebuild TumorQuantAI public tutorials"
+          git push origin HEAD:agent/oncotracer-style-overhaul-v2
