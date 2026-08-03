@@ -60,10 +60,19 @@ text = text.replace("add_execution_backend_options(run)", "add_execution_backend
 
 # The migration adds backend explicitly to the QuickStart run namespace and
 # then updates the remaining function calls. Avoid adding it twice.
-old = r"r'profile=args\\.profile(?=\\s*[,\\)])',"
-new = r"r'profile=args\\.profile(?!\\s*,\\s*backend=)(?=\\s*[,\\)])',"
+old = r"r'profile=args\.profile(?=\s*[,\)])',"
+new = r"r'profile=args\.profile(?!\s*,\s*backend=)(?=\s*[,\)])',"
 if old not in text:
     raise SystemExit("Unable to harden the QuickStart backend call replacement")
+text = text.replace(old, new, 1)
+
+old = "    assert 'conda = \"${projectDir}/environment.yml\"' in config\n"
+new = (
+    '    assert "conda = params.conda_environment" in config\n'
+    '    assert "conda_environment" in config\n'
+)
+if old not in text:
+    raise SystemExit("Unable to update the runtime-profile Conda assertion")
 text = text.replace(old, new, 1)
 
 old = '''if [[ -z "${CONTAINER_IMAGE}" && ( "${BACKEND}" == "docker" || "${BACKEND}" == "singularity" ) ]]; then
