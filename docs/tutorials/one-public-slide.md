@@ -1,71 +1,74 @@
-# Review one public slide
+# Review one public WSI at 1%
 
-This page explains the files produced by the 1% sample-022 run. Complete
-[run one public slide](../start-here/public-slide.md) before using these checks.
+Complete [QuickStart Example 1](../quick_start.md), including the optional authorized inference stage, before using this review checklist.
 
-## Check the inspection
+## 1. Open the top-level report
 
-Open inspection/INSPECTION.html and inspection/inspection_manifest.csv.
-Comma-separated values (CSV) in the manifest should identify exactly one
-whole-slide image (WSI), its image-pyramid levels L0 and L2 as Tagged Image
-File Format (TIFF) files, and source resolution 0.261780 micrometres per pixel
-(MPP). L0 is the highest-resolution image used for analysis; L2 is its
-lower-resolution companion.
+```bash
+# Set the tutorial root used by QuickStart Example 1.
+TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart
 
-Stop before inference if the sample is duplicated, either image is missing, or
-source MPP is absent or inconsistent.
+# Regenerate and open the portable report.
+./tumorquantai report "$TQA_ROOT/smoke-results"
+```
 
-## Check the overlay
+Open `$TQA_ROOT/START_HERE.html` and `$TQA_ROOT/smoke-results/START_HERE.html`. Confirm the fixed public sample, 1% preset, recorded seed, source MPP, and completion state.
 
-Open
-results-1-percent/TumorQuantAI_LymphomaWSI_022/overlays/celltypes_overview_and_zoom.png.
-This image supports visual quality control (QC): check orientation, tissue
-selection, and alignment of predicted points with cells.
+## 2. Review the overlay
 
-HistoPLUS classes are model predictions, not pathologist ground truth. The
-public dataset has no diagnostic annotations.
+Open:
 
-## Check scale and sampling
+```text
+smoke-results/TumorQuantAI_LymphomaWSI_022/overlays/celltypes_overview_and_zoom.png
+```
 
-Open
-results-1-percent/TumorQuantAI_LymphomaWSI_022/summary/summary.json.
-JSON means JavaScript Object Notation. Confirm:
+Check slide orientation, selected tissue, visual alignment, artifacts, and marker placement. HistoPLUS classes are predictions, not pathologist ground truth.
 
-- source MPP is 0.261780;
+## 3. Review scale and sampling
+
+Open:
+
+```text
+smoke-results/TumorQuantAI_LymphomaWSI_022/summary/summary.json
+```
+
+Confirm:
+
+- source MPP is `0.261780`;
 - target/model MPP is recorded separately;
 - sampling is 1% of detected tissue tiles;
 - the random seed is recorded;
-- the pinned model revision and container identity are present; and
-- the sample is complete.
+- model revision, weight identity, container, and software identity are present;
+- the sample completed successfully.
 
-Source MPP describes the input pixel size. Target MPP describes the scale
-presented to the model. Counts from this run describe sampled tiles, not the
-whole slide, and must not be multiplied by 100.
+Counts from this run describe sampled tissue tiles and must not be multiplied by 100.
 
-## Check the aggregation audit
+## 4. Review per-slide counts
 
-Open
-results-1-percent/aggregated_celltypes/sample_aggregation_audit.csv. It should
-contain one included sample and no failed or incomplete sample.
+Open:
 
-A completed sample may contain zero cells of a class. A failed, missing, or
-incomplete sample has no numeric matrix column and cannot be interpreted as
-zero.
+```text
+smoke-results/TumorQuantAI_LymphomaWSI_022/cell_types/class_counts.csv
+```
 
-## Check status or resume
+A class count of zero is interpretable only because the sample completed. Review the overlay before treating any class difference as biological.
 
-Run this from the repository root. Replace /data only if the example was stored
-elsewhere.
+## 5. Review the aggregation audit
 
-~~~bash
-export TQA_DATA="/data/tumorquantai-one-slide"
+Open:
 
-./tumorquantai status "$TQA_DATA/results-1-percent"
-./tumorquantai report "$TQA_DATA/results-1-percent"
-~~~
+```text
+smoke-results/aggregated_celltypes/sample_aggregation_audit.csv
+```
 
-If the run was interrupted, repeat the original run command with the same
-result and work directories. Nextflow reuses valid cached tasks.
+Require exactly one included sample and no failed, incomplete, pending, or excluded sample.
 
-Next, [run four public slides](four-public-slides.md) only after the inspection,
-overlay, summary, and audit checks pass.
+## 6. Run the verifier
+
+```bash
+# Verify the one-slide output structure and sampling metadata.
+python3 examples/quickstart/verify_outputs.py \
+  --tutorial-root "$TQA_ROOT"
+```
+
+Continue to [the full 21-slide tutorial at 10%](../full_tutorial.md) only after this review passes.

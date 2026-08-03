@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1260 500" role="img" aria-labelledby="title desc">
+  <title id="title">TumorQuantAI output map</title>
+  <desc id="desc">A diagram groups TumorQuantAI outputs into the portable start page, per-slide overlay and summary files, cell coordinates and counts, and cohort aggregation tables with an audit.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#172554"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#020617" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+  <rect width="1260" height="500" rx="28" fill="url(#bg)"/>
+  <text x="62" y="67" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="38" font-weight="760">Open these outputs first</text>
+  <text x="64" y="105" fill="#bae6fd" font-family="system-ui, sans-serif" font-size="19">Begin with status and visual QC, then review counts, coordinates, provenance, and the aggregation audit.</text>
+
+  <g font-family="system-ui, sans-serif" filter="url(#shadow)">
+    <g transform="translate(55 150)">
+      <rect width="260" height="278" rx="18" fill="#f8fafc"/>
+      <rect x="34" y="31" width="192" height="86" rx="9" fill="#dbeafe"/>
+      <path d="M55 55h151M55 76h117M55 97h139" stroke="#1d4ed8" stroke-width="8" stroke-linecap="round"/>
+      <text x="34" y="158" fill="#0f172a" font-size="22" font-weight="760">START_HERE.html</text>
+      <text x="34" y="190" fill="#475569" font-size="16">run status</text>
+      <text x="34" y="216" fill="#475569" font-size="16">existing output links</text>
+      <text x="34" y="242" fill="#475569" font-size="16">resume guidance</text>
+    </g>
+
+    <g transform="translate(353 150)">
+      <rect width="260" height="278" rx="18" fill="#f8fafc"/>
+      <rect x="34" y="31" width="192" height="105" rx="9" fill="#fdf2f8"/>
+      <path d="M46 92c35-61 65 27 99-31 18-31 32 11 67-14" fill="none" stroke="#db2777" stroke-width="11" stroke-linecap="round"/>
+      <circle cx="75" cy="75" r="8" fill="#0ea5e9"/>
+      <circle cx="129" cy="95" r="9" fill="#14b8a6"/>
+      <circle cx="178" cy="68" r="8" fill="#f59e0b"/>
+      <text x="34" y="175" fill="#0f172a" font-size="22" font-weight="760">overlay PNG</text>
+      <text x="34" y="207" fill="#475569" font-size="16">orientation</text>
+      <text x="34" y="233" fill="#475569" font-size="16">alignment</text>
+      <text x="34" y="259" fill="#475569" font-size="16">cell-type QC</text>
+    </g>
+
+    <g transform="translate(651 150)">
+      <rect width="260" height="278" rx="18" fill="#f8fafc"/>
+      <rect x="35" y="31" width="190" height="106" rx="9" fill="#dcfce7"/>
+      <path d="M58 55h144M58 78h103M58 101h126M58 124h86" stroke="#16a34a" stroke-width="8" stroke-linecap="round"/>
+      <text x="34" y="175" fill="#0f172a" font-size="22" font-weight="760">summary + cells</text>
+      <text x="34" y="207" fill="#475569" font-size="16">MPP and sampling</text>
+      <text x="34" y="233" fill="#475569" font-size="16">seed and provenance</text>
+      <text x="34" y="259" fill="#475569" font-size="16">coordinates and counts</text>
+    </g>
+
+    <g transform="translate(949 150)">
+      <rect width="260" height="278" rx="18" fill="#f8fafc"/>
+      <rect x="35" y="31" width="190" height="106" rx="9" fill="#ede9fe"/>
+      <path d="M35 66h190M35 101h190M83 31v106M145 31v106" stroke="#7c3aed" stroke-width="4"/>
+      <text x="34" y="175" fill="#0f172a" font-size="22" font-weight="760">cohort tables</text>
+      <text x="34" y="207" fill="#475569" font-size="16">aggregation audit</text>
+      <text x="34" y="233" fill="#475569" font-size="16">counts matrix</text>
+      <text x="34" y="259" fill="#475569" font-size="16">fractions matrix</text>
+    </g>
+  </g>
+
+  <text x="630" y="466" text-anchor="middle" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="17">A failed or incomplete slide remains in the audit and is excluded from numeric matrices; it is never converted into a biological zero.</text>
+</svg>
