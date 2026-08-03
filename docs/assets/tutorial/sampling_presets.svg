@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 470" role="img" aria-labelledby="title desc">
+  <title id="title">TumorQuantAI sampling presets</title>
+  <desc id="desc">Three tile grids compare the smoke preset at one percent, fast preset at ten percent, and full preset at one hundred percent of detected tissue tiles.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#0f4c5c"/>
+    </linearGradient>
+    <pattern id="grid" width="31" height="31" patternUnits="userSpaceOnUse">
+      <rect width="28" height="28" rx="4" fill="#e2e8f0"/>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#020617" flood-opacity="0.34"/>
+    </filter>
+  </defs>
+  <rect width="1240" height="470" rx="28" fill="url(#bg)"/>
+  <text x="62" y="67" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="38" font-weight="760">Sampling presets</text>
+  <text x="64" y="105" fill="#bae6fd" font-family="system-ui, sans-serif" font-size="19">Percentages apply to detected tissue tiles. The recorded seed makes sampled selections reproducible.</text>
+
+  <g font-family="system-ui, sans-serif" text-anchor="middle">
+    <g transform="translate(65 145)" filter="url(#shadow)">
+      <rect width="335" height="265" rx="20" fill="#f8fafc"/>
+      <rect x="45" y="35" width="245" height="125" rx="10" fill="url(#grid)"/>
+      <rect x="48" y="38" width="28" height="28" rx="4" fill="#14b8a6"/>
+      <text x="167" y="200" fill="#0f172a" font-size="27" font-weight="780">smoke · 1%</text>
+      <text x="167" y="230" fill="#475569" font-size="16">first authorized WSI check</text>
+    </g>
+
+    <g transform="translate(452 145)" filter="url(#shadow)">
+      <rect width="335" height="265" rx="20" fill="#f8fafc"/>
+      <rect x="45" y="35" width="245" height="125" rx="10" fill="url(#grid)"/>
+      <g fill="#0ea5e9">
+        <rect x="48" y="38" width="28" height="28" rx="4"/>
+        <rect x="110" y="38" width="28" height="28" rx="4"/>
+        <rect x="203" y="38" width="28" height="28" rx="4"/>
+        <rect x="79" y="69" width="28" height="28" rx="4"/>
+        <rect x="172" y="69" width="28" height="28" rx="4"/>
+        <rect x="265" y="69" width="28" height="28" rx="4"/>
+        <rect x="141" y="100" width="28" height="28" rx="4"/>
+        <rect x="234" y="100" width="28" height="28" rx="4"/>
+      </g>
+      <text x="167" y="200" fill="#0f172a" font-size="27" font-weight="780">fast · 10%</text>
+      <text x="167" y="230" fill="#475569" font-size="16">reproducible cohort analysis</text>
+    </g>
+
+    <g transform="translate(839 145)" filter="url(#shadow)">
+      <rect width="335" height="265" rx="20" fill="#f8fafc"/>
+      <rect x="45" y="35" width="245" height="125" rx="10" fill="#f9a8d4"/>
+      <path d="M45 66h245M45 97h245M45 128h245M76 35v125M107 35v125M138 35v125M169 35v125M200 35v125M231 35v125M262 35v125" stroke="#f8fafc" stroke-width="3"/>
+      <text x="167" y="200" fill="#0f172a" font-size="27" font-weight="780">full · 100%</text>
+      <text x="167" y="230" fill="#475569" font-size="16">after smaller runs pass review</text>
+    </g>
+  </g>
+
+  <text x="620" y="450" text-anchor="middle" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="17">Sampled-tile counts are not whole-slide estimates and should not be multiplied by 100 ÷ sampling percentage.</text>
+</svg>

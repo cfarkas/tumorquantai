@@ -33,7 +33,7 @@
 }
 
 .md-content {
-  max-width: 64rem;
+  max-width: 66rem;
 }
 
 .md-typeset h1 {
@@ -70,6 +70,7 @@
 .md-typeset .highlight {
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 0.5rem;
+  box-shadow: 0 0.25rem 0.8rem rgb(15 23 42 / 5%);
 }
 
 .md-typeset table:not([class]) {
@@ -124,6 +125,7 @@
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 0.65rem;
   border-top: 4px solid var(--tqa-teal);
+  min-height: 10rem;
   padding: 0.35rem 1rem 0.8rem;
 }
 
@@ -135,6 +137,21 @@
   margin-top: 0.65rem;
 }
 
+.md-typeset img[src*="assets/tutorial/"] {
+  background: #0f172a;
+  border: 1px solid rgb(148 163 184 / 35%);
+  border-radius: 0.8rem;
+  box-shadow: 0 0.8rem 2rem rgb(15 23 42 / 14%);
+  display: block;
+  margin: 1.25rem auto 1.8rem;
+  width: 100%;
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  border-radius: 0.55rem;
+}
+
 @media screen and (min-width: 76.25em) {
   .md-sidebar--secondary {
     border-left: 1px solid var(--md-default-fg-color--lightest);
@@ -144,6 +161,10 @@
 @media screen and (max-width: 52rem) {
   .tqa-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .tqa-summary-card {
+    min-height: 0;
   }
 
   .md-typeset table:not([class]) {
