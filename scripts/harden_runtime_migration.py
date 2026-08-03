@@ -58,6 +58,14 @@ if "add_execution_profile_options(run)" not in text:
 text = text.replace("add_execution_profile_options(run)", "add_execution_profile_options(execution)")
 text = text.replace("add_execution_backend_options(run)", "add_execution_backend_options(execution)")
 
+# The migration adds backend explicitly to the QuickStart run namespace and
+# then updates the remaining function calls. Avoid adding it twice.
+old = r"r'profile=args\\.profile(?=\\s*[,\\)])',"
+new = r"r'profile=args\\.profile(?!\\s*,\\s*backend=)(?=\\s*[,\\)])',"
+if old not in text:
+    raise SystemExit("Unable to harden the QuickStart backend call replacement")
+text = text.replace(old, new, 1)
+
 old = '''if [[ -z "${CONTAINER_IMAGE}" && ( "${BACKEND}" == "docker" || "${BACKEND}" == "singularity" ) ]]; then
   if [[ "${PROFILE}" == "gpu" ]]; then
     CONTAINER_IMAGE="carlosfarkas/lazyslide-histoplus@sha256:c4b02485d4549a56348cd09995ce0788a6acc8a3e1e600e986b644231a95bd25"
