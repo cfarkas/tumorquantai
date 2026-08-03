@@ -35,6 +35,7 @@ jobs:
 
       - name: Apply runtime transformation
         run: |
+          python scripts/harden_runtime_migration.py
           python scripts/apply_oncotracer_runtime.py
           chmod +x tumorquantai run.sh
 
@@ -79,6 +80,7 @@ jobs:
 
       - name: Remove temporary migration files
         run: |
+          rm -f scripts/harden_runtime_migration.py
           rm -f scripts/apply_oncotracer_runtime.py
           rm -f .github/workflows/apply-oncotracer-runtime.yml
 
