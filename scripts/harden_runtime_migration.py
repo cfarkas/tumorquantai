@@ -13,7 +13,7 @@ if old not in text:
 text = text.replace(old, new, 1)
 
 old = "prefix = config.split(marker, 1)[0]\nruntime_config = r'''process {\n"
-new = '''prefix = config.split(marker, 1)[0]
+new = """prefix = config.split(marker, 1)[0]
 if "    conda_environment = " not in prefix:
     prefix = prefix.replace(
         "    docker_shm_size = '2g'\\n",
@@ -22,7 +22,7 @@ if "    conda_environment = " not in prefix:
         1,
     )
 runtime_config = r'''process {
-'''
+"""
 if old not in text:
     raise SystemExit("Unable to add the configurable Conda environment path")
 text = text.replace(old, new, 1)
