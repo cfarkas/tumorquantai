@@ -52,7 +52,7 @@ Edit only the first path:
 
 ```bash
 # Set the only path that must be changed and remember the repository root.
-export TQA_ROOT=/path/to/mounted/storage/tumorquantai-lymphoma-21
+TQA_ROOT=/path/to/mounted/storage/tumorquantai-lymphoma-21
 REPO_ROOT="$(pwd)"
 
 # Create and verify the selected storage directory.

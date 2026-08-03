@@ -46,24 +46,7 @@ python -m pip install -r requirements-tutorial.txt
 # Set the only path that must be changed.
 TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart
 
-# Create the exact quickstart download layout.
-mkdir -p "$TQA_ROOT/download/raw/TumorQuantAI_LymphomaWSI_022"
-
-# Download or resume the public manifest and fixed sample 022.
-wget -c -O "$TQA_ROOT/download/tumorquantai_lymphoma_mds_manifest.csv" \
-  "https://zenodo.org/records/21466410/files/tumorquantai_lymphoma_mds_manifest.csv?download=1"
-wget -c -O "$TQA_ROOT/download/raw/TumorQuantAI_LymphomaWSI_022/1.mds" \
-  "https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_022.mds?download=1"
-
-# Verify the published manifest and WSI identity.
-echo "ad9a9472e8beb302f8b9ba2b3359bacc  $TQA_ROOT/download/tumorquantai_lymphoma_mds_manifest.csv" \
-  | md5sum -c -
-test "$(stat -c %s "$TQA_ROOT/download/raw/TumorQuantAI_LymphomaWSI_022/1.mds")" \
-  -eq 125350400
-echo "db2988b5c6bc791510cec4127106509e604e577feafdb15b94c149043ed7067a  $TQA_ROOT/download/raw/TumorQuantAI_LymphomaWSI_022/1.mds" \
-  | sha256sum -c -
-
-# Reuse the verified files, convert L0/L2, and inspect without inference.
+# Download, verify, convert, and inspect one public WSI without inference.
 ./tumorquantai quickstart \
   --output "$TQA_ROOT" \
   --cpu \

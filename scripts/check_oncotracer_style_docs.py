@@ -47,6 +47,8 @@ FORBIDDEN = (
     "REPO_DIR=",
     "$REPO_DIR",
     "/home/student/",
+    "/home/server/",
+    "/media/server/",
     "screen -S",
     "screen -r",
 )
