@@ -23,6 +23,9 @@ concurrency:
   group: tumorquantai-one-wsi-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  TQA_ROOT: /mnt/tumorquantai-data/quickstart
+
 jobs:
   prepare-public-wsi:
     runs-on: ubuntu-24.04
@@ -36,6 +39,14 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL || true
           df -h
 
+      - name: Create a non-root mounted data path
+        run: |
+          sudo mkdir -p /mnt/tumorquantai-source /mnt/tumorquantai-data
+          sudo mount --bind /mnt/tumorquantai-source /mnt/tumorquantai-data
+          sudo chown -R "$(id -u):$(id -g)" /mnt/tumorquantai-source /mnt/tumorquantai-data
+          findmnt -T /mnt/tumorquantai-data
+          df -hT /mnt/tumorquantai-data
+
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -47,8 +58,6 @@ jobs:
         run: python -m pip install --requirement requirements-tutorial.txt
 
       - name: Download, verify, convert, and inspect sample 022
-        env:
-          TQA_ROOT: ${{ runner.temp }}/tumorquantai-quickstart
         run: |
           ./tumorquantai quickstart \
             --output "$TQA_ROOT" \
@@ -61,13 +70,17 @@ jobs:
 
       - name: Upload preparation reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tumorquantai-one-wsi-preparation
           if-no-files-found: warn
           retention-days: 7
           path: |
-            ${{ runner.temp }}/tumorquantai-quickstart/START_HERE.html
-            ${{ runner.temp }}/tumorquantai-quickstart/tumorquantai_report.json
-            ${{ runner.temp }}/tumorquantai-quickstart/inspection/INSPECTION.html
-            ${{ runner.temp }}/tumorquantai-quickstart/inspection/inspection_manifest.csv
+            ${{ env.TQA_ROOT }}/START_HERE.html
+            ${{ env.TQA_ROOT }}/tumorquantai_report.json
+            ${{ env.TQA_ROOT }}/inspection/INSPECTION.html
+            ${{ env.TQA_ROOT }}/inspection/inspection_manifest.csv
+
+      - name: Unmount the CI data path
+        if: always()
+        run: sudo umount /mnt/tumorquantai-data || true
