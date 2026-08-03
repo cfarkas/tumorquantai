@@ -1,5 +1,6 @@
 # Lightweight host dependencies for public MDS download/conversion/inspection.
 requests>=2.32,<3
+PyYAML>=6,<7
 numpy>=1.26,<3
 olefile>=0.47,<1
 Pillow>=10,<13
