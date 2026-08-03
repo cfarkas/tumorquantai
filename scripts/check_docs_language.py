@@ -65,6 +65,14 @@ SHELL_ALLOWED = {
     "TERM",
     "COLUMNS",
     "LINES",
+    # Variables are deliberately introduced in an earlier numbered tutorial step.
+    "TQA_ROOT",
+    "REPO_ROOT",
+    "TQA_INPUT",
+    "TQA_INSPECTION",
+    "TQA_DATA",
+    "PROJECT_DIR",
+    "CONFIG",
 }
 
 
