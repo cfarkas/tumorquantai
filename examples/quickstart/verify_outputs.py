@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify the required outputs from TumorQuantAI QuickStart Example 1."""
+"""Verify preparation or complete outputs from TumorQuantAI QuickStart Example 1."""
 
 from __future__ import annotations
 
@@ -58,23 +58,45 @@ def matrix_samples(path: Path) -> list[str]:
     return header[2:]
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--tutorial-root",
-        required=True,
-        type=Path,
-        help="root passed to ./tumorquantai quickstart --output",
+def verify_preparation(root: Path) -> None:
+    converted = root / "converted"
+    inspection = root / "inspection"
+    required = (
+        root / "START_HERE.html",
+        root / "download/tumorquantai_lymphoma_mds_manifest.csv",
+        root / f"download/raw/{EXPECTED_SAMPLE}/1.mds",
+        converted / f"{EXPECTED_SAMPLE}/1_L0_rgb.tif",
+        converted / f"{EXPECTED_SAMPLE}/1_L2_rgb.tif",
+        converted / "samples.csv",
+        inspection / "INSPECTION.html",
+        inspection / "inspection_manifest.csv",
     )
-    args = parser.parse_args()
+    for path in required:
+        require_file(path)
 
-    root = args.tutorial_root.expanduser().resolve()
+    rows = read_csv(inspection / "inspection_manifest.csv")
+    matching = [
+        row
+        for row in rows
+        if EXPECTED_SAMPLE
+        in {
+            str(row.get("sample_id", "")).strip(),
+            str(row.get("slide_id", "")).strip(),
+        }
+    ]
+    if len(matching) != 1:
+        fail(
+            f"expected one inspection row for {EXPECTED_SAMPLE}, "
+            f"found {len(matching)}"
+        )
+
+
+def verify_inference(root: Path) -> None:
     result = root / "smoke-results"
     sample = result / EXPECTED_SAMPLE
     aggregate = result / "aggregated_celltypes"
 
     required = (
-        root / "START_HERE.html",
         result / "START_HERE.html",
         sample / "overlays/celltypes_overview_and_zoom.png",
         sample / "summary/summary.json",
@@ -127,6 +149,31 @@ def main() -> int:
         if EXPECTED_SAMPLE not in samples:
             fail(f"matrix does not contain {EXPECTED_SAMPLE}: {matrix}")
 
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--tutorial-root",
+        required=True,
+        type=Path,
+        help="root passed to ./tumorquantai quickstart --output",
+    )
+    parser.add_argument(
+        "--preparation-only",
+        action="store_true",
+        help="verify download, conversion, and inspection without HistoPLUS outputs",
+    )
+    args = parser.parse_args()
+
+    root = args.tutorial_root.expanduser().resolve()
+    verify_preparation(root)
+    if args.preparation_only:
+        print("SUCCESS: one-slide TumorQuantAI QuickStart preparation is complete.")
+        print(f"Sample: {EXPECTED_SAMPLE}")
+        print(f"Open first: {root / 'START_HERE.html'}")
+        return 0
+
+    verify_inference(root)
     print("SUCCESS: one-slide TumorQuantAI QuickStart outputs are complete.")
     print(f"Sample: {EXPECTED_SAMPLE}")
     print("Sampling: 1% of detected tissue tiles")
