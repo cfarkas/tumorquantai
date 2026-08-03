@@ -12,6 +12,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: tumorquantai-oncotracer-runtime
+  cancel-in-progress: true
+
 jobs:
   apply-test-commit:
     if: github.head_ref == 'agent/oncotracer-style-v1-overhaul'
