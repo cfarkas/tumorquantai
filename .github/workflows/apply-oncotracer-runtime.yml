@@ -1,18 +1,20 @@
 name: Apply OncoTracer-style runtime portability
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/oncotracer-style-v1-overhaul
-    paths:
-      - scripts/apply_oncotracer_runtime.py
-      - .github/workflows/apply-oncotracer-runtime.yml
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: write
 
 jobs:
   apply-test-commit:
+    if: github.head_ref == 'agent/oncotracer-style-v1-overhaul'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
