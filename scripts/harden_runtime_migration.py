@@ -27,6 +27,15 @@ if old not in text:
     raise SystemExit("Unable to add the configurable Conda environment path")
 text = text.replace(old, new, 1)
 
+# A quoted pipe-separated name is ambiguous across Nextflow releases. Use an
+# explicit regular-expression selector so every scientific process receives
+# the selected container or Conda environment.
+old = "            withName: 'DISCOVER_SLIDES|PROCESS_SLIDE|AGGREGATE_COUNTS' {\n"
+new = "            withName: /DISCOVER_SLIDES|PROCESS_SLIDE|AGGREGATE_COUNTS/ {\n"
+if old not in text:
+    raise SystemExit("Unable to convert runtime process selectors to regexes")
+text = text.replace(old, new)
+
 old = '                conda = "${projectDir}/environment.yml"\n'
 new = '                conda = params.conda_environment\n'
 if old not in text:
@@ -70,6 +79,7 @@ old = "    assert 'conda = \"${projectDir}/environment.yml\"' in config\n"
 new = (
     '    assert "conda = params.conda_environment" in config\n'
     '    assert "conda_environment" in config\n'
+    '    assert "withName: /DISCOVER_SLIDES|PROCESS_SLIDE|AGGREGATE_COUNTS/" in config\n'
 )
 if old not in text:
     raise SystemExit("Unable to update the runtime-profile Conda assertion")
