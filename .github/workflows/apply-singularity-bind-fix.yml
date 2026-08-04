@@ -73,7 +73,7 @@ jobs:
           assert 'export SINGULARITY_BINDPATH=' not in launcher
           assert config.count('runOptions = params.singularity_run_options') == 2
           assert config.count(
-              'runOptions = "--nv ${params.singularity_run_options ?: \'\'}".trim()'
+              'runOptions = "--nv ${params.singularity_run_options'
           ) == 2
           PY
           git diff --check
