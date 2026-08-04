@@ -8,9 +8,12 @@ not clinically validated.
 ## Entry points
 
 - Main command-line interface: `./tumorquantai doctor|demo|inspect|run|status|report`
+- Full raw-TIFF patch route: `./tumorquantai --patches PATH --paper-figures --output DIR`
 - Public one-slide path: `./tumorquantai quickstart --output MOUNTED_PATH`
 - Compatible expert interfaces: `./run.sh` and `nextflow run .`
 - Scientific worker: `lazyslide_histoplus_wsi_celltype.py`
+- Offline breast-IHC release helpers: `bin/prepare_breast_ihc_patch_release.py`
+  and `bin/package_breast_ihc_patch_release.py` (no upload or publication)
 
 Keep the main command-line interface a thin, testable wrapper. Do not duplicate or
 silently change the biological/image-analysis engine.

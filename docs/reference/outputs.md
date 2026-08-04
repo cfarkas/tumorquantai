@@ -67,3 +67,138 @@ Sampled counts are not whole-slide estimates.
 Optional sampled-patch, QC-patch, pyramidal-input, and JSON exports have their
 own manifests/integrity records. `summary.json` is not published until required
 core and requested optional artifacts pass validation.
+
+## Raw TIFF patch and paper-figure outputs
+
+The `tumorquantai --patches ... --paper-figures --output ...` route keeps the
+same completion and failure semantics as the ordinary workflow. Each completed
+TIFF patch input has a per-sample directory. Full patch processing means that
+100% of the discovered TIFF patch inputs are scheduled; it does not turn patch
+counts into patient-level, tumor-level, or whole-slide estimates.
+
+Review these visual exports for every completed patch:
+
+| Path | Purpose |
+| --- | --- |
+| `<sample>/overlays/celltypes_overview_and_zoom.png` | Whole-input overview, connected QC zoom, cell-type overlay, and scale bars |
+| `<sample>/overlays/celltypes_overview_and_zoom.pdf` | PDF form of the overview/QC figure |
+| `<sample>/paper_figures/celltypes_paper_figure.png` | Publication-oriented raster figure |
+| `<sample>/paper_figures/celltypes_paper_figure.pdf` | Publication-oriented PDF figure |
+| `<sample>/paper_figures/celltype_counts_barplot.png` | Detected-cell count chart |
+| `<sample>/paper_figures/celltype_counts_barplot.pdf` | PDF form of the count chart |
+| `<sample>/plotting_metadata/detected_cell_types.csv` | Figure source values |
+| `<sample>/plotting_metadata/cell_type_palette.json` | Class-to-color provenance |
+| `<sample>/summary/run_metadata.json` | Resolved MPP, model, device, and processing parameters |
+| `<sample>/summary/summary.json` | Validated completion record, written last |
+
+When QC-patch export is enabled, `<sample>/qc_patches/patch_manifest.csv` maps
+each QC region to its `rgb.png`, `overlay.png`, `class_counts.csv`, and
+`metadata.json`. The ordinary `cell_types/` coordinates and counts and the
+cohort aggregation audit remain authoritative numeric outputs.
+
+For mixed-scale TIFF collections, status JSON preserves the distinct
+per-input scales in `source_mpp_values` and records
+`source_mpp_provenance`. The human-readable `tumorquantai status` output,
+`START_HERE.html`, and the text run summary display those MPP values and their
+`per-input embedded TIFF metadata` provenance.
+
+Paper figures do not establish biological or clinical validity. Review scale,
+overlay alignment, tissue content, artifacts, class plausibility, completion,
+and the aggregation audit before using any numeric table. If breast IHC cases
+are arranged into categories, name them **computational receptor-profile
+pre-score groups**. Do not present them as diagnoses, histologic or intrinsic
+subtypes, treatment recommendations, or independent pathologist results.
+
+The breast-IHC example data and its Zenodo DOI are pending governance review
+and publication. The existing public lymphoma dataset DOI does not identify
+the breast-IHC patch collection.
+
+## Offline sanitized draft outputs
+
+The separate `bin/prepare_breast_ihc_patch_release.py` utility creates a new
+local draft directory; it does not write into an inference result. After a
+mandatory successful dry run, the release-side output is:
+
+```text
+<public-draft>/
+├── patches/<case_alias>/<patch_alias>_<MARKER>.tif
+├── patch_manifest.csv
+├── case_marker_counts.csv
+├── validation_report.json
+├── SHA256SUMS
+└── MD5SUMS
+```
+
+The separately requested private linkage contains the original identifiers,
+source paths, and alias mapping. It is created with mode `0600` outside the
+repository and public draft and is never a public output. The source-selection
+manifest and mode-`0600` alias secret are private inputs and stay outside those
+locations as well. The private manifest requires both `microns_per_pixel` and
+`mpp_provenance` for every selected image.
+
+Each sanitized TIFF is fully decoded and compared with the decoded source RGB
+pixels. Non-allowlisted descriptions, dates, software, vendor, OME, and shaped
+metadata are removed. The verified per-image `microns_per_pixel` value from the
+private manifest is embedded into TIFF resolution tags and read back for
+physical-scale verification, so mixed-MPP selections preserve image-specific
+scale. Visible-pixel and privacy review is still required.
+
+The manifest value is an externally audited calibration, not a claim that the
+source TIFF's possibly missing or incorrect resolution tags were trustworthy.
+The sanitizer restricts provenance to canonical safe English categories for
+measured scale-bar calibration, documented magnification extrapolation, or
+externally verified calibration. It publishes canonical `mpp_provenance` and
+`decoded_rgb_sha256` values in `patch_manifest.csv`.
+
+Source TIFFs with a non-default `Orientation` tag are rejected before
+re-encoding; an absent tag has the default top-left interpretation.
+
+`validation_report.json` identifies the directory as a local draft and records
+that no network, upload, or publication action occurred. The sanitizer cannot
+upload or publish.
+
+## Deterministic local package outputs
+
+After a mandatory successful packager dry run,
+`bin/package_breast_ihc_patch_release.py` writes a new directory while retaining
+the sanitized source unchanged:
+
+```text
+<upload-package>/
+├── TQA_BC_<case-alias>.zip
+├── TQA_BreastIHC_manifest_bundle.zip
+├── packaging_report.json
+├── SHA256SUMS
+└── MD5SUMS
+```
+
+There is one forced-ZIP64 case archive per HMAC case alias. For this cohort,
+51 cases and 1,901 sanitized TIFFs produce 51 case archives plus the four
+listed auxiliary files, for an exact total of 55 top-level upload files. The
+manifest bundle contains the sanitizer's five metadata/checksum files plus
+`archive_manifest.csv`. The outer checksum files cover every case archive, the
+manifest bundle, and `packaging_report.json`.
+
+Archives use `ZIP_STORED`, fixed member timestamps, canonical member order, and
+fixed file modes. The packager verifies the exact source and output rosters,
+source manifests and checksums, TIFF header and scale constraints, and each
+archive member's stored size, CRC32, SHA-256, and MD5 after writing. It also
+rejects noncanonical MPP provenance, fully decodes each sanitized TIFF to
+recompute its domain-separated RGB SHA-256, recomputes and verifies the final
+upload checksums, and confirms that the source draft roster is unchanged.
+
+Exact archive bytes are guaranteed for identical validated inputs under the
+same supported packager tool/runtime. Fixed archive metadata removes dependence
+on source filesystem timestamps and modes; byte identity across arbitrary
+Python versions or ZIP implementations is not claimed.
+
+`ZIP_STORED` avoids TIFF recompression but duplicates the retained source TIFF
+bytes. `packaging_report.json` records the conservative additional-disk
+estimate, case/archive counts, total upload-file count, compression choice, and
+verification statement.
+
+The packager has no network, deposit, upload, or publication capability.
+Zenodo's default limits are 50 GB and 100 files per record. This cohort's 55
+files fit the default count limit, but measured size, any quota request,
+independent privacy review, governance approval, and publication remain
+pending.

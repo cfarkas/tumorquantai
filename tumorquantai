@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import inspect
 import copy
+import glob
 import hashlib
 import importlib.util
 import json
@@ -191,6 +192,13 @@ LAUNCHER_PATH_PARAMETERS = frozenset(
 PUBLIC_PATH_PARAMETERS = frozenset(
     {"input_dir", "output_dir", "sample_sheet", "histoplus_weight_file"}
 )
+
+PATCH_COMPATIBILITY_PATTERNS = ("*.tif", "*.tiff", "*.TIF", "*.TIFF")
+PATCH_COMPATIBILITY_SUFFIXES = (".ome.tiff", ".ome.tif", ".tiff", ".tif")
+PATCH_COMPATIBILITY_COMMANDS = frozenset({
+    "install", "doctor", "demo", "inspect", "convert", "run", "status",
+    "report", "quickstart",
+})
 
 
 if yaml is not None:
@@ -601,6 +609,207 @@ def positive_float(value: str) -> float:
     return parsed
 
 
+def _compatibility_has_option(arguments: Sequence[str], *options: str) -> bool:
+    return any(
+        argument == option or argument.startswith(option + "=")
+        for argument in arguments
+        for option in options
+    )
+
+
+def _compatibility_option_values(
+    arguments: Sequence[str], option: str,
+) -> list[str]:
+    """Read a compatibility option without replacing argparse validation."""
+    values: list[str] = []
+    prefix = option + "="
+    for index, argument in enumerate(arguments):
+        if argument.startswith(prefix):
+            value = argument[len(prefix):]
+            if not value:
+                raise _parameter_error(f"{option} requires a value.")
+            values.append(value)
+        elif argument == option:
+            if index + 1 >= len(arguments) or arguments[index + 1] == "--":
+                raise _parameter_error(f"{option} requires a value.")
+            values.append(arguments[index + 1])
+    return values
+
+
+def _rewrite_patch_compatibility_arguments(
+    arguments: Sequence[str],
+) -> tuple[list[str], str | None]:
+    """Rewrite the top-level raw-patch contract onto the existing run CLI."""
+    raw = list(arguments)
+    separator = raw.index("--") if "--" in raw else len(raw)
+    public = raw[:separator]
+    expert = raw[separator:]
+    has_patches = _compatibility_has_option(public, "--patches")
+    has_figures = _compatibility_has_option(public, "--paper-figures")
+    if not has_patches and not has_figures:
+        return raw, None
+    if public[:1] and public[0] in PATCH_COMPATIBILITY_COMMANDS:
+        raise _parameter_error(
+            "--patches/--paper-figures are top-level compatibility flags; "
+            "do not combine them with a subcommand."
+        )
+    if not has_patches:
+        raise _parameter_error(
+            "Patch compatibility mode requires --patches PATH."
+        )
+    if not has_figures:
+        raise _parameter_error(
+            "Patch compatibility mode requires --paper-figures."
+        )
+
+    patch_values: list[str] = []
+    paper_figure_count = 0
+    cleaned: list[str] = []
+    index = 0
+    while index < len(public):
+        argument = public[index]
+        if argument == "--patches":
+            if index + 1 >= len(public) or public[index + 1].startswith("--"):
+                raise _parameter_error("--patches requires a TIFF file or directory.")
+            patch_values.append(public[index + 1])
+            index += 2
+            continue
+        if argument.startswith("--patches="):
+            value = argument.split("=", 1)[1]
+            if not value:
+                raise _parameter_error("--patches requires a TIFF file or directory.")
+            patch_values.append(value)
+            index += 1
+            continue
+        if argument == "--paper-figures":
+            paper_figure_count += 1
+            index += 1
+            continue
+        if argument.startswith("--paper-figures="):
+            raise _parameter_error("--paper-figures is a flag and takes no value.")
+        cleaned.append(argument)
+        index += 1
+
+    if len(patch_values) != 1:
+        raise _parameter_error("Patch compatibility mode requires exactly one --patches PATH.")
+    if paper_figure_count != 1:
+        raise _parameter_error("Patch compatibility mode requires exactly one --paper-figures flag.")
+    if not _compatibility_has_option(cleaned, "--output", "--outdir"):
+        raise _parameter_error("Patch compatibility mode requires --output DIR.")
+    for incompatible in ("--pattern", "--sample-sheet", "--collage"):
+        if _compatibility_has_option(cleaned, incompatible):
+            raise _parameter_error(
+                f"{incompatible} is incompatible with --patches; PATH defines the patch inputs."
+            )
+
+    preset_values = _compatibility_option_values(cleaned, "--preset")
+    if any(value in {"smoke", "fast"} for value in preset_values):
+        raise _parameter_error(
+            "--patches requires --preset full; smoke and fast sampling are incompatible."
+        )
+    percent_values = _compatibility_option_values(cleaned, "--percent-slide")
+    for value in percent_values:
+        try:
+            percent = float(value)
+        except ValueError as exc:
+            raise _parameter_error("--percent-slide must be 100 in patch mode.") from exc
+        if not math.isfinite(percent) or percent != 100.0:
+            raise _parameter_error("--percent-slide must be 100 in patch mode.")
+    cap_values = _compatibility_option_values(cleaned, "--max-sampled-patches")
+    for value in cap_values:
+        try:
+            cap = int(value)
+        except ValueError as exc:
+            raise _parameter_error(
+                "--max-sampled-patches must be 0 in patch mode."
+            ) from exc
+        if cap != 0:
+            raise _parameter_error("--max-sampled-patches must be 0 in patch mode.")
+    qc_values = _compatibility_option_values(cleaned, "--qc-patch-count")
+    for value in qc_values:
+        try:
+            qc_count = int(value)
+        except ValueError as exc:
+            raise _parameter_error(
+                "--qc-patch-count must be at least 1 in patch mode."
+            ) from exc
+        if qc_count < 1:
+            raise _parameter_error("--qc-patch-count must be at least 1 in patch mode.")
+    if _compatibility_has_option(cleaned, "--convert-to-pyramidal"):
+        raise _parameter_error(
+            "--convert-to-pyramidal is incompatible with raw patch mode; "
+            "patch TIFFs are processed directly."
+        )
+
+    injected: list[str] = []
+    if not preset_values:
+        injected.extend(["--preset", "full"])
+    if not percent_values:
+        injected.extend(["--percent-slide", "100"])
+    if not cap_values:
+        injected.extend(["--max-sampled-patches", "0"])
+    if not qc_values:
+        injected.extend(["--qc-patch-count", "1"])
+    if not _compatibility_has_option(cleaned, "--no-convert-to-pyramidal"):
+        injected.append("--no-convert-to-pyramidal")
+    if not _compatibility_has_option(cleaned, "--profile", "--cpu", "--gpu"):
+        injected.append("--cpu")
+    rewritten = ["run", patch_values[0], *cleaned, *injected, *expert]
+    return rewritten, patch_values[0]
+
+
+def _patch_file_sample_id(path: Path) -> str:
+    stem = re.sub(r"(?i)_L0_rgb\.tiff?$", "", path.name)
+    sample_id = re.sub(r"[^A-Za-z0-9._-]+", "_", stem).strip("._-")
+    if not sample_id:
+        raise core.TumorQuantAIError(
+            f"Could not derive a sample ID from patch file {path}", core.EXIT_INPUT
+        )
+    return sample_id
+
+
+def _configure_patch_run(
+    args: argparse.Namespace, patch_value: str, explicit_keys: set[str],
+) -> None:
+    """Resolve a patch file/directory into collision-safe ordinary run inputs."""
+    patch_source = Path(patch_value).expanduser().resolve()
+    if not patch_source.exists():
+        raise core.TumorQuantAIError(
+            f"Patch input does not exist: {patch_source}", core.EXIT_INPUT
+        )
+    if not patch_source.is_file() and not patch_source.is_dir():
+        raise core.TumorQuantAIError(
+            f"Patch input is neither a file nor a directory: {patch_source}",
+            core.EXIT_INPUT,
+        )
+    args.patch_source = patch_source
+    args.input_mode = "patches"
+    args.sample_sheet = None
+    explicit_keys.update({"input_dir", "sample_sheet", "slide_patterns"})
+    if patch_source.is_file():
+        if not patch_source.name.casefold().endswith(PATCH_COMPATIBILITY_SUFFIXES):
+            raise core.TumorQuantAIError(
+                "--patches file must end in .tif, .tiff, .ome.tif, or .ome.tiff",
+                core.EXIT_INPUT,
+            )
+        if patch_source.name.startswith("."):
+            raise core.TumorQuantAIError(
+                "Hidden TIFF files are not valid patch inputs.", core.EXIT_INPUT
+            )
+        if {"include", "exclude"} & explicit_keys:
+            raise _parameter_error(
+                "--include/--exclude cannot be used when --patches names one file."
+            )
+        args.input = patch_source.parent
+        args.pattern = [glob.escape(patch_source.name)]
+        args.include = _patch_file_sample_id(patch_source)
+        args.exclude = ""
+        explicit_keys.update({"include", "exclude"})
+    else:
+        args.input = patch_source
+        args.pattern = list(PATCH_COMPATIBILITY_PATTERNS)
+
+
 
 NEXTFLOW_VERSION = "25.10.2"
 NEXTFLOW_URL = (
@@ -923,7 +1132,8 @@ def build_parser() -> argparse.ArgumentParser:
             "  tumorquantai demo\n"
             "  tumorquantai inspect /data/slides --output /data/tqa-inspection\n"
             "  tumorquantai convert downloads --output slides --resume\n"
-            "  tumorquantai quickstart --no-inference"
+            "  tumorquantai quickstart --no-inference\n"
+            "  tumorquantai --patches /data/patches --paper-figures --output results"
         ),
     )
     parser.add_argument("--version", action="version", version=f"TumorQuantAI {core.VERSION}")
@@ -1372,6 +1582,21 @@ def _nextflow_public_arguments(args: argparse.Namespace) -> list[str]:
 
 def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], list[str], dict[str, str]]:
     resolve_run_parameters(args)
+    input_mode = str(getattr(args, "input_mode", "slides"))
+    if input_mode not in {"slides", "patches"}:
+        raise core.TumorQuantAIError(
+            f"Unsupported input mode: {input_mode}", core.EXIT_USAGE
+        )
+    raw_patch_source = getattr(args, "patch_source", None)
+    if input_mode == "patches" and raw_patch_source is None:
+        raise core.TumorQuantAIError(
+            "Patch input provenance is missing; rerun with --patches PATH.",
+            core.EXIT_USAGE,
+        )
+    patch_source = (
+        Path(raw_patch_source).expanduser().resolve()
+        if input_mode == "patches" else None
+    )
     expert_args = list(args.expert_args)
     if expert_args and expert_args[0] == "--":
         expert_args = expert_args[1:]
@@ -1382,7 +1607,8 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
     cache_root = (
         getattr(args, "cache_dir", None) or core.associated_cache_directory(output)
     ).expanduser().resolve()
-    if output == input_root or input_root in output.parents:
+    file_patch_input = patch_source is not None and patch_source.is_file()
+    if output == input_root or (input_root in output.parents and not file_patch_input):
         raise core.TumorQuantAIError(
             "Output must not equal or be nested inside the input directory",
             core.EXIT_PREFLIGHT,
@@ -1402,6 +1628,13 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
                 "Output is non-empty but has no TumorQuantAI run manifest; choose a new output directory.",
                 core.EXIT_PREFLIGHT,
             )
+    if existing and existing.get("input_mode", "slides") != input_mode:
+        raise core.TumorQuantAIError(
+            "Refusing to mix incompatible runs in one output directory "
+            f"(input_mode: existing={existing.get('input_mode', 'slides')!r}, "
+            f"requested={input_mode!r}). Choose a new --output.",
+            core.EXIT_PREFLIGHT,
+        )
     if not args.dry_run:
         core.validate_large_data_root(output)
         core.validate_large_data_root(work)
@@ -1435,15 +1668,16 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
                 f"Refusing to mix incompatible runs in one output directory ({key}). Choose a new --output.",
                 core.EXIT_PREFLIGHT,
             )
-    if (
-        args.source_mpp is not None
-        and "source_mpp" in existing
-        and abs(float(existing["source_mpp"]) - args.source_mpp) > 1e-9
-    ):
-        raise core.TumorQuantAIError(
-            "Refusing to mix incompatible source MPP values in one output directory. Choose a new --output.",
-            core.EXIT_PREFLIGHT,
-        )
+    if args.source_mpp is not None and "source_mpp" in existing:
+        existing_source_mpp = existing.get("source_mpp")
+        if (
+            existing_source_mpp is None
+            or abs(float(existing_source_mpp) - args.source_mpp) > 1e-9
+        ):
+            raise core.TumorQuantAIError(
+                "Refusing to mix incompatible source MPP values in one output directory. Choose a new --output.",
+                core.EXIT_PREFLIGHT,
+            )
     initial_storage = core.storage_preflight(output, work, 0, create=True)
     cache_storage = core.storage_preflight(output, cache_root, 0, create=True)
     if not initial_storage["ok"] or not cache_storage["ok"]:
@@ -1476,9 +1710,10 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
             "Source MPP is missing or unreadable. Verify it and rerun with --source-mpp; physical scale fails closed.",
             core.EXIT_PREFLIGHT,
         )
-    if len(mpp_values) != 1:
+    per_input_embedded_mpp = input_mode == "patches" and args.source_mpp is None
+    if not per_input_embedded_mpp and len(mpp_values) != 1:
         raise core.TumorQuantAIError("Discovered slides have inconsistent source MPP values; use separate runs or an audited sample sheet.", core.EXIT_PREFLIGHT)
-    source_mpp = mpp_values[0]
+    source_mpp = None if per_input_embedded_mpp else mpp_values[0]
     profile = requested_profile
     input_bytes = sum(
         int(row["size_bytes"]) for row in slides
@@ -1586,7 +1821,7 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
         str(ROOT / "run.sh"), "--input-dir", str(input_root), "--output-dir", str(output),
         "--work-dir", str(work), "--backend", args.backend,
         "--profile", profile, "--percent-slide", f"{percent:g}",
-        "--seed", str(args.seed), "--slide-mpp", f"{source_mpp:.9g}",
+        "--seed", str(args.seed),
         "--mpp", f"{float(args.mpp):.15g}", "--tile-px", str(args.tile_px),
         "--device", device, "--container-image", container_image,
         "--histoplus-revision", str(args.histoplus_revision),
@@ -1598,6 +1833,8 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
         "--celltypes-batch-size", str(celltypes_batch_size),
         "--qc-patch-count", str(args.qc_patch_count),
     ]
+    if source_mpp is not None:
+        command.extend(["--slide-mpp", f"{source_mpp:.9g}"])
     if args.preset == "smoke":
         command.extend(["--include", selected_samples[0]])
     else:
@@ -1640,27 +1877,38 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
         command.extend(nextflow_arguments)
         command.extend(expert_args)
     display = core.shell_join(command, secret_values)
-    resume_parts = [
-        "tumorquantai", "run", str(input_root), "--output", str(output),
-        "--preset", args.preset, "--source-mpp", f"{source_mpp:.9g}",
+    if input_mode == "patches":
+        assert patch_source is not None
+        resume_parts = [
+            "tumorquantai", "--patches", str(patch_source), "--paper-figures",
+        ]
+    else:
+        resume_parts = ["tumorquantai", "run", str(input_root)]
+    resume_parts.extend([
+        "--output", str(output),
+        "--preset", args.preset,
         "--percent-slide", f"{percent:g}", "--mpp", f"{float(args.mpp):.15g}",
         "--backend", args.backend, "--profile", profile,
         "--seed", str(args.seed), "--work-dir", str(work),
         "--cpus", str(args.cpus), "--memory", str(args.memory),
         "--max-parallel-slides", str(args.max_parallel_slides),
         "--num-workers", str(args.num_workers),
-    ]
+    ])
+    if source_mpp is not None:
+        resume_parts.extend(["--source-mpp", f"{source_mpp:.9g}"])
     if args.preset == "smoke":
         resume_parts.extend(["--sample", selected_samples[0]])
     if args.params_file:
         resume_parts.extend(["--params-file", str(args.params_file.expanduser().resolve())])
-    if args.sample_sheet:
+    if args.sample_sheet and input_mode != "patches":
         resume_parts.extend(["--sample-sheet", str(args.sample_sheet.expanduser().resolve())])
-    for pattern in args.pattern:
-        resume_parts.extend(["--pattern", pattern])
-    resume_parts.extend(["--include", args.include])
-    if args.exclude:
-        resume_parts.extend(["--exclude", args.exclude])
+    if input_mode != "patches":
+        for pattern in args.pattern:
+            resume_parts.extend(["--pattern", pattern])
+    if not file_patch_input:
+        resume_parts.extend(["--include", args.include])
+        if args.exclude:
+            resume_parts.extend(["--exclude", args.exclude])
     if args.no_resume:
         resume_parts.append("--no-resume")
     resume_parts.extend(_explicit_public_resume_arguments(args))
@@ -1675,8 +1923,17 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
         "schema_version": "tumorquantai_run_v1",
         "software_version": core.VERSION, "software_commit": core.git_commit(),
         "created_at_utc": core.utc_now(), "completion_status": "planned" if args.dry_run else "running",
-        "preset": args.preset, "sampling_percent": percent, "seed": args.seed,
-        "source_mpp": source_mpp, "source_mpp_provenance": "supplied" if args.source_mpp else "embedded TIFF metadata",
+        "input_mode": input_mode, "preset": args.preset,
+        "sampling_percent": percent, "seed": args.seed,
+        "source_mpp": source_mpp,
+        "source_mpp_values": mpp_values,
+        "source_mpp_provenance": (
+            "supplied"
+            if args.source_mpp is not None
+            else "per-input embedded TIFF metadata"
+            if per_input_embedded_mpp
+            else "embedded TIFF metadata"
+        ),
         "target_mpp": args.mpp, "execution_profile": profile,
         "execution_backend": args.backend,
         "container_identity": (
@@ -1698,8 +1955,9 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
         },
     }
     for key in (
-        "preset", "sampling_percent", "seed", "source_mpp", "input_signature",
-        "selected_samples", "execution_profile", "execution_backend",
+        "input_mode", "preset", "sampling_percent", "seed", "source_mpp",
+        "source_mpp_values",
+        "input_signature", "selected_samples", "execution_profile", "execution_backend",
         "expert_args_fingerprint",
     ):
         if key in existing and existing[key] != plan[key]:
@@ -2061,8 +2319,15 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = build_parser()
     raw_arguments = list(argv) if argv is not None else sys.argv[1:]
+    try:
+        raw_arguments, patch_value = _rewrite_patch_compatibility_arguments(
+            raw_arguments
+        )
+    except core.TumorQuantAIError as exc:
+        print(f"ERROR: {core.redact_text(str(exc), paths=True)}", file=sys.stderr)
+        return exc.exit_code
+    parser = build_parser()
     expert_args: list[str] = []
     if raw_arguments[:1] == ["run"] and "--" in raw_arguments:
         separator = raw_arguments.index("--")
@@ -2086,6 +2351,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "convert":
             return cmd_convert(args)
         if args.command == "run":
+            if patch_value is not None:
+                _configure_patch_run(args, patch_value, explicit_keys)
+            else:
+                args.input_mode = "slides"
             resolve_run_parameters(args, explicit_keys)
             return run_analysis(args)
         if args.command == "status":
