@@ -1,4 +1,4 @@
-name: Apply final Singularity portability fixes
+name: Apply explicit Singularity portability fix
 
 on:
   pull_request:
@@ -36,111 +36,56 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Apply the runtime and acceptance-workflow fixes
+      - name: Apply explicit Apptainer and Singularity run options
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('scripts/apply_singularity_bind_fix.py')
-          text = path.read_text(encoding='utf-8')
-          conda_target = '    ("Conda", "conda_route"),\n'
-          if conda_target not in text:
-              raise SystemExit('Unable to remove Conda from the generic route loop')
-          text = text.replace(conda_target, '', 1)
-
-          old_test = r'base_block = launcher.split("NF_ARGS=(", 1)[1].split(")\n\n", 1)[0]'
-          new_test = r'base_block = launcher.split("NF_ARGS=(", 1)[1].split(")\\n\\n", 1)[0]'
-          if old_test not in text:
-              raise SystemExit('Unable to escape the generated empty-exclude test')
-          text = text.replace(old_test, new_test, 1)
-
-          old_resume = (
-              r'''    assert 'resume_parts = [\n        "tumorquantai", "run"' in cli
-              assert 'resume_parts = [\n        "./tumorquantai", "run"' not in cli'''
-          )
-          new_resume = (
-              '''    assert '"tumorquantai", "run", str(input_root)' in cli
-              assert '"./tumorquantai", "run", str(input_root)' not in cli'''
-          )
-          if old_resume not in text:
-              raise SystemExit('Unable to simplify the generated resume-command test')
-          text = text.replace(old_resume, new_resume, 1)
-
-          for label in ("Docker", "Singularity/Apptainer", "Poetry", "Conda"):
-              old_status = rf"printf '{label}: %s\n'"
-              new_status = rf"printf '{label}: %s\\n'"
-              if old_status not in text:
-                  raise SystemExit(f'Unable to escape the {label} route status line')
-              text = text.replace(old_status, new_status, 1)
-
-          path.write_text(text, encoding='utf-8')
-          PY
-
           python scripts/apply_singularity_bind_fix.py
-
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path('.github/workflows/quickstart-runtime-routes.yml')
-          text = path.read_text(encoding='utf-8')
-          old = (
-              '      - name: Install and run the Conda route\n'
-              '        env:\n'
-              '          NXF_CONDA_CACHEDIR: /mnt/tumorquantai-data/runtime-routes/conda-environments\n'
-              '        run: |\n'
-          )
-          new = (
-              '      - name: Install and run the Conda route\n'
-              '        id: conda_route\n'
-              '        continue-on-error: true\n'
-              '        env:\n'
-              '          NXF_CONDA_CACHEDIR: /mnt/tumorquantai-data/runtime-routes/conda-environments\n'
-              '        run: |\n'
-          )
-          if old not in text:
-              raise SystemExit('Unable to add the Conda route outcome capture')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-
           chmod +x run.sh tumorquantai
 
-      - name: Install lightweight validation dependencies
+      - name: Install validation dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements-tutorial.txt
-          python -m pip install \
-            'pytest>=8,<9' 'jsonschema>=4,<5' 'pandas>=2.2,<3' \
-            'matplotlib>=3.8,<4' 'scipy>=1.15,<2' 'scikit-learn>=1.6,<2' \
-            'openpyxl>=3.1,<4'
+          python -m pip install --requirement requirements-tutorial.txt
+          python -m pip install 'pytest>=8,<9'
 
-      - name: Validate runtime fixes and documentation
+      - name: Validate the runtime patch
         run: |
           bash -n run.sh
-          python -m py_compile tumorquantai scripts/*.py tests/test_runtime_backends.py
+          python -m py_compile \
+            scripts/apply_singularity_bind_fix.py \
+            tests/test_runtime_backends.py
           python -m pytest -q \
             tests/test_runtime_backends.py \
-            tests/test_install_command.py \
-            tests/test_tumorquantai_parameters.py
-          python scripts/check_docs_language.py
-          python scripts/check_oncotracer_style_docs.py
-          python scripts/check_repository_hygiene.py
+            tests/test_install_command.py
           python - <<'PY'
           from pathlib import Path
           import yaml
 
-          workflow = Path('.github/workflows/quickstart-runtime-routes.yml')
-          yaml.safe_load(workflow.read_text(encoding='utf-8'))
+          yaml.safe_load(
+              Path('.github/workflows/quickstart-runtime-routes.yml').read_text(
+                  encoding='utf-8'
+              )
+          )
           launcher = Path('run.sh').read_text(encoding='utf-8')
-          assert 'export APPTAINER_BINDPATH=' in launcher
-          assert 'export SINGULARITY_BINDPATH=' in launcher
-          assert '[[ -n "${EXCLUDE}" ]] && NF_ARGS+=(--exclude "${EXCLUDE}")' in launcher
-          assert '"tumorquantai", "run", str(input_root)' in Path('tumorquantai').read_text(encoding='utf-8')
+          config = Path('nextflow.config').read_text(encoding='utf-8')
+          assert 'SINGULARITY_RUN_OPTIONS="--bind ${COMBINED_BINDPATH}"' in launcher
+          assert 'NF_ARGS+=("--singularity_run_options=${SINGULARITY_RUN_OPTIONS}")' in launcher
+          assert 'export APPTAINER_BINDPATH=' not in launcher
+          assert 'export SINGULARITY_BINDPATH=' not in launcher
+          assert config.count('runOptions = params.singularity_run_options') == 2
+          assert config.count(
+              'runOptions = "--nv ${params.singularity_run_options ?: \'\'}".trim()'
+          ) == 2
           PY
+          git diff --check
 
-      - name: Commit and push the validated source fixes
+      - name: Commit and push the validated source fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "4189828+github-actions[bot]@users.noreply.github.com"
-          git add run.sh tumorquantai docs/installation.md tests/test_runtime_backends.py
-          git commit -m "Fix Singularity binds and launcher arguments"
+          git add run.sh nextflow.config tests/test_runtime_backends.py
+          if git diff --cached --quiet; then
+            echo "No source changes were needed."
+            exit 0
+          fi
+          git commit -m "Pass explicit binds to Apptainer runtime"
           git push origin HEAD:agent/oncotracer-style-v1-overhaul
