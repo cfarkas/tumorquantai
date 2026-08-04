@@ -281,6 +281,54 @@ quota request, independent privacy review, governance approval, and publication
 remain pending. See the
 [local packaging procedure](../tutorials/breast-ihc-patches.md#9-package-the-sanitized-draft-locally).
 
+### Draft-only breast-IHC Zenodo uploader
+
+`bin/zenodo_breast_ihc_deposit.py` accepts exactly the verified 55-file core
+package for the 51-case, 1,901-patch release. Its `--plan` mode performs the
+complete local validation without reading a token or using the network:
+
+```bash
+python3 bin/zenodo_breast_ihc_deposit.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --plan
+```
+
+Network modes require a mode-`0600` token file with `deposit:write`, and accept
+only `https://zenodo.org/api` or `https://sandbox.zenodo.org/api`. Use
+`--create-only` to establish the open-access draft without uploading while a
+quota request is pending. A normal run uploads or resumes by size and MD5;
+packages above 50 GB also require the confirmed total allocation through
+`--confirmed-quota-bytes`. The state is mode `0600` and fingerprint-bound.
+There is no publish option. See the
+[draft upload procedure](../tutorials/breast-ihc-patches.md#10-create-or-resume-the-open-zenodo-draft).
+
+### Publish-only breast-IHC Zenodo command
+
+`bin/zenodo_breast_ihc_publish.py` publishes only an existing, fully uploaded
+draft created by the command above. It requires the exact deposition ID, the
+fingerprint-bound mode-`0600` state, an independent exact-schema mode-`0600`
+authorization, and a distinct mode-`0600` token with `deposit:write` and
+`deposit:actions`. Exactly one of `--plan` or `--publish` is required.
+
+```bash
+python3 bin/zenodo_breast_ihc_publish.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --deposition-id REPLACE_WITH_EXACT_DEPOSITION_ID \
+  --plan
+```
+
+The plan reads no token and uses no network. The explicit `--publish` form also
+requires `--authorization` and `--token-file`. It revalidates the local package,
+state, editable remote draft, open metadata, and exact 55-file size/MD5 roster,
+then sends one non-retried publish action. It verifies the published deposition,
+anonymous public record, DOI, and URLs before atomically marking the state
+published. See the
+[publication procedure](../tutorials/breast-ihc-patches.md#11-publish-the-independently-authorized-draft).
+
 ## Advanced compatibility
 
 `./run.sh`, direct `nextflow run main.nf`, existing worker-script overrides,

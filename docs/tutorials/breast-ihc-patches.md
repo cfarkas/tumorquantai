@@ -369,6 +369,149 @@ Zenodo's default planning limits remain 50 GB and 100 files per record. The
 package size, any quota request, visible-pixel/privacy review, data-governance
 approval, and the publication decision remain pending.
 
+## 10. Create or resume the open Zenodo draft
+
+`bin/zenodo_breast_ihc_deposit.py` is the draft-only uploader for this exact
+release. It accepts only the 51 verified case ZIPs and the four verified
+auxiliary files described above. It revalidates the complete package locally,
+including both checksum rosters, the manifest bundle, every case archive and
+member, and the packaging report before it reads a credential or contacts
+Zenodo.
+
+Prepare a separate JSON metadata file with a title, description, license, at
+least one named creator, `"upload_type": "dataset"`, and
+`"access_right": "open"`. Keep the state and token outside the package. The
+token file must have mode `0600` and needs only the Zenodo `deposit:write`
+scope. Start from this deliberately incomplete template; replace the creator
+and license placeholders with reviewed, authorized values:
+
+```json
+{
+  "title": "TumorQuantAI breast IHC raw TIFF patch dataset",
+  "description": "Sanitized raw breast-IHC TIFF patches and verification manifests for research workflows.",
+  "upload_type": "dataset",
+  "access_right": "open",
+  "license": "REPLACE_WITH_AUTHORIZED_CANONICAL_LICENSE_ID",
+  "creators": [
+    {"name": "REPLACE_WITH_REAL_FAMILY_NAME, REAL_GIVEN_NAME"}
+  ],
+  "keywords": ["digital pathology", "immunohistochemistry"]
+}
+```
+
+The uploader rejects unresolved placeholders. It canonicalizes known legacy
+license aliases before fingerprinting. If optional `language` is present, use
+the canonical three-letter code. Related identifiers require an explicit
+supported scheme and canonical relation; omit optional empty arrays instead of
+writing `[]`.
+
+First run the network-free plan:
+
+```bash
+python3 bin/zenodo_breast_ihc_deposit.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --plan
+```
+
+If the package is larger than the record's available quota, create and verify
+the open-access draft without uploading files, then request quota for that
+deposition:
+
+```bash
+python3 bin/zenodo_breast_ihc_deposit.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --token-file /path/outside/repository/private-release-material/zenodo-token \
+  --create-only
+```
+
+After Zenodo confirms sufficient quota, run the same command without
+`--create-only` and record the confirmed total quota in bytes when it exceeds
+50 GB:
+
+```bash
+python3 bin/zenodo_breast_ihc_deposit.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --token-file /path/outside/repository/private-release-material/zenodo-token \
+  --confirmed-quota-bytes REPLACE_WITH_CONFIRMED_TOTAL_QUOTA_BYTES
+```
+
+The state is mode `0600` and is bound to the exact metadata and 55 local file
+hashes. Repeating the command resumes by remote size and MD5. Unexpected files
+or mismatches stop the run; `--replace-mismatched` permits reviewed replacement
+only after every local file is rehashed. Production and sandbox are the only
+accepted origins; use `--api-url https://sandbox.zenodo.org/api` for a sandbox
+exercise. The command cannot publish. Inspect the resulting draft in Zenodo
+and retain the separate governance and publication approvals.
+
+## 11. Publish the independently authorized draft
+
+`bin/zenodo_breast_ihc_publish.py` is a separate publish-only command. It
+cannot create a deposition, change metadata, upload, replace, or delete files.
+Use it only after the draft uploader has verified all 55 remote files and the
+data steward has approved the irreversible public release.
+
+First obtain the exact release fingerprint and canonical license without a
+credential or network request:
+
+```bash
+python3 bin/zenodo_breast_ihc_publish.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --deposition-id REPLACE_WITH_EXACT_DEPOSITION_ID \
+  --plan
+```
+
+Create a new JSON authorization file containing exactly the following keys.
+Copy the license and fingerprint verbatim from the plan, identify the actual
+authorizer, and use a timezone-aware ISO-8601 time:
+
+```json
+{
+  "deidentification_review_complete": true,
+  "pixel_content_privacy_review_complete": true,
+  "public_redistribution_authorized": true,
+  "dataset_rights_confirmed": true,
+  "license_confirmed": true,
+  "metadata_review_complete": true,
+  "publish_irreversibility_acknowledged": true,
+  "authorized_by": "REPLACE_WITH_DATA_STEWARD_NAME",
+  "authorized_at": "2026-08-04T12:00:00-04:00",
+  "license": "REPLACE_WITH_EXACT_CANONICAL_LICENSE_FROM_PLAN",
+  "release_fingerprint_sha256": "REPLACE_WITH_EXACT_FINGERPRINT_FROM_PLAN"
+}
+```
+
+Keep the authorization, token, and state as three distinct files outside the
+package, each owned by the current user with exact mode `0600`. The token needs
+both Zenodo `deposit:write` and `deposit:actions`. Publication requires the
+explicit `--publish` action:
+
+```bash
+python3 bin/zenodo_breast_ihc_publish.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --deposition-id REPLACE_WITH_EXACT_DEPOSITION_ID \
+  --authorization /path/outside/repository/private-release-material/publication-authorization.json \
+  --token-file /path/outside/repository/private-release-material/zenodo-actions-token \
+  --publish
+```
+
+Immediately before the one permitted publish request, the command atomically
+records `publish-intent` in the state. It does not retry that POST. If the
+outcome is ambiguous, rerunning the same command performs read-only
+reconciliation and will not issue a second publish request. The state becomes
+`published` only after the published deposition and anonymous public record
+both match the exact metadata and 55-file size/MD5 roster, and the public DOI
+and URLs have been verified.
+
 ## Dataset publication status
 
 The future public example must not be documented as downloadable until its

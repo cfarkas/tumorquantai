@@ -75,3 +75,54 @@ python3 bin/package_breast_ihc_patch_release.py \
 # Source filesystem metadata is ignored; arbitrary Python versions are not promised.
 # The packager cannot upload or publish. Size/quota, privacy/governance review,
 # and publication remain pending under Zenodo's default 50 GB/100-file limits.
+
+# Fully revalidate the exact 55-file package without a token or network request.
+python3 bin/zenodo_breast_ihc_deposit.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --plan
+
+# Create the open-access draft without file uploads while quota is arranged.
+# The token file must be outside the package, mode 0600, with deposit:write only.
+python3 bin/zenodo_breast_ihc_deposit.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --token-file /path/outside/repository/private-release-material/zenodo-token \
+  --create-only
+
+# Resume/upload only after quota is confirmed. Omit --confirmed-quota-bytes when
+# the measured package total does not exceed Zenodo's default 50 GB allocation.
+python3 bin/zenodo_breast_ihc_deposit.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --token-file /path/outside/repository/private-release-material/zenodo-token \
+  --confirmed-quota-bytes REPLACE_WITH_CONFIRMED_TOTAL_QUOTA_BYTES
+
+# The uploader accepts only production or sandbox Zenodo origins, verifies the
+# remote open-access draft metadata and exact roster, and never publishes.
+
+# Plan the separate publication step locally. Copy the exact fingerprint and
+# canonical license from this output into an independently reviewed mode-0600
+# authorization JSON; no credential or network is used by --plan.
+python3 bin/zenodo_breast_ihc_publish.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --deposition-id REPLACE_WITH_EXACT_DEPOSITION_ID \
+  --plan
+
+# Publish only after the exact 55-file draft and independent authorization have
+# been reviewed. Authorization, state, and token must be distinct mode-0600
+# files; the token needs deposit:write and deposit:actions. This sends exactly
+# one non-retried publish action and verifies the anonymous public record/DOI.
+python3 bin/zenodo_breast_ihc_publish.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --deposition-id REPLACE_WITH_EXACT_DEPOSITION_ID \
+  --authorization /path/outside/repository/private-release-material/publication-authorization.json \
+  --token-file /path/outside/repository/private-release-material/zenodo-actions-token \
+  --publish
