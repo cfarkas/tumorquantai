@@ -37,6 +37,32 @@ jobs:
         run: |
           python scripts/apply_oncotracer_docs.py
           python scripts/finalize_oncotracer_docs.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('examples/lymphoma/verify_outputs.py')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          repaired = []
+          index = 0
+          while index < len(lines):
+              line = lines[index]
+              if (
+                  line.rstrip().endswith('rendered = "')
+                  and index + 1 < len(lines)
+                  and lines[index + 1].lstrip().startswith('".join(')
+              ):
+                  indent = line[: len(line) - len(line.lstrip())]
+                  repaired.append(
+                      indent
+                      + 'rendered = "\\n"'
+                      + lines[index + 1].lstrip()[1:]
+                  )
+                  index += 2
+                  continue
+              repaired.append(line)
+              index += 1
+          path.write_text('\n'.join(repaired) + '\n', encoding='utf-8')
+          PY
           chmod +x examples/quickstart/verify_outputs.py examples/lymphoma/verify_outputs.py
 
       - name: Install documentation validation dependencies
