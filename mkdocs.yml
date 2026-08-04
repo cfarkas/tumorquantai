@@ -1,5 +1,5 @@
 site_name: TumorQuantAI
-site_description: Documentation for reproducible cell-type quantification in H&E whole-slide images
+site_description: Reproducible H&E whole-slide cell typing, overlays, coordinates, and cohort tables
 site_author: TumorQuantAI developers
 site_url: https://cfarkas.github.io/tumorquantai/
 
@@ -42,54 +42,42 @@ theme:
 
 nav:
   - Home: index.md
-  - Start here:
-      - Structural demo: start-here/demo.md
-      - Public one-slide quickstart: start-here/public-slide.md
-      - Inspect and run your own slide: start-here/own-slides.md
-  - Tutorials:
-      - Review one public slide (1%): tutorials/one-public-slide.md
-      - Run four public slides (10%): tutorials/four-public-slides.md
-      - Full 21-slide collection: tutorials/full-collection.md
-  - How-to guides:
-      - Install and check the computer: how-to/install.md
-      - Configure HistoPLUS access: how-to/model-access.md
-      - Prepare TIFF inputs: how-to/prepare-tiff.md
-      - Download and convert MDS: how-to/download-mds.md
-      - Create a sample sheet: how-to/sample-sheet.md
-      - Choose smoke, fast, or full: how-to/choose-preset.md
-      - Resume an interrupted run: how-to/resume.md
-      - Review QC overlays: how-to/review-overlays.md
-      - Export to QuPath: how-to/qupath.md
-      - Move work and output safely: how-to/storage.md
-  - Explanation:
-      - What TumorQuantAI predicts: explanation/predictions.md
-      - WSI, pyramid levels, L0/L2: explanation/wsi-pyramid.md
-      - Source versus target MPP: explanation/mpp.md
-      - Sampling and reproducibility: explanation/sampling.md
-      - Counts versus fractions: explanation/counts-fractions.md
-      - Failed sample versus biological zero: explanation/failed-vs-zero.md
-      - Research limitations: explanation/research-limitations.md
-  - Reference:
-      - CLI: reference/cli.md
+  - Getting Started:
+      - 1. Install Requirements: installation.md
+      - 2. QuickStart Example 1 — One Public WSI: quick_start.md
+      - 3. Apply to Your Own WSIs: own_data.md
+      - Input Files and Physical Scale: inputs.md
+      - HistoPLUS Model Access: how-to/model-access.md
+  - Full Tutorial: full_tutorial.md
+  - Other Example Runs:
+      - Structural Software Demo: start-here/demo.md
+      - Four Public WSIs at 10%: tutorials/four-public-slides.md
+  - Run and Configure:
+      - Workflow, Presets, and Resume: running.md
+      - Download Public MDS Files: how-to/download-mds.md
+      - Convert MDS and Prepare TIFFs: how-to/prepare-tiff.md
+      - Create a Sample Sheet: how-to/sample-sheet.md
+      - Choose 1%, 10%, or 100%: how-to/choose-preset.md
+      - Resume an Interrupted Run: how-to/resume.md
+      - CLI Reference: reference/cli.md
       - Parameters: reference/parameters.md
-      - Configuration and environment: reference/configuration.md
-      - Input manifest schema: reference/input-manifest.md
-      - Output files and schema: reference/outputs.md
-      - Status/report JSON schema: reference/status-report-json.md
-      - Exit codes: reference/exit-codes.md
-      - Provenance fields: reference/provenance.md
-      - Citation guide: reference/citations.md
+      - Configuration and Environment: reference/configuration.md
+      - Input Manifest Schema: reference/input-manifest.md
+  - Understand Results:
+      - Output Files: outputs.md
+      - Results and Workflow Gallery: gallery.md
+      - What TumorQuantAI Predicts: explanation/predictions.md
+      - Sampling and Reproducibility: explanation/sampling.md
+      - Counts versus Fractions: explanation/counts-fractions.md
+      - Failed Sample versus Biological Zero: explanation/failed-vs-zero.md
+      - Source versus Target MPP: explanation/mpp.md
+      - Research Limitations: explanation/research-limitations.md
+      - Provenance Fields: reference/provenance.md
+  - Help and About:
+      - Troubleshooting: troubleshooting/index.md
+      - Citation and Research Use: citation_research_use.md
+      - Developer Guide: developer_guide.md
       - Glossary: GLOSSARY.md
-      - Advanced tools: TOOLS.md
-  - Troubleshooting: troubleshooting/index.md
-  - Advanced analysis:
-      - Clinical stratification and ML: CLINICAL_ML.md
-  - Maintainers:
-      - Usability benchmark: maintainers/USABILITY_BENCHMARK.md
-      - Release checklist: maintainers/RELEASE_CHECKLIST.md
-      - Dataset/Zenodo consistency: maintainers/DATASET_CONSISTENCY.md
-      - License decision status: maintainers/LICENSE_DECISION.md
-      - Zenodo publishing mechanics: ZENODO_PUBLISHING.md
 
 plugins:
   - search

@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 430" role="img" aria-labelledby="title desc">
+  <title id="title">TumorQuantAI one-slide quickstart</title>
+  <desc id="desc">A six-step diagram showing repository cloning, one public WSI download, checksum validation, L0 and L2 conversion, model-free inspection, optional one-percent HistoPLUS analysis, and reviewable outputs.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="0.55" stop-color="#172554"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#020617" flood-opacity="0.35"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#5eead4"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="430" rx="28" fill="url(#bg)"/>
+  <text x="70" y="70" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="39" font-weight="760">QuickStart Example 1 · one public WSI</text>
+  <text x="72" y="108" fill="#bae6fd" font-family="system-ui, sans-serif" font-size="20">Public preparation is model-free; HistoPLUS inference is an optional final step.</text>
+
+  <g font-family="system-ui, sans-serif" text-anchor="middle">
+    <g transform="translate(62 154)" filter="url(#shadow)">
+      <rect width="190" height="172" rx="18" fill="#f8fafc"/>
+      <rect x="46" y="36" width="98" height="66" rx="8" fill="#dbeafe" stroke="#1d4ed8" stroke-width="4"/>
+      <path d="M69 57h52M69 74h38M69 91h46" stroke="#1d4ed8" stroke-width="7" stroke-linecap="round"/>
+      <text x="95" y="136" fill="#0f172a" font-size="19" font-weight="700">1 · clone</text>
+    </g>
+    <path d="M268 239H309" stroke="#5eead4" stroke-width="7" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+    <g transform="translate(326 154)" filter="url(#shadow)">
+      <rect width="190" height="172" rx="18" fill="#f8fafc"/>
+      <path d="M95 31v66M68 73l27 27 27-27" fill="none" stroke="#0f766e" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="48" y="109" width="94" height="12" rx="6" fill="#99f6e4"/>
+      <text x="95" y="145" fill="#0f172a" font-size="19" font-weight="700">2 · download</text>
+      <text x="95" y="164" fill="#475569" font-size="13">sample 022</text>
+    </g>
+    <path d="M532 239H573" stroke="#5eead4" stroke-width="7" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+    <g transform="translate(590 154)" filter="url(#shadow)">
+      <rect width="190" height="172" rx="18" fill="#f8fafc"/>
+      <circle cx="95" cy="69" r="37" fill="#dcfce7" stroke="#16a34a" stroke-width="5"/>
+      <path d="M75 69l14 14 28-32" fill="none" stroke="#16a34a" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="95" y="139" fill="#0f172a" font-size="19" font-weight="700">3 · verify</text>
+      <text x="95" y="159" fill="#475569" font-size="13">size + hashes</text>
+    </g>
+    <path d="M796 239H837" stroke="#5eead4" stroke-width="7" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+    <g transform="translate(854 154)" filter="url(#shadow)">
+      <rect width="190" height="172" rx="18" fill="#f8fafc"/>
+      <rect x="38" y="34" width="114" height="72" rx="10" fill="#fdf2f8" stroke="#c026d3" stroke-width="4"/>
+      <path d="M50 76c22-42 42 23 63-17 12-22 20 4 29-12" fill="none" stroke="#db2777" stroke-width="8" stroke-linecap="round"/>
+      <text x="95" y="139" fill="#0f172a" font-size="19" font-weight="700">4 · convert</text>
+      <text x="95" y="159" fill="#475569" font-size="13">L0 + L2 TIFF</text>
+    </g>
+    <path d="M1060 239H1101" stroke="#5eead4" stroke-width="7" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+    <g transform="translate(1118 154)" filter="url(#shadow)">
+      <rect width="190" height="172" rx="18" fill="#f8fafc"/>
+      <rect x="42" y="34" width="106" height="72" rx="10" fill="#e0f2fe"/>
+      <circle cx="73" cy="67" r="12" fill="#0ea5e9"/>
+      <circle cx="107" cy="57" r="10" fill="#14b8a6"/>
+      <circle cx="125" cy="84" r="13" fill="#f43f5e"/>
+      <path d="M56 119h78" stroke="#0f766e" stroke-width="8" stroke-linecap="round"/>
+      <text x="95" y="145" fill="#0f172a" font-size="19" font-weight="700">5 · inspect</text>
+      <text x="95" y="164" fill="#475569" font-size="13">no inference</text>
+    </g>
+  </g>
+
+  <g transform="translate(270 357)">
+    <rect width="900" height="48" rx="24" fill="#0b2537" stroke="#5eead4" stroke-width="2"/>
+    <circle cx="28" cy="24" r="8" fill="#f9a8d4"/>
+    <text x="48" y="31" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="17">Optional authorized step: seeded 1% HistoPLUS analysis → overlay, coordinates, summary, audit, and cohort tables</text>
+  </g>
+</svg>
