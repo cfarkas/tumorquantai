@@ -53,6 +53,18 @@ jobs:
           if old_test not in text:
               raise SystemExit('Unable to escape the generated empty-exclude test')
           text = text.replace(old_test, new_test, 1)
+
+          old_resume = (
+              r'''    assert 'resume_parts = [\n        "tumorquantai", "run"' in cli
+              assert 'resume_parts = [\n        "./tumorquantai", "run"' not in cli'''
+          )
+          new_resume = (
+              '''    assert '"tumorquantai", "run", str(input_root)' in cli
+              assert '"./tumorquantai", "run", str(input_root)' not in cli'''
+          )
+          if old_resume not in text:
+              raise SystemExit('Unable to simplify the generated resume-command test')
+          text = text.replace(old_resume, new_resume, 1)
           path.write_text(text, encoding='utf-8')
           PY
 
@@ -114,7 +126,7 @@ jobs:
           assert 'export APPTAINER_BINDPATH=' in launcher
           assert 'export SINGULARITY_BINDPATH=' in launcher
           assert '[[ -n "${EXCLUDE}" ]] && NF_ARGS+=(--exclude "${EXCLUDE}")' in launcher
-          assert 'resume_parts = [\n        "tumorquantai", "run"' in Path('tumorquantai').read_text(encoding='utf-8')
+          assert '"tumorquantai", "run", str(input_root)' in Path('tumorquantai').read_text(encoding='utf-8')
           PY
 
       - name: Commit and push the final runtime fix
