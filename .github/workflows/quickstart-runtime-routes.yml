@@ -37,7 +37,7 @@ env:
   SAMPLE: TumorQuantAI_LymphomaWSI_022
   DOCKER_IMAGE: tumorquantai-ci-runtime:latest
   SIF_PATH: /mnt/tumorquantai-data/tumorquantai-ci-runtime.sif
-  STUB_WEIGHT: ${{ runner.temp }}/tumorquantai-ci-stub-weight.pt
+  STUB_WEIGHT: /tmp/tumorquantai-ci-stub-weight.pt
 
 jobs:
   validate-four-routes:
