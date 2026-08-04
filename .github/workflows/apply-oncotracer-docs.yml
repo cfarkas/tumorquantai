@@ -1,0 +1,105 @@
+name: Apply OncoTracer-style TumorQuantAI documentation
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tumorquantai-oncotracer-docs
+  cancel-in-progress: true
+
+jobs:
+  apply-test-commit:
+    if: github.head_ref == 'agent/oncotracer-style-v1-overhaul'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out overhaul branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/oncotracer-style-v1-overhaul
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate and finalize the documentation
+        run: |
+          python scripts/apply_oncotracer_docs.py
+          python scripts/finalize_oncotracer_docs.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('examples/lymphoma/verify_outputs.py')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          repaired = []
+          index = 0
+          while index < len(lines):
+              line = lines[index]
+              if (
+                  line.rstrip().endswith('rendered = "')
+                  and index + 1 < len(lines)
+                  and lines[index + 1].lstrip().startswith('".join(')
+              ):
+                  indent = line[: len(line) - len(line.lstrip())]
+                  repaired.append(
+                      indent
+                      + 'rendered = "\\n"'
+                      + lines[index + 1].lstrip()[1:]
+                  )
+                  index += 2
+                  continue
+              repaired.append(line)
+              index += 1
+          path.write_text('\n'.join(repaired) + '\n', encoding='utf-8')
+          PY
+          chmod +x examples/quickstart/verify_outputs.py examples/lymphoma/verify_outputs.py
+
+      - name: Install documentation validation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r docs/requirements.txt
+          python -m pip install \
+            'PyYAML>=6,<7' 'jsonschema>=4,<5' 'numpy>=1.26,<3' \
+            'pandas>=2.2,<3' 'matplotlib>=3.8,<4' 'tifffile>=2024.12' \
+            'Pillow>=10,<13' 'scipy>=1.15,<2' 'scikit-learn>=1.6,<2' \
+            'openpyxl>=3.1,<4' 'requests>=2.32,<3' 'olefile>=0.47,<1' \
+            'imagecodecs>=2024.12,<2027'
+
+      - name: Validate documentation, examples, and repository hygiene
+        run: |
+          python -m py_compile \
+            scripts/check_docs_language.py \
+            scripts/check_repository_hygiene.py \
+            tests/test_oncotracer_style_docs.py \
+            examples/quickstart/verify_outputs.py \
+            examples/lymphoma/verify_outputs.py
+          python scripts/check_docs_language.py
+          python tests/test_oncotracer_style_docs.py
+          python scripts/check_repository_hygiene.py
+          mkdocs build --strict
+
+      - name: Prepare a workflow-safe documentation commit
+        run: |
+          rm -f scripts/apply_oncotracer_docs.py
+          rm -f scripts/finalize_oncotracer_docs.py
+          git restore .github/workflows/ci.yml
+          git restore .github/workflows/apply-oncotracer-docs.yml
+
+      - name: Commit and push the complete documentation overhaul
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Rebuild TumorQuantAI documentation and public tutorials"
+          git push origin HEAD:agent/oncotracer-style-v1-overhaul

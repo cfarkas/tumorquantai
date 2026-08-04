@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "tumorquantai-launcher"
+version = "0.5.0"
+description = "Poetry-managed launcher for the TumorQuantAI Nextflow workflow"
+authors = ["Carlos Farkas"]
+readme = "README.md"
+packages = [{ include = "tumorquantai_cli" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+PyYAML = ">=6,<7"
+requests = ">=2.32,<3"
+numpy = ">=1.26,<3"
+olefile = ">=0.47,<1"
+Pillow = ">=10,<13"
+tifffile = ">=2024.12,<2027"
+imagecodecs = ">=2024.12,<2027"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8,<9"
+
+[tool.poetry.scripts]
+tumorquantai = "tumorquantai_cli.cli:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
