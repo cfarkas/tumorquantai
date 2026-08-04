@@ -12,6 +12,7 @@ from pathlib import Path
 
 EXPECTED_SAMPLE = "TumorQuantAI_LymphomaWSI_022"
 EXPECTED_PERCENT = 1.0
+DEFAULT_ROOT = Path(__file__).resolve().parents[2].parent / "tumorquantai-quickstart-one-wsi"
 
 
 def fail(message: str) -> None:
@@ -154,9 +155,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--tutorial-root",
-        required=True,
         type=Path,
-        help="root passed to ./tumorquantai quickstart --output",
+        default=DEFAULT_ROOT,
+        help="QuickStart root (default: ../tumorquantai-quickstart-one-wsi)",
     )
     parser.add_argument(
         "--preparation-only",

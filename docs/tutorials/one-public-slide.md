@@ -6,10 +6,10 @@ Complete [QuickStart Example 1](../quick_start.md), including the optional autho
 
 ```bash
 # Set the tutorial root used by QuickStart Example 1.
-TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart
+TQA_ROOT="$(dirname "$PWD")/tumorquantai-quickstart-one-wsi"
 
 # Regenerate and open the portable report.
-./tumorquantai report "$TQA_ROOT/smoke-results"
+tumorquantai report "$TQA_ROOT/smoke-results"
 ```
 
 Open `$TQA_ROOT/START_HERE.html` and `$TQA_ROOT/smoke-results/START_HERE.html`. Confirm the fixed public sample, 1% preset, recorded seed, source MPP, and completion state.

@@ -32,10 +32,10 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements-tutorial.txt
 
 # Set the only path that must be changed.
-TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart
+TQA_ROOT="$(dirname "$PWD")/tumorquantai-quickstart-one-wsi"
 
 # Prepare one public WSI without inference.
-./tumorquantai quickstart \
+tumorquantai quickstart \
   --output "$TQA_ROOT" \
   --cpu \
   --no-inference
@@ -45,7 +45,7 @@ After authorized HistoPLUS access is ready, repeat without `--no-inference` and 
 
 ## Four public WSIs at 10%
 
-Use `zenodo_first_four.urls.txt` and `checksums_first_four.sha256`, convert aliases 022, 002, 006, and 016, then run `./tumorquantai run ... --preset fast`.
+Use `zenodo_first_four.urls.txt` and `checksums_first_four.sha256`, convert aliases 022, 002, 006, and 016, then run `tumorquantai run ... --preset fast`.
 
 See [`docs/tutorials/four-public-slides.md`](../../docs/tutorials/four-public-slides.md).
 
@@ -77,7 +77,7 @@ After conversion and inspection, the maintained full tutorial runs:
 
 ```bash
 # Process a deterministic 10% of detected tissue tiles from all 21 slides.
-./tumorquantai run "$TQA_ROOT/slides" \
+tumorquantai run "$TQA_ROOT/slides" \
   --sample-sheet "$TQA_ROOT/slides/samples.csv" \
   --output "$TQA_ROOT/results-10-percent" \
   --work-dir "$TQA_ROOT/work-10-percent" \

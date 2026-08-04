@@ -10,7 +10,7 @@ under `Unreleased` and does not create a tag.
       source fingerprints, deterministic sampling, source/target MPP,
       fail-closed scale, per-slide isolation, failure audit, and zero semantics.
 - [ ] Output filenames/schemas are unchanged or a tested migration is present.
-- [ ] `./tumorquantai --help` and all subcommand help pass.
+- [ ] `tumorquantai --help` and all subcommand help pass.
 - [ ] Demo, fixture inspection, status/report fixtures, and preset mapping pass.
 
 ## Documentation

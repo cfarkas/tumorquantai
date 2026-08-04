@@ -1,43 +1,67 @@
 # CLI reference
 
-`./tumorquantai` is the main command-line interface. It wraps the existing
+`tumorquantai` is the main command-line interface. It wraps the existing
 `run.sh` and Nextflow workflow rather than reimplementing inference. The
-installed script's `--help` output is authoritative.
+installed command's `--help` output is authoritative.
 
 ## Synopsis
 
 ```text
-./tumorquantai doctor [--input PATH] [--output PATH] [--work-dir PATH]
-                      [--online] [--json]
+tumorquantai install (--docker | --singularity | --poetry | --conda)
+                      [--prefix DIR | --system]
+                      [--no-nextflow-download] [--dry-run]
 
-./tumorquantai demo [--output DIR]
+tumorquantai doctor [--input PATH] [--output PATH] [--work-dir PATH]
+                     [--online] [--json]
 
-./tumorquantai inspect INPUT --output DIR
-                         [--source-mpp FLOAT] [--sample-sheet CSV]
-                         [--pattern GLOB]... [--include GLOB] [--exclude GLOB]
+tumorquantai demo [--output DIR]
 
-./tumorquantai run INPUT --output DIR
-                     [--preset smoke|fast|full] [--source-mpp FLOAT]
-                     [--sample ID]
-                     [--profile auto|gpu|cpu|local | --cpu | --gpu]
-                     [--seed INT] [--sample-sheet CSV]
-                     [--pattern GLOB]... [--include GLOB] [--exclude GLOB]
-                     [--work-dir DIR]
-                     [--dry-run] [--no-resume]
-                     [--local-weight FILE] [--token-file FILE]
-                     [-- EXPERT_NEXTFLOW_ARGS]
+tumorquantai inspect INPUT --output DIR
+                        [--source-mpp FLOAT] [--sample-sheet CSV]
+                        [--pattern GLOB]... [--include GLOB] [--exclude GLOB]
 
-./tumorquantai status OUTPUT [--json]
-./tumorquantai report OUTPUT [--json]
+tumorquantai run INPUT --output DIR
+                    [--preset smoke|fast|full] [--source-mpp FLOAT]
+                    [--sample ID]
+                    [--docker | --singularity | --conda]
+                    [--profile auto|gpu|cpu|local | --cpu | --gpu]
+                    [--seed INT] [--sample-sheet CSV]
+                    [--pattern GLOB]... [--include GLOB] [--exclude GLOB]
+                    [--work-dir DIR]
+                    [--dry-run] [--no-resume]
+                    [--local-weight FILE] [--token-file FILE]
+                    [-- EXPERT_NEXTFLOW_ARGS]
 
-./tumorquantai quickstart --output PATH
-                          [--dry-run | --download-only | --convert-only |
-                           --no-inference]
-                          [--profile auto|gpu|cpu|local | --cpu | --gpu]
-                          [--seed INT] [--local-weight FILE]
+tumorquantai status OUTPUT [--json]
+tumorquantai report OUTPUT [--json]
+
+tumorquantai quickstart [--output PATH]
+                         [--dry-run | --download-only | --convert-only |
+                          --no-inference]
+                         [--docker | --singularity | --conda]
+                         [--profile auto|gpu|cpu|local | --cpu | --gpu]
+                         [--seed INT] [--local-weight FILE]
 ```
 
 ## Commands
+
+### `install`
+
+Installs the global `tumorquantai` command, creates an isolated launcher
+environment, records the cloned repository location, and prepares one execution
+method. Choose exactly one route:
+
+- `--docker`: install the command and validate Docker.
+- `--singularity` or `--apptainer`: install the command and validate Singularity/Apptainer.
+- `--poetry`: create the Poetry-managed launcher; Docker is its default scientific backend.
+- `--conda`: install the command and validate Miniforge/Conda.
+
+Additional options:
+
+- `--prefix DIR`: install under a user-selected prefix; the default is `~/.local`.
+- `--system`: install under `/usr/local` and `/etc`, normally with `sudo`.
+- `--no-nextflow-download`: keep an administrator-provided Nextflow installation.
+- `--dry-run`: print the installation plan without changing files.
 
 ### `doctor`
 
@@ -102,6 +126,8 @@ excluded. `status --json` uses the same share-oriented path redaction.
 Prepares only public alias 022 from Zenodo record 21466410, converts L0/L2,
 inspects MPP `0.261780`, and optionally runs seeded 1% inference when authorized
 model access is already configured. It never expands to four or 21 slides.
+When `--output` is omitted, the output is created beside the cloned repository
+as `tumorquantai-quickstart-one-wsi`.
 
 ## Advanced compatibility
 

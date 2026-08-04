@@ -1,27 +1,8 @@
 # Install TumorQuantAI
 
-TumorQuantAI has two preparation levels:
+TumorQuantAI includes a self-installing command. Start from a fresh clone and choose one route.
 
-1. **Public data preparation:** download, checksum validation, MDS-to-TIFF conversion, and model-free inspection.
-2. **HistoPLUS inference:** Java, Nextflow, Docker or a prepared local environment, and authorized HistoPLUS access.
-
-The public one-slide tutorial can be prepared before model access is available.
-
-## Requirements
-
-Use Linux with:
-
-- [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
-- [Python 3.10](https://www.python.org/downloads/) or newer
-- [Java 17](https://adoptium.net/temurin/releases/?version=17) or newer
-- [Nextflow 24.10](https://www.nextflow.io/docs/latest/install.html) or newer
-- [Docker Engine](https://docs.docker.com/engine/install/) for the maintained container route
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) only for GPU execution
-- `wget` or `curl`, `sha256sum`, `findmnt`, and `df`
-
-HistoPLUS is gated separately. Creating a Hugging Face account or token does not automatically grant model access. Follow [Configure authorized HistoPLUS access](how-to/model-access.md).
-
-## 1. Clone TumorQuantAI
+## 1. Clone the repository
 
 ```bash
 # Clone TumorQuantAI and enter the repository.
@@ -29,130 +10,123 @@ git clone https://github.com/cfarkas/tumorquantai.git
 cd tumorquantai
 ```
 
-## 2. Install the tutorial environment
+## 2. Choose one installation method
 
-The tutorial environment contains only the host-side download, checksum, MDS conversion, and inspection dependencies.
+### Installation and execution through Docker
 
-```bash
-# Create and activate the tutorial environment.
-python3 -m venv .venv
-. .venv/bin/activate
-
-# Install the pinned tutorial requirements.
-python -m pip install --upgrade pip
-python -m pip install -r requirements-tutorial.txt
-```
-
-Repeat `. .venv/bin/activate` after opening a new terminal.
-
-## 3. Install Nextflow
+Install Docker Engine first, then run:
 
 ```bash
-# Download Nextflow into the current directory.
-curl -s https://get.nextflow.io | bash
+# Install the global command and validate Docker.
+./tumorquantai install --docker
 
-# Install the executable on the system path.
-sudo install -m 0755 nextflow /usr/local/bin/nextflow
+# Make the user-level command available now.
+export PATH="$HOME/.local/bin:$PATH"
 
-# Confirm the installed version.
-nextflow -version
+# Confirm the installed command and selected default backend.
+tumorquantai --version
+tumorquantai doctor
 ```
 
-A system administrator may provide Nextflow through a module or shared software installation instead.
+### Installation and execution through Singularity or Apptainer
 
-## 4. Check Docker
+Install Apptainer or Singularity first, then run:
 
 ```bash
-# Confirm the Docker client and daemon.
-docker --version
-docker info
+# Install the global command and validate Singularity or Apptainer.
+./tumorquantai install --singularity
+
+# Make the user-level command available now.
+export PATH="$HOME/.local/bin:$PATH"
+
+# Confirm the installed command.
+tumorquantai --version
 ```
 
-For GPU execution, also check:
+### Installation through Poetry
+
+This route creates an in-repository Poetry environment and installs the same global `tumorquantai` command. Docker is the default scientific backend; another backend can still be selected at execution time.
 
 ```bash
-# Confirm the NVIDIA host and Docker runtime.
-nvidia-smi
-docker info --format '{{json .Runtimes}}'
+# Install Poetry in an isolated tool environment and install TumorQuantAI.
+./tumorquantai install --poetry
+
+# Make the user-level command available now.
+export PATH="$HOME/.local/bin:$PATH"
+
+# Confirm the installed command.
+tumorquantai --version
 ```
 
-Use the CPU route when the GPU is unavailable or reserved by another workload.
+### Installation and execution through Conda
 
-## 5. Run the TumorQuantAI doctor
+Install Miniforge or Conda first, then run:
 
 ```bash
-# Check the local computer without starting inference.
-./tumorquantai doctor
+# Install the global command and validate Conda.
+./tumorquantai install --conda
 
-# Check an intended storage mount and the public metadata.
-./tumorquantai doctor \
-  --output /path/to/mounted/storage/tumorquantai-check \
-  --online
+# Make the user-level command available now.
+export PATH="$HOME/.local/bin:$PATH"
+
+# Confirm the installed command.
+tumorquantai --version
 ```
 
-`doctor` never prints a token value. Resolve every `FAIL` relevant to the selected route before inference.
+## What the installer changes
 
-## 6. Check the model-free workflow
+The default user installation writes only to:
+
+```text
+~/.local/bin/tumorquantai
+~/.local/bin/nextflow              # only when Nextflow was absent
+~/.local/share/tumorquantai/
+~/.config/tumorquantai/repository
+~/.config/tumorquantai/backend
+```
+
+It creates an isolated host-side Python environment for download, MDS conversion, and inspection. It records the cloned repository location so the command continues to work from any directory. The selected backend becomes the default, while `--docker`, `--singularity`, or `--conda` can override it for an individual run.
+
+The installer validates system prerequisites but does not silently add operating-system repositories or invoke `sudo`. Follow the displayed official link when Docker, Apptainer/Singularity, Conda, or Java is missing.
+
+## System-wide installation
 
 ```bash
-# Run the small structural software demo.
-./tumorquantai demo
+# Install under /usr/local and /etc for all users.
+sudo ./tumorquantai install --docker --system
 
-# Open the generated local report.
-python -m webbrowser tumorquantai-demo/START_HERE.html
+# Confirm the system command.
+tumorquantai --version
 ```
 
-The demo uses synthetic fixtures and has no biological meaning. It confirms discovery, per-sample isolation, failure auditing, aggregation, status, and reporting without Docker, HistoPLUS, or public slide downloads.
+Replace `--docker` with `--singularity`, `--poetry`, or `--conda` as needed.
 
-## 7. Prepare one real public WSI
+A manual copy also works when it is made from the clone and followed by the installer, because the command records the repository location:
 
 ```bash
-# Set the only path that must be changed.
-TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart
+# Optional manual launcher copy.
+sudo cp tumorquantai /usr/local/bin/tumorquantai
 
-# Download, verify, convert, and inspect the public WSI without inference.
-./tumorquantai quickstart \
-  --output "$TQA_ROOT" \
-  --cpu \
-  --no-inference
+# Run from the cloned repository and complete the system installation.
+sudo tumorquantai install --docker --system
 ```
 
-Continue with [QuickStart Example 1](quick_start.md). The data preparation stage requires no Zenodo credential and does not require HistoPLUS access.
+The built-in `--system` method is preferred because it also creates the managed Python environment and records the backend.
 
-## CPU and GPU selection
+## Nextflow and Java
 
-| Command option | Use |
-| --- | --- |
-| `--cpu` | Force the maintained Docker CPU profile |
-| `--gpu` | Require a working NVIDIA host and container runtime |
-| `--profile auto` | Select GPU only when the host and Docker runtime are visible; otherwise use CPU |
-| `--profile local` | Use a separately prepared expert environment without Docker |
-
-The beginner tutorials use explicit `--cpu` or `--gpu` so the selected route is visible in the command and provenance.
-
-## Storage requirements
-
-WSIs are much larger after conversion than their compressed MDS downloads. Keep four budgets separate:
-
-- public MDS downloads;
-- converted L0/L2 TIFFs;
-- Nextflow work and cache;
-- final results.
-
-The one-slide command prints a preflight estimate. The 21-slide tutorial requires much more space; read [Full tutorial](full_tutorial.md) before downloading.
+When `nextflow` is absent, the installer downloads pinned Nextflow `25.10.2` and verifies its SHA-256 checksum. Java 17 or newer is still required. Disable the download only when Nextflow is supplied by a module or administrator:
 
 ```bash
-# Confirm the selected mount, free space, and write access.
-TQA_ROOT=/path/to/mounted/storage/tumorquantai-check
-mkdir -p "$TQA_ROOT"
-findmnt -T "$TQA_ROOT"
-df -hT "$TQA_ROOT"
-test -w "$TQA_ROOT"
+# Keep the external Nextflow installation unchanged.
+./tumorquantai install --docker --no-nextflow-download
 ```
 
-## Next steps
+## First command
 
-- [QuickStart Example 1: one public WSI](quick_start.md)
-- [Full 21-slide lymphoma tutorial at 10%](full_tutorial.md)
-- [Apply TumorQuantAI to your own WSIs](own_data.md)
-- [Troubleshooting](troubleshooting/index.md)
+```bash
+# Prepare one public WSI without model inference or an edited output path.
+tumorquantai quickstart --no-inference
+```
+
+Continue with [QuickStart Example 1](quick_start.md).

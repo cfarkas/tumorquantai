@@ -49,6 +49,7 @@ FORBIDDEN = (
     "/home/student/",
     "screen -S",
     "screen -r",
+    "TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart",
 )
 
 FIGURES = (
@@ -129,6 +130,11 @@ def check_quickstart() -> None:
         "1%",
         "examples/quickstart/verify_outputs.py",
         "assets/tutorial/quickstart_wsi_flow.svg",
+        "./tumorquantai install --docker",
+        "./tumorquantai install --singularity",
+        "./tumorquantai install --poetry",
+        "./tumorquantai install --conda",
+        "tumorquantai quickstart --no-inference",
     )
     for item in required:
         if item not in text:

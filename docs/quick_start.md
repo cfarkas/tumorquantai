@@ -2,18 +2,16 @@
 
 # QuickStart Example 1: one public WSI
 
-This tutorial downloads one public lymphoma WSI, validates its published identity, converts Motic MDS pyramid levels L0 and L2 to TIFF, inspects the slide, and optionally runs a deterministic 1% HistoPLUS analysis.
+This tutorial downloads one public lymphoma WSI, validates its identity, converts Motic MDS levels L0 and L2 to TIFF, inspects the slide, and optionally runs a deterministic 1% HistoPLUS analysis.
 
 ![One-slide QuickStart workflow](assets/tutorial/quickstart_wsi_flow.svg)
 
-## Public sample
+## Fixed public sample
 
-| Item | Fixed value |
+| Item | Value |
 | --- | --- |
 | Zenodo record | `21466410` |
-| Dataset DOI | `10.5281/zenodo.21466410` |
 | Sample | `TumorQuantAI_LymphomaWSI_022` |
-| File | `TumorQuantAI_LymphomaWSI_022.mds` |
 | Download size | `125350400` bytes |
 | MD5 | `94bb5b08ccf1957f8c42a579e8b33cfb` |
 | SHA-256 | `db2988b5c6bc791510cec4127106509e604e577feafdb15b94c149043ed7067a` |
@@ -21,190 +19,150 @@ This tutorial downloads one public lymphoma WSI, validates its published identit
 | Converted levels | L0 and L2 |
 | Optional inference | Seeded 1% of detected tissue tiles |
 
-The public download needs no Zenodo credential. HistoPLUS access is required only for inference.
+Public download and preparation need no Zenodo credential. HistoPLUS access is required only for inference.
 
-## Estimated time and storage
+## 1. Clone and install
 
-The 125 MB MDS file expands to multi-gigabyte TIFF data. Conversion time depends on storage speed and CPU. The optional HistoPLUS step can be substantially longer, especially on CPU. Keep the download, converted TIFFs, Nextflow work, model cache, and final results on a verified storage filesystem with several gigabytes of free space.
-
-## 1. Clone TumorQuantAI
+Choose one installation command. Docker is shown first.
 
 ```bash
 # Clone TumorQuantAI and enter the repository.
 git clone https://github.com/cfarkas/tumorquantai.git
 cd tumorquantai
+
+# Install the command and Docker route.
+./tumorquantai install --docker
+
+# Make the installed command available in this terminal.
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-## 2. Install the tutorial dependencies
+Alternative installation commands are:
 
 ```bash
-# Create and activate the tutorial environment.
-python3 -m venv .venv
-. .venv/bin/activate
+# Install for Singularity or Apptainer.
+./tumorquantai install --singularity
 
-# Install the host-side download and conversion requirements.
-python -m pip install --upgrade pip
-python -m pip install -r requirements-tutorial.txt
+# Install through Poetry; Docker is the default scientific backend.
+./tumorquantai install --poetry
+
+# Install for Conda.
+./tumorquantai install --conda
 ```
 
-## 3. Set the output root
+Run only the command for the route you will use.
 
-Edit only the path below:
+## 2. Preview the plan
 
 ```bash
-# Set the only path that must be changed.
-TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart
-
-# Create and verify the selected storage directory.
-mkdir -p "$TQA_ROOT"
-findmnt -T "$TQA_ROOT"
-df -hT "$TQA_ROOT"
-test -w "$TQA_ROOT"
+# Print the bounded one-slide plan without downloading.
+tumorquantai quickstart --dry-run
 ```
 
-Do not place the public WSI, converted TIFFs, work directory, or results inside the Git repository.
+The default directory is `.tumorquantai-quickstart-one-wsi`, beside the cloned repository. The command prints its resolved location. Use `--output /another/directory` only when a different filesystem is needed.
 
-## 4. Preview the bounded plan
+## 3. Download, verify, convert, and inspect
 
 ```bash
-# Check storage and print the one-slide plan without downloading anything.
-./tumorquantai quickstart \
-  --output "$TQA_ROOT" \
-  --cpu \
-  --dry-run
+# Prepare sample 022 without running HistoPLUS.
+tumorquantai quickstart --no-inference
 ```
 
-The plan is fixed to one slide, L0/L2 conversion, source MPP `0.261780`, and the `smoke` preset.
+This single command downloads the authoritative manifest and sample 022, verifies size, MD5, and SHA-256, converts L0/L2 with resumable state, writes `samples.csv`, performs model-free inspection, and creates `START_HERE.html`.
 
-## 5. Download, verify, convert, and inspect
+## 4. Verify the preparation
 
 ```bash
-# Prepare the public WSI without running HistoPLUS.
-./tumorquantai quickstart \
-  --output "$TQA_ROOT" \
-  --cpu \
-  --no-inference
+# Verify the default QuickStart directory.
+python3 examples/quickstart/verify_outputs.py --preparation-only
 ```
 
-The command:
-
-1. downloads the authoritative public manifest;
-2. downloads only sample 022 with resume support;
-3. checks the manifest identity, file size, MD5, and SHA-256;
-4. converts only L0 and L2 with resumable state;
-5. writes a sample sheet and model-free inspection;
-6. writes `START_HERE.html`.
-
-Expected final message:
+Open first:
 
 ```text
-One-slide data preparation and model-free inspection complete.
-Open first: /path/to/mounted/storage/tumorquantai-quickstart/START_HERE.html
+.tumorquantai-quickstart-one-wsi/START_HERE.html
 ```
 
-## 6. Review the prepared data
+## 5. Configure HistoPLUS access
+
+Follow [Configure authorized HistoPLUS access](how-to/model-access.md). Never place a token value on the command line or commit a model weight.
 
 ```bash
-# List the main preparation outputs.
-find "$TQA_ROOT" -maxdepth 3 -type f \
-  \( -name 'START_HERE.html' \
-  -o -name 'INSPECTION.html' \
-  -o -name 'inspection_manifest.csv' \
-  -o -name 'samples.csv' \
-  -o -name '*_L0_rgb.tif' \
-  -o -name '*_L2_rgb.tif' \) \
-  -print
+# Recheck the computer and authorized model-access path.
+tumorquantai doctor --online
 ```
 
-The prepared directory resembles:
+## 6. Run the one-slide 1% analysis
 
-```text
-tumorquantai-quickstart/
-├── download/
-│   ├── tumorquantai_lymphoma_mds_manifest.csv
-│   └── raw/TumorQuantAI_LymphomaWSI_022/1.mds
-├── converted/
-│   ├── TumorQuantAI_LymphomaWSI_022/1_L0_rgb.tif
-│   ├── TumorQuantAI_LymphomaWSI_022/1_L2_rgb.tif
-│   └── samples.csv
-├── inspection/
-│   ├── INSPECTION.html
-│   └── inspection_manifest.csv
-├── START_HERE.html
-└── tumorquantai_report.json
-```
+Choose one execution command:
 
-Review the inspection roster and source MPP before inference.
-
-## 7. Configure HistoPLUS access
-
-Follow [Configure authorized HistoPLUS access](how-to/model-access.md). Do not place a token value on the command line or commit a weight file.
+### Docker
 
 ```bash
-# Recheck the host and configured model-access path.
-./tumorquantai doctor \
-  --output "$TQA_ROOT" \
-  --online
+# Run QuickStart #1 through Docker on CPU.
+tumorquantai quickstart --docker --cpu
 ```
 
-Missing model access does not invalidate the downloaded or converted public data.
-
-## 8. Run the one-slide 1% analysis
+### Singularity or Apptainer
 
 ```bash
-# Run the deterministic one-slide 1% analysis on CPU.
-./tumorquantai quickstart \
-  --output "$TQA_ROOT" \
-  --cpu
+# Run QuickStart #1 through Singularity or Apptainer on CPU.
+tumorquantai quickstart --singularity --cpu
 ```
 
-Use `--gpu` instead of `--cpu` only after the doctor confirms the NVIDIA host and Docker runtime. The command reuses the prepared data and valid cached tasks.
-
-## 9. Verify the outputs
+### Poetry
 
 ```bash
-# Verify the required one-slide summary, overlay, counts, and audit.
-python3 examples/quickstart/verify_outputs.py \
-  --tutorial-root "$TQA_ROOT"
+# Run from the Poetry environment with Docker.
+poetry run tumorquantai quickstart --docker --cpu
 ```
 
-A successful verifier ends with:
+The global command installed by `./tumorquantai install --poetry` is equivalent:
 
-```text
-SUCCESS: one-slide TumorQuantAI QuickStart outputs are complete.
+```bash
+# Run the Poetry-installed global command with Docker.
+tumorquantai quickstart --docker --cpu
+```
+
+### Conda
+
+```bash
+# Run QuickStart #1 through the versioned Conda environment.
+tumorquantai quickstart --conda --cpu
+```
+
+Use a GPU only after the selected container runtime and NVIDIA device pass `tumorquantai doctor`.
+
+## 7. Verify inference outputs
+
+```bash
+# Verify the overlay, summary, coordinates, counts, and audit.
+python3 examples/quickstart/verify_outputs.py
 ```
 
 Review in this order:
 
-1. `$TQA_ROOT/START_HERE.html`
-2. `$TQA_ROOT/smoke-results/TumorQuantAI_LymphomaWSI_022/overlays/celltypes_overview_and_zoom.png`
-3. `$TQA_ROOT/smoke-results/TumorQuantAI_LymphomaWSI_022/summary/summary.json`
-4. `$TQA_ROOT/smoke-results/TumorQuantAI_LymphomaWSI_022/cell_types/class_counts.csv`
-5. `$TQA_ROOT/smoke-results/aggregated_celltypes/sample_aggregation_audit.csv`
+1. `.tumorquantai-quickstart-one-wsi/START_HERE.html`
+2. the one-slide cell-type overlay;
+3. `summary.json`;
+4. `class_counts.csv` and cell coordinates;
+5. `sample_aggregation_audit.csv`.
 
-The counts describe the selected 1% of tissue tiles. Do not multiply them by 100.
+The counts describe the selected 1% of detected tissue tiles. Do not multiply them by 100.
 
 ## Stop and resume
 
-Press **Ctrl+C** to stop. Repeat the identical command with the same `TQA_ROOT`. Verified downloads, converted TIFFs, and valid Nextflow tasks are reused.
-
-Individual preparation stages are also available:
+Press **Ctrl+C** to stop. Repeat the same command. Verified downloads, converted TIFFs, and valid Nextflow tasks are reused.
 
 ```bash
-# Download and verify only the public file.
-./tumorquantai quickstart \
-  --output "$TQA_ROOT" \
-  --download-only
+# Download and verify only.
+tumorquantai quickstart --download-only
 
 # Convert an already verified download.
-./tumorquantai quickstart \
-  --output "$TQA_ROOT" \
-  --convert-only
+tumorquantai quickstart --convert-only
 
 # Regenerate preparation and inspection without inference.
-./tumorquantai quickstart \
-  --output "$TQA_ROOT" \
-  --no-inference
+tumorquantai quickstart --no-inference
 ```
 
 ## Continue
@@ -212,4 +170,3 @@ Individual preparation stages are also available:
 - [Full tutorial: all 21 lymphoma WSIs at 10%](full_tutorial.md)
 - [Apply TumorQuantAI to your own WSIs](own_data.md)
 - [Output files](outputs.md)
-- [Troubleshooting](troubleshooting/index.md)

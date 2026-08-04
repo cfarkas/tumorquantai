@@ -145,7 +145,7 @@ The converter validates the selected MDS files against the manifest before writi
 
 ```bash
 # Inspect all converted L0/L2 pairs without HistoPLUS inference.
-./tumorquantai inspect "$TQA_ROOT/slides" \
+tumorquantai inspect "$TQA_ROOT/slides" \
   --sample-sheet "$TQA_ROOT/slides/samples.csv" \
   --output "$TQA_ROOT/inspection"
 
@@ -170,7 +170,7 @@ Open `$TQA_ROOT/inspection/INSPECTION.html`. Require exactly 21 unique primary L
 
 ```bash
 # Check Java, Nextflow, Docker, storage, and configured model access.
-./tumorquantai doctor \
+tumorquantai doctor \
   --input "$TQA_ROOT/slides" \
   --output "$TQA_ROOT/results-10-percent" \
   --work-dir "$TQA_ROOT/work-10-percent" \
@@ -185,7 +185,7 @@ The `fast` preset selects a deterministic 10% of detected tissue tiles from ever
 
 ```bash
 # Run all 21 slides at a deterministic 10% with the GPU profile.
-./tumorquantai run "$TQA_ROOT/slides" \
+tumorquantai run "$TQA_ROOT/slides" \
   --sample-sheet "$TQA_ROOT/slides/samples.csv" \
   --output "$TQA_ROOT/results-10-percent" \
   --work-dir "$TQA_ROOT/work-10-percent" \
@@ -198,7 +198,7 @@ Use the following CPU command only when a much longer run is acceptable:
 
 ```bash
 # Run the same 10% analysis with the CPU profile.
-./tumorquantai run "$TQA_ROOT/slides" \
+tumorquantai run "$TQA_ROOT/slides" \
   --sample-sheet "$TQA_ROOT/slides/samples.csv" \
   --output "$TQA_ROOT/results-10-percent-cpu" \
   --work-dir "$TQA_ROOT/work-10-percent-cpu" \
@@ -213,7 +213,7 @@ Use separate output and work directories when comparing CPU and GPU runs. Do not
 
 ```bash
 # Summarize completed, failed, incomplete, and pending slides.
-./tumorquantai status "$TQA_ROOT/results-10-percent"
+tumorquantai status "$TQA_ROOT/results-10-percent"
 ```
 
 Press **Ctrl+C** to stop. Repeat the identical run command with the same output and work directories. Resume is enabled by default and reuses valid Nextflow tasks.

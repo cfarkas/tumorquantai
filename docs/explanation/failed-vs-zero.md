@@ -18,7 +18,7 @@ matrices. `status` reports completed, failed, incomplete, excluded, and pending
 samples and identifies the first log to inspect:
 
 ```bash
-./tumorquantai status /data/results
+tumorquantai status /data/results
 ```
 
 This distinction prevents technical absence from becoming a false biological

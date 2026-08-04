@@ -13,11 +13,11 @@ parser.add_argument("--input-slide", required=True)
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--slide-id", required=True)
 for option in (
-    "--mpp", "--tile-px", "--overlap", "--background-fraction", "--percent-slide",
+    "--mpp", "--slide-mpp", "--tile-px", "--overlap", "--background-fraction", "--percent-slide",
     "--patch-random-seed", "--max-sampled-patches", "--collage", "--device",
     "--num-workers", "--cells-model", "--cells-batch-size", "--celltypes-batch-size",
     "--histoplus-magnification", "--histoplus-repo-id", "--histoplus-revision",
-    "--histoplus-cache-dir", "--zoom-size", "--overlay-alpha",
+    "--histoplus-weight-file", "--histoplus-weight-sha256", "--histoplus-cache-dir", "--zoom-size", "--overlay-alpha",
     "--overlay-style", "--overlay-outline-width", "--overlay-halo-width", "--overlay-draw-order",
     "--cell-marker-radius", "--figure-dpi", "--qc-patch-count", "--qc-patch-size",
     "--pyramidal-tile", "--pyramidal-compression", "--pyramidal-jpeg-q", "--log-level",

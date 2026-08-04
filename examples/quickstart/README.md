@@ -1,41 +1,17 @@
 # QuickStart Example 1 files
 
-The maintained one-slide tutorial is [`docs/quick_start.md`](../../docs/quick_start.md).
-
-It uses fixed public sample `TumorQuantAI_LymphomaWSI_022` from Zenodo record `21466410`:
+The canonical instructions are in [`docs/quick_start.md`](../../docs/quick_start.md).
 
 ```bash
-# Clone TumorQuantAI and enter the repository.
+# Clone, install, and prepare the fixed public WSI.
 git clone https://github.com/cfarkas/tumorquantai.git
 cd tumorquantai
+./tumorquantai install --docker
+export PATH="$HOME/.local/bin:$PATH"
+tumorquantai quickstart --no-inference
 
-# Create the tutorial environment.
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements-tutorial.txt
-
-# Set the only path that must be changed.
-TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart
-
-# Prepare the public WSI without HistoPLUS inference.
-./tumorquantai quickstart \
-  --output "$TQA_ROOT" \
-  --cpu \
-  --no-inference
+# Verify the default preparation directory.
+python3 examples/quickstart/verify_outputs.py --preparation-only
 ```
 
-After authorized model access is ready:
-
-```bash
-# Run the fixed one-slide 1% smoke analysis.
-./tumorquantai quickstart \
-  --output "$TQA_ROOT" \
-  --cpu
-
-# Verify the required output structure and audit.
-python3 examples/quickstart/verify_outputs.py \
-  --tutorial-root "$TQA_ROOT"
-```
-
-The verifier requires one included sample, `percent_slide=1`, a nonempty overlay, summary, coordinates, class counts, aggregation audit, and cohort count/fraction matrices.
+After authorized HistoPLUS access is configured, run `tumorquantai quickstart --docker --cpu` and then run the verifier without `--preparation-only`.

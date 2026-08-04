@@ -11,8 +11,8 @@
 Start with:
 
 ```bash
-./tumorquantai doctor --output /path/to/results --json > doctor.json
-./tumorquantai status /path/to/results --json > status.json
+tumorquantai doctor --output /path/to/results --json > doctor.json
+tumorquantai status /path/to/results --json > status.json
 ```
 
 Review both files before sharing. Never attach tokens, weight files, raw WSI,
@@ -62,7 +62,7 @@ location and private permissions:
 
 ```bash
 stat -c '%a %n' "$HOME/.config/tumorquantai/hf_token"
-./tumorquantai doctor --online
+tumorquantai doctor --online
 ```
 
 Expected mode is `600` and directory mode `700`. Do not print the file. The
@@ -87,7 +87,7 @@ fails closed because guessing changes physical scale.
 ## No slides discovered
 
 ```bash
-./tumorquantai inspect /data/slides \
+tumorquantai inspect /data/slides \
   --output /data/inspection \
   --pattern '*_L0_rgb.tif'
 ```
@@ -143,7 +143,7 @@ input fingerprints, L2, MPP, sampling, seed, model/container identity, or
 processing settings change. Compare the expanded command and provenance.
 
 ```bash
-./tumorquantai status /path/to/results
+tumorquantai status /path/to/results
 ```
 
 If settings are unchanged, inspect the first log and Nextflow trace reported by

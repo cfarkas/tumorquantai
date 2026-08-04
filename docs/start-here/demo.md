@@ -17,7 +17,7 @@
 ```bash
 git clone https://github.com/cfarkas/tumorquantai.git
 cd tumorquantai
-./tumorquantai demo
+tumorquantai demo
 ```
 
 Expected final output includes an absolute path ending in:
@@ -46,9 +46,9 @@ Open `tumorquantai-demo/START_HERE.html`. Then compare:
 Run the readers directly:
 
 ```bash
-./tumorquantai status tumorquantai-demo
-./tumorquantai status tumorquantai-demo --json
-./tumorquantai report tumorquantai-demo
+tumorquantai status tumorquantai-demo
+tumorquantai status tumorquantai-demo --json
+tumorquantai report tumorquantai-demo
 ```
 
 The status output must distinguish a fixture zero from a fixture failure. Do
@@ -57,7 +57,7 @@ not interpret either as biology.
 ## Stop, repeat, and clean up
 
 Press **Ctrl+C** if the demo is interrupted, then repeat
-`./tumorquantai demo`. It is safe to rerun. To remove only this demo, first
+`tumorquantai demo`. It is safe to rerun. To remove only this demo, first
 confirm the exact directory and then delete it:
 
 ```bash

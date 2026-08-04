@@ -59,7 +59,7 @@ variables before launching Nextflow or a worker.
 ## Check readiness
 
 ```bash
-./tumorquantai doctor --online
+tumorquantai doctor --online
 ```
 
 The online check validates pinned public model metadata only. The local

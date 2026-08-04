@@ -3,7 +3,7 @@
 TumorQuantAI has three public execution layers:
 
 ```text
-./tumorquantai          beginner CLI and safety checks
+tumorquantai          beginner CLI and safety checks
         |
         v
 ./run.sh                compatible shell launcher
@@ -54,10 +54,10 @@ python -m mkdocs build --strict
 
 ```bash
 # Exercise the structural demo.
-./tumorquantai demo --output /tmp/tumorquantai-demo
+tumorquantai demo --output /tmp/tumorquantai-demo
 
 # Inspect the repository fixtures without inference.
-./tumorquantai inspect tests/fixtures \
+tumorquantai inspect tests/fixtures \
   --output /tmp/tumorquantai-inspection \
   --source-mpp 0.261780
 

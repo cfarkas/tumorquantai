@@ -14,10 +14,10 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements-tutorial.txt
 
 # Set the only path that must be changed.
-TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart
+TQA_ROOT="$(dirname "$PWD")/tumorquantai-quickstart-one-wsi"
 
 # Download, verify, convert, and inspect one public WSI without inference.
-./tumorquantai quickstart \
+tumorquantai quickstart \
   --output "$TQA_ROOT" \
   --cpu \
   --no-inference

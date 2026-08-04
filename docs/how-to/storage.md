@@ -20,7 +20,7 @@ findmnt -T "$TQA_STORAGE"
 df -hT "$TQA_STORAGE"
 test -w "$TQA_STORAGE"
 
-./tumorquantai doctor \
+tumorquantai doctor \
   --output "$TQA_STORAGE/results-smoke" \
   --work-dir "$TQA_STORAGE/work-smoke"
 ```

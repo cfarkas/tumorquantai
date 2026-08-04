@@ -24,7 +24,7 @@ change only values needed for the run:
 ~~~bash
 cp examples/parameters.yml /mounted/storage/tumorquantai-parameters.yml
 
-./tumorquantai run /mounted/storage/slides \
+tumorquantai run /mounted/storage/slides \
   --output /mounted/storage/tumorquantai-results \
   --params-file /mounted/storage/tumorquantai-parameters.yml \
   --cpu

@@ -35,6 +35,7 @@ FORBIDDEN_TEXT = (
     "screen -S",
     "screen -r",
     "HF_TOKEN=hf_",
+    "TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart",
 )
 
 SHELL_FENCE = re.compile(

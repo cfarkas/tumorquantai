@@ -17,7 +17,7 @@ LazySlide, HistoPLUS, and image dependencies run inside the pinned container.
 git clone https://github.com/cfarkas/tumorquantai.git
 cd tumorquantai
 
-./tumorquantai doctor \
+tumorquantai doctor \
   --output /mounted/storage/tumorquantai-check
 ```
 
@@ -59,7 +59,7 @@ Python 3.10 or newer and install only its small declared environment:
 python3 -m venv .venv-tumorquantai-tutorial
 . .venv-tumorquantai-tutorial/bin/activate
 python -m pip install -r requirements-tutorial.txt
-./tumorquantai quickstart --output /mounted/storage/tutorial-one-slide --dry-run
+tumorquantai quickstart --output /mounted/storage/tutorial-one-slide --dry-run
 ```
 
 Keep this small environment in the checkout only if the checkout itself is on
@@ -69,7 +69,7 @@ weights, tokens, work files, or results.
 ## Redacted issue attachment
 
 ```bash
-./tumorquantai doctor \
+tumorquantai doctor \
   --output /mounted/storage/tumorquantai-check \
   --json > doctor.json
 ```

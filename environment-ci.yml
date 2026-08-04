@@ -1,0 +1,7 @@
+name: tumorquantai-runtime-ci
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pandas>=2.2,<3
+  - pyyaml>=6,<7
