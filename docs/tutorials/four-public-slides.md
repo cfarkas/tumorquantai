@@ -84,7 +84,7 @@ python bin/mds_to_tiff.py \
   --resume
 
 # Inspect the exact four-slide roster without inference.
-./tumorquantai inspect "$TQA_ROOT/slides" \
+tumorquantai inspect "$TQA_ROOT/slides" \
   --sample-sheet "$TQA_ROOT/slides/samples.csv" \
   --output "$TQA_ROOT/inspection"
 ```
@@ -95,7 +95,7 @@ Open `$TQA_ROOT/inspection/INSPECTION.html`. Require four unique L0/L2 pairs and
 
 ```bash
 # Process a deterministic 10% of detected tissue tiles from all four slides.
-./tumorquantai run "$TQA_ROOT/slides" \
+tumorquantai run "$TQA_ROOT/slides" \
   --sample-sheet "$TQA_ROOT/slides/samples.csv" \
   --output "$TQA_ROOT/results-10-percent" \
   --work-dir "$TQA_ROOT/work-10-percent" \

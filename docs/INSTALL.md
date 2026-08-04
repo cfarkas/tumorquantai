@@ -6,7 +6,7 @@ The installation guide moved to
 Use the canonical offline check:
 
 ```bash
-./tumorquantai doctor --output /mounted/storage/tumorquantai-check
+tumorquantai doctor --output /mounted/storage/tumorquantai-check
 ```
 
 Authorized model setup is separate:

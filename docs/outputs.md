@@ -39,7 +39,7 @@ Open this file first. It summarizes:
 
 ```bash
 # Regenerate the portable report when needed.
-./tumorquantai report /path/to/results
+tumorquantai report /path/to/results
 ```
 
 ## 2. Per-slide overlay
@@ -172,7 +172,7 @@ See [Failed sample versus biological zero](explanation/failed-vs-zero.md).
 
 ```bash
 # Summarize the run state.
-./tumorquantai status /path/to/results
+tumorquantai status /path/to/results
 
 # List all required per-slide overlays.
 find /path/to/results -type f \

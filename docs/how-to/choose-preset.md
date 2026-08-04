@@ -17,7 +17,7 @@
 ## Run a dry plan
 
 ```bash
-./tumorquantai run /data/slides \
+tumorquantai run /data/slides \
   --output /data/results-smoke \
   --preset smoke \
   --source-mpp "$SOURCE_MPP" \

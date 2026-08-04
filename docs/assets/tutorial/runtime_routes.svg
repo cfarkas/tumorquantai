@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 360" role="img" aria-labelledby="title desc">
+<title id="title">TumorQuantAI installation and execution methods</title>
+<desc id="desc">The installed TumorQuantAI command launches the same Nextflow workflow through Docker, Singularity or Apptainer, Poetry, or Conda.</desc>
+<rect width="1120" height="360" rx="24" fill="#f8fafc"/>
+<text x="560" y="48" font-family="Arial,sans-serif" font-size="29" font-weight="700" text-anchor="middle" fill="#172033">One command, four execution methods</text>
+<rect x="405" y="78" width="310" height="78" rx="18" fill="#e8eef9" stroke="#536ea4" stroke-width="3"/>
+<text x="560" y="112" font-family="Arial,sans-serif" font-size="23" font-weight="700" text-anchor="middle" fill="#283d68">tumorquantai</text>
+<text x="560" y="139" font-family="Arial,sans-serif" font-size="16" text-anchor="middle" fill="#43577d">same Nextflow workflow and outputs</text>
+<g font-family="Arial,sans-serif" text-anchor="middle">
+<rect x="35" y="235" width="230" height="88" rx="16" fill="#ddecff" stroke="#3f72b5" stroke-width="3"/><text x="150" y="273" font-size="22" font-weight="700" fill="#194d82">Docker</text><text x="150" y="300" font-size="15" fill="#2f5e8d">CPU or NVIDIA GPU</text>
+<rect x="305" y="235" width="230" height="88" rx="16" fill="#e7f3e5" stroke="#4f8a4b" stroke-width="3"/><text x="420" y="268" font-size="20" font-weight="700" fill="#2e5e2c">Singularity</text><text x="420" y="295" font-size="15" fill="#3d713a">or Apptainer on HPC</text>
+<rect x="575" y="235" width="230" height="88" rx="16" fill="#fff0dc" stroke="#b47a2a" stroke-width="3"/><text x="690" y="273" font-size="22" font-weight="700" fill="#70470f">Poetry</text><text x="690" y="300" font-size="15" fill="#80591f">isolated launcher</text>
+<rect x="845" y="235" width="230" height="88" rx="16" fill="#eee4f8" stroke="#77509b" stroke-width="3"/><text x="960" y="273" font-size="22" font-weight="700" fill="#4d2b68">Conda</text><text x="960" y="300" font-size="15" fill="#67447f">versioned CPU environment</text>
+</g>
+<g stroke="#667085" stroke-width="3" fill="none"><path d="M560 156v42H150v37"/><path d="M560 198H420v37"/><path d="M560 198h130v37"/><path d="M560 198h400v37"/></g>
+</svg>

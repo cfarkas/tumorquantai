@@ -23,7 +23,7 @@ numbers, or other patient identifiers.
 ## Validate it without inference
 
 ```bash
-./tumorquantai inspect /data/slides \
+tumorquantai inspect /data/slides \
   --sample-sheet /data/slides/samples.csv \
   --output /data/tumorquantai-inspection
 ```

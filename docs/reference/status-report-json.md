@@ -3,8 +3,8 @@
 Print machine-readable summaries to standard output:
 
 ```bash
-./tumorquantai status OUTPUT --json > status.json
-./tumorquantai report OUTPUT --json > report-output.json
+tumorquantai status OUTPUT --json > status.json
+tumorquantai report OUTPUT --json > report-output.json
 ```
 
 `report` also writes `OUTPUT/tumorquantai_report.json` and

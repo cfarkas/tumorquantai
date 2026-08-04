@@ -8,8 +8,8 @@ Use:
 - [Troubleshooting](troubleshooting/index.md)
 
 ```bash
-./tumorquantai status /data/results
-./tumorquantai status /data/results --json
+tumorquantai status /data/results
+tumorquantai status /data/results --json
 ```
 
 Resume is enabled by default. A failed or incomplete sample has no numeric

@@ -16,13 +16,61 @@ import shlex
 import shutil
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-import yaml
+try:
+    import yaml
+except ModuleNotFoundError:  # The install subcommand bootstraps PyYAML itself.
+    yaml = None
 
 
-ROOT = Path(__file__).resolve().parent
+def _looks_like_repository(path: Path) -> bool:
+    return all(
+        (path / relative).is_file()
+        for relative in (
+            "main.nf", "nextflow_schema.json", "bin/tumorquantai_core.py",
+            "requirements-tutorial.txt",
+        )
+    )
+
+
+def _repository_pointer(path: Path) -> Path | None:
+    try:
+        value = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not value:
+        return None
+    candidate = Path(value).expanduser().resolve()
+    return candidate if _looks_like_repository(candidate) else None
+
+
+def _resolve_repository_root() -> Path:
+    configured = os.environ.get("TUMORQUANTAI_REPO", "").strip()
+    candidates: list[Path] = []
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    candidates.extend((Path(__file__).resolve().parent, Path.cwd()))
+    for pointer in (
+        Path.home() / ".config/tumorquantai/repository",
+        Path("/etc/tumorquantai/repository"),
+    ):
+        candidate = _repository_pointer(pointer)
+        if candidate is not None:
+            candidates.append(candidate)
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if _looks_like_repository(resolved):
+            return resolved
+    raise SystemExit(
+        "ERROR: TumorQuantAI cannot locate its repository. Run the command from "
+        "the cloned tumorquantai directory or set TUMORQUANTAI_REPO."
+    )
+
+
+ROOT = _resolve_repository_root()
 sys.path.insert(0, str(ROOT / "bin"))
 
 import tumorquantai_core as core  # noqa: E402
@@ -145,26 +193,30 @@ PUBLIC_PATH_PARAMETERS = frozenset(
 )
 
 
-class _UniqueKeyLoader(yaml.SafeLoader):
-    """Safe YAML loader that refuses ambiguous duplicate mappings."""
+if yaml is not None:
+    class _UniqueKeyLoader(yaml.SafeLoader):
+        """Safe YAML loader that refuses ambiguous duplicate mappings."""
 
 
-def _construct_unique_mapping(
-    loader: _UniqueKeyLoader, node: yaml.MappingNode, deep: bool = False,
-) -> dict[Any, Any]:
-    result: dict[Any, Any] = {}
-    for key_node, value_node in node.value:
-        key = loader.construct_object(key_node, deep=deep)
-        if key in result:
-            raise ValueError(f"duplicate parameter key {key!r}")
-        result[key] = loader.construct_object(value_node, deep=deep)
-    return result
+    def _construct_unique_mapping(
+        loader: Any, node: Any, deep: bool = False,
+    ) -> dict[Any, Any]:
+        result: dict[Any, Any] = {}
+        for key_node, value_node in node.value:
+            key = loader.construct_object(key_node, deep=deep)
+            if key in result:
+                raise ValueError(f"duplicate parameter key {key!r}")
+            result[key] = loader.construct_object(value_node, deep=deep)
+        return result
 
 
-_UniqueKeyLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-    _construct_unique_mapping,
-)
+    _UniqueKeyLoader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+        _construct_unique_mapping,
+    )
+else:
+    class _UniqueKeyLoader:  # pragma: no cover - used only by bootstrap install
+        pass
 
 
 def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -186,18 +238,33 @@ def _load_parameter_file(path: Path) -> dict[str, Any]:
         text = parameter_file.read_text(encoding="utf-8")
     except OSError as exc:
         raise _parameter_error(f"Could not read parameter file: {exc}") from exc
+    suffix = parameter_file.suffix.lower()
+    if yaml is None and suffix != ".json":
+        raise _parameter_error(
+            "YAML support is not installed. Run 'tumorquantai install --docker' "
+            "or use a JSON parameter file."
+        )
     try:
-        if parameter_file.suffix.lower() == ".json":
+        if suffix == ".json":
             data = json.loads(text, object_pairs_hook=_unique_json_object)
-        elif parameter_file.suffix.lower() in {".yaml", ".yml"}:
+        elif suffix in {".yaml", ".yml"}:
+            assert yaml is not None
             data = yaml.load(text, Loader=_UniqueKeyLoader)
         else:
             try:
                 data = json.loads(text, object_pairs_hook=_unique_json_object)
             except (json.JSONDecodeError, ValueError):
+                if yaml is None:
+                    raise _parameter_error(
+                        "The parameter file is not JSON and YAML support is unavailable."
+                    )
                 data = yaml.load(text, Loader=_UniqueKeyLoader)
-    except (json.JSONDecodeError, yaml.YAMLError, ValueError) as exc:
+    except (json.JSONDecodeError, ValueError) as exc:
         raise _parameter_error(f"Invalid parameter file: {exc}") from exc
+    except Exception as exc:
+        if yaml is not None and isinstance(exc, yaml.YAMLError):
+            raise _parameter_error(f"Invalid parameter file: {exc}") from exc
+        raise
     if data is None:
         data = {}
     if not isinstance(data, Mapping):
@@ -534,6 +601,243 @@ def positive_float(value: str) -> float:
     return parsed
 
 
+
+NEXTFLOW_VERSION = "25.10.2"
+NEXTFLOW_URL = (
+    "https://github.com/nextflow-io/nextflow/releases/download/"
+    f"v{NEXTFLOW_VERSION}/nextflow"
+)
+NEXTFLOW_SHA256 = "60aff30ad532030657296ca1fa72e37befda236bfd4fc7358a3cabf5e7589dd7"
+
+
+def _configured_backend() -> str:
+    value = os.environ.get("TUMORQUANTAI_BACKEND", "").strip().casefold()
+    if value in {"docker", "singularity", "conda", "local"}:
+        return value
+    for path in (
+        Path.home() / ".config/tumorquantai/backend",
+        Path("/etc/tumorquantai/backend"),
+    ):
+        try:
+            value = path.read_text(encoding="utf-8").strip().casefold()
+        except OSError:
+            continue
+        if value in {"docker", "singularity", "conda", "local"}:
+            return value
+    return "docker"
+
+
+def _install_command(command: Sequence[str], *, env: Mapping[str, str] | None = None) -> None:
+    print("$ " + shlex.join([str(item) for item in command]))
+    completed = subprocess.run(list(command), env=dict(env) if env else None, check=False)
+    if completed.returncode != 0:
+        raise core.TumorQuantAIError(
+            f"Installation command failed with exit code {completed.returncode}: "
+            + shlex.join([str(item) for item in command]),
+            core.EXIT_PREFLIGHT,
+        )
+
+
+def _venv_python(environment: Path) -> Path:
+    return environment / "bin/python"
+
+
+def _prepare_python_environment(environment: Path) -> Path:
+    python = _venv_python(environment)
+    if not python.is_file():
+        environment.parent.mkdir(parents=True, exist_ok=True)
+        _install_command([sys.executable, "-m", "venv", str(environment)])
+    _install_command([str(python), "-m", "pip", "install", "--upgrade", "pip"])
+    _install_command([
+        str(python), "-m", "pip", "install", "--requirement",
+        str(ROOT / "requirements-tutorial.txt"),
+    ])
+    return python
+
+
+def _prepare_poetry_environment(state_dir: Path) -> Path:
+    tool_environment = state_dir / "poetry-tool"
+    poetry_python = _venv_python(tool_environment)
+    if not poetry_python.is_file():
+        _install_command([sys.executable, "-m", "venv", str(tool_environment)])
+    _install_command([
+        str(poetry_python), "-m", "pip", "install", "--upgrade", "pip",
+        "poetry>=2,<3",
+    ])
+    poetry = tool_environment / "bin/poetry"
+    environment = os.environ.copy()
+    environment["POETRY_VIRTUALENVS_IN_PROJECT"] = "true"
+    _install_command([str(poetry), "install", "--no-interaction"], env=environment)
+    python = ROOT / ".venv/bin/python"
+    if not python.is_file():
+        raise core.TumorQuantAIError(
+            "Poetry did not create the expected in-project environment.",
+            core.EXIT_PREFLIGHT,
+        )
+    return python
+
+
+def _install_nextflow(bin_dir: Path, *, allow_download: bool) -> Path | None:
+    existing = shutil.which("nextflow")
+    if existing:
+        return Path(existing).resolve()
+    target = bin_dir / "nextflow"
+    if target.is_file():
+        return target
+    if not allow_download:
+        return None
+    print(f"Downloading pinned Nextflow {NEXTFLOW_VERSION}...")
+    try:
+        with urllib.request.urlopen(NEXTFLOW_URL, timeout=60) as response:
+            payload = response.read()
+    except OSError as exc:
+        raise core.TumorQuantAIError(
+            f"Could not download Nextflow: {exc}", core.EXIT_PREFLIGHT
+        ) from exc
+    digest = hashlib.sha256(payload).hexdigest()
+    if digest != NEXTFLOW_SHA256:
+        raise core.TumorQuantAIError(
+            "Downloaded Nextflow checksum did not match the pinned release.",
+            core.EXIT_DATA,
+        )
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(".tmp")
+    temporary.write_bytes(payload)
+    temporary.chmod(0o755)
+    os.replace(temporary, target)
+    return target
+
+
+def _java_major() -> int | None:
+    if shutil.which("java") is None:
+        return None
+    completed = subprocess.run(
+        ["java", "-version"], text=True,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
+    )
+    match = re.search(r'version "([0-9]+)', completed.stdout)
+    return int(match.group(1)) if match else None
+
+
+def _backend_issues(method: str) -> list[str]:
+    issues: list[str] = []
+    if method in {"docker", "poetry"}:
+        if shutil.which("docker") is None:
+            issues.append("Docker is not installed: https://docs.docker.com/engine/install/")
+        else:
+            result = subprocess.run(
+                ["docker", "info"], stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, check=False,
+            )
+            if result.returncode != 0:
+                issues.append("Docker is installed but its daemon is not accessible.")
+    elif method == "singularity":
+        if shutil.which("apptainer") is None and shutil.which("singularity") is None:
+            issues.append(
+                "Install Apptainer or Singularity: "
+                "https://apptainer.org/docs/admin/main/installation.html"
+            )
+    elif method == "conda":
+        if shutil.which("conda") is None:
+            issues.append(
+                "Conda is not installed; install Miniforge: "
+                "https://github.com/conda-forge/miniforge"
+            )
+    java = _java_major()
+    if java is None:
+        issues.append("Java is not installed; install Java 17 or newer.")
+    elif java < 17:
+        issues.append(f"Java {java} is too old; install Java 17 or newer.")
+    return issues
+
+
+def cmd_install(args: argparse.Namespace) -> int:
+    method = args.install_method
+    if args.system and args.prefix is not None:
+        raise core.TumorQuantAIError(
+            "Use either --system or --prefix, not both.", core.EXIT_USAGE
+        )
+    prefix = (
+        Path("/usr/local") if args.system
+        else (args.prefix or Path.home() / ".local")
+    ).expanduser().resolve()
+    state_dir = (
+        Path("/usr/local/share/tumorquantai") if args.system
+        else Path.home() / ".local/share/tumorquantai"
+    )
+    bin_dir = prefix / "bin"
+    config_dir = Path("/etc/tumorquantai") if args.system else Path.home() / ".config/tumorquantai"
+    wrapper = bin_dir / "tumorquantai"
+    backend = "docker" if method == "poetry" else method
+
+    print("TumorQuantAI installation plan:")
+    print(f"  repository: {ROOT}")
+    print(f"  method:     {method}")
+    print(f"  command:    {wrapper}")
+    print(f"  state:      {state_dir}")
+    if args.dry_run:
+        print("Dry run complete; no files or environments were changed.")
+        return core.EXIT_OK
+
+    try:
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        state_dir.mkdir(parents=True, exist_ok=True)
+        config_dir.mkdir(parents=True, exist_ok=True)
+    except PermissionError as exc:
+        raise core.TumorQuantAIError(
+            "The selected installation prefix is not writable. Use the default "
+            "user installation or rerun with sudo and --system.",
+            core.EXIT_PREFLIGHT,
+        ) from exc
+
+    python = (
+        _prepare_poetry_environment(state_dir)
+        if method == "poetry"
+        else _prepare_python_environment(state_dir / "venv")
+    )
+    nextflow = _install_nextflow(
+        bin_dir, allow_download=not args.no_nextflow_download
+    )
+
+    wrapper_text = "\n".join((
+        "#!/usr/bin/env bash",
+        "set -Eeuo pipefail",
+        f"export TUMORQUANTAI_REPO={shlex.quote(str(ROOT))}",
+        f"export TUMORQUANTAI_BACKEND={shlex.quote(backend)}",
+        f"export PATH={shlex.quote(str(bin_dir))}:\"$PATH\"",
+        f"exec {shlex.quote(str(python))} {shlex.quote(str(ROOT / 'tumorquantai'))} \"$@\"",
+        "",
+    ))
+    core.atomic_text(wrapper, wrapper_text, mode=0o755)
+    core.atomic_text(config_dir / "repository", str(ROOT) + "\n", mode=0o644)
+    core.atomic_text(config_dir / "backend", backend + "\n", mode=0o644)
+
+    issues = _backend_issues(method)
+    if nextflow is None:
+        issues.append(
+            "Nextflow is not installed. Rerun without --no-nextflow-download "
+            "or install Nextflow 24.10 or newer."
+        )
+
+    print(f"Installed command: {wrapper}")
+    if str(bin_dir) not in os.environ.get("PATH", "").split(os.pathsep):
+        print(f'For this terminal, run: export PATH="{bin_dir}:$PATH"')
+    if issues:
+        print("The TumorQuantAI command is installed, but this route is not ready:")
+        for issue in issues:
+            print(f"  - {issue}")
+        return core.EXIT_PREFLIGHT
+    print(f"Installation and {method} readiness checks passed.")
+    print("Next: tumorquantai quickstart --no-inference")
+    return core.EXIT_OK
+
+
+def _default_quickstart_output() -> Path:
+    configured = os.environ.get("TUMORQUANTAI_DATA_ROOT", "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve() / "quickstart-one-wsi"
+    return ROOT.parent / "tumorquantai-quickstart-one-wsi"
+
 def add_execution_profile_options(command: argparse.ArgumentParser) -> None:
     """Add execution aliases without removing the compatible profile option."""
     execution = command.add_mutually_exclusive_group()
@@ -571,12 +875,12 @@ def add_execution_backend_options(command: argparse.ArgumentParser) -> None:
         "--conda", dest="backend", action="store_const", const="conda",
         help="let Nextflow create and reuse the versioned Conda environment",
     )
-    command.set_defaults(backend="docker")
+    command.set_defaults(backend=_configured_backend())
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="./tumorquantai",
+        prog="tumorquantai",
         description=(
             "Run, inspect, and understand TumorQuantAI without assembling a long "
             "Nextflow command. Research use only; not clinically validated."
@@ -584,13 +888,53 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  ./tumorquantai demo\n"
-            "  ./tumorquantai inspect /data/slides --output /data/tqa-inspection\n"
-            "  ./tumorquantai quickstart --output /mounted-storage/tutorial-one-slide --cpu"
+            "  tumorquantai demo\n"
+            "  tumorquantai inspect /data/slides --output /data/tqa-inspection\n"
+            "  tumorquantai quickstart --no-inference"
         ),
     )
     parser.add_argument("--version", action="version", version=f"TumorQuantAI {core.VERSION}")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    install = subparsers.add_parser(
+        "install",
+        help="install the global command and prepare one execution method",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    route = install.add_mutually_exclusive_group(required=True)
+    route.add_argument(
+        "--docker", dest="install_method", action="store_const", const="docker",
+        help="install the launcher and validate Docker",
+    )
+    route.add_argument(
+        "--singularity", "--apptainer", dest="install_method",
+        action="store_const", const="singularity",
+        help="install the launcher and validate Singularity/Apptainer",
+    )
+    route.add_argument(
+        "--poetry", dest="install_method", action="store_const", const="poetry",
+        help="install the Poetry-managed launcher; Docker is the default backend",
+    )
+    route.add_argument(
+        "--conda", dest="install_method", action="store_const", const="conda",
+        help="install the launcher and validate Miniforge/Conda",
+    )
+    install.add_argument(
+        "--prefix", type=Path,
+        help="user installation prefix (default: ~/.local)",
+    )
+    install.add_argument(
+        "--system", action="store_true",
+        help="install under /usr/local and /etc; normally run with sudo",
+    )
+    install.add_argument(
+        "--no-nextflow-download", action="store_true",
+        help="do not download the pinned Nextflow launcher when it is absent",
+    )
+    install.add_argument(
+        "--dry-run", action="store_true",
+        help="print the installation plan without changing files",
+    )
 
     doctor = subparsers.add_parser("doctor", help="check the computer without inference")
     doctor.add_argument("--input", type=Path, help="optional input path to check")
@@ -733,7 +1077,10 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--json", action="store_true", help="also print the machine-readable summary")
 
     quickstart = subparsers.add_parser("quickstart", help="prepare and optionally run public Zenodo sample 022")
-    quickstart.add_argument("--output", type=Path, required=True, help="tutorial root on a storage mount")
+    quickstart.add_argument(
+        "--output", type=Path,
+        help="tutorial root (default: ../tumorquantai-quickstart-one-wsi)"
+    )
     mode = quickstart.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="print the bounded one-slide plan; do not download")
     mode.add_argument("--download-only", action="store_true", help="download and verify only sample 022")
@@ -1090,7 +1437,7 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
                 core.EXIT_MODEL,
             )
     if shutil.which("nextflow") is None:
-        raise core.TumorQuantAIError("Nextflow is not installed. Run ./tumorquantai doctor for the exact next action.", core.EXIT_PREFLIGHT)
+        raise core.TumorQuantAIError("Nextflow is not installed. Run tumorquantai doctor for the exact next action.", core.EXIT_PREFLIGHT)
     if args.backend == "docker":
         if shutil.which("docker") is None:
             raise core.TumorQuantAIError("Docker is not installed.", core.EXIT_PREFLIGHT)
@@ -1433,7 +1780,7 @@ def _write_quickstart_manifest(
         "model_revision": core.MODEL_REVISION,
         "demonstration": False,
         "resume_command": shlex.join([
-            "./tumorquantai", "quickstart", "--output", str(root),
+            "tumorquantai", "quickstart", "--output", str(root),
             "--backend", backend, "--profile", profile, "--seed", str(seed),
         ]),
     })
@@ -1453,8 +1800,10 @@ def _write_quickstart_manifest(
 
 
 def cmd_quickstart(args: argparse.Namespace) -> int:
-    backend = getattr(args, "backend", "docker")
-    root = args.output.expanduser().resolve()
+    backend = getattr(args, "backend", _configured_backend())
+    explicit_output = args.output is not None
+    root = (args.output or _default_quickstart_output()).expanduser().resolve()
+    print(f"QuickStart directory: {root}")
     download = root / "download"
     converted = root / "converted"
     inspection = root / "inspection"
@@ -1466,7 +1815,13 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
     estimates = _quickstart_estimates(inference_requested)
     required = _quickstart_required_bytes(args, estimates)
     if not args.dry_run:
-        core.validate_large_data_root(root)
+        if explicit_output:
+            core.validate_large_data_root(root)
+        elif root == ROOT or ROOT in root.parents:
+            raise core.TumorQuantAIError(
+                "The default QuickStart directory resolved inside the repository.",
+                core.EXIT_PREFLIGHT,
+            )
         _check_quickstart_dependencies(args)
     existing = core.load_run_manifest(root)
     if (
@@ -1562,7 +1917,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
         report, _ = core.generate_report(root)
         print("Data preparation is complete. Authorized HistoPLUS access is not configured; the data are not corrupt.")
         print("Secure next step: configure ~/.config/tumorquantai/hf_token with mode 0600, then run:")
-        print(f"  ./tumorquantai quickstart --output {shlex.quote(str(root))} --profile {args.profile} --seed {args.seed}")
+        print(f"  tumorquantai quickstart --output {shlex.quote(str(root))} --profile {args.profile} --seed {args.seed}")
         print(f"Open first: {report}")
         return core.EXIT_OK
     if readiness_failures:
@@ -1572,7 +1927,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
         )
         report, _ = core.generate_report(root)
         print("Data preparation is complete, but local inference prerequisites are not ready: " + ", ".join(readiness_failures))
-        print("Next: run ./tumorquantai doctor --output " + shlex.quote(str(root)))
+        print("Next: run tumorquantai doctor --output " + shlex.quote(str(root)))
         print(f"Open first: {report}")
         return core.EXIT_OK
 
@@ -1640,6 +1995,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "run":
         args.expert_args = expert_args
     try:
+        if args.command == "install":
+            return cmd_install(args)
         if args.command == "doctor":
             return cmd_doctor(args)
         if args.command == "demo":

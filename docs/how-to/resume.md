@@ -11,8 +11,8 @@
 ## Ask TumorQuantAI what happened
 
 ```bash
-./tumorquantai status /data/results-fast
-./tumorquantai status /data/results-fast --json > status.json
+tumorquantai status /data/results-fast
+tumorquantai status /data/results-fast --json > status.json
 ```
 
 Status parses workflow metadata, per-sample summaries, and
@@ -36,7 +36,7 @@ Resolve the reported environmental/input problem, then repeat the same command.
 Resume is enabled by default:
 
 ```bash
-./tumorquantai run /data/slides \
+tumorquantai run /data/slides \
   --output /data/results-fast \
   --preset fast \
   --source-mpp "$SOURCE_MPP"

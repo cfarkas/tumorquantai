@@ -29,7 +29,7 @@ The default discovery patterns select `*_L0_rgb.tif` and `*_L0_rgb.tiff` as prim
 
 ```bash
 # Inspect the slide folder without loading HistoPLUS.
-./tumorquantai inspect /path/to/slides \
+tumorquantai inspect /path/to/slides \
   --output /path/to/tumorquantai-inspection
 ```
 
@@ -37,7 +37,7 @@ When TIFF metadata does not contain a verified scale:
 
 ```bash
 # Supply the verified source MPP during inspection.
-./tumorquantai inspect /path/to/slides \
+tumorquantai inspect /path/to/slides \
   --output /path/to/tumorquantai-inspection \
   --source-mpp 0.261780
 ```
@@ -65,7 +65,7 @@ case_002,/path/to/slides/case_002/1_L0_rgb.tif
 CSV
 
 # Inspect the exact manifest roster.
-./tumorquantai inspect /path/to/slides \
+tumorquantai inspect /path/to/slides \
   --sample-sheet /path/to/slides/samples.csv \
   --output /path/to/tumorquantai-inspection \
   --source-mpp 0.261780
@@ -79,7 +79,7 @@ Use `--pattern` when exported L0 files use another controlled name:
 
 ```bash
 # Inspect primary TIFFs matching a custom pattern.
-./tumorquantai inspect /path/to/slides \
+tumorquantai inspect /path/to/slides \
   --output /path/to/tumorquantai-inspection \
   --pattern '*_highest_resolution.tif' \
   --source-mpp 0.261780

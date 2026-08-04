@@ -156,6 +156,7 @@ CANONICAL_OUTPUTS = {
 }
 
 EXPECTED_HELP = {
+    "install": ("--docker", "--singularity", "--poetry", "--conda", "--system"),
     "doctor": ("--online", "--json", "--output", "--work-dir"),
     "demo": ("--output",),
     "inspect": ("--output", "--source-mpp", "--sample-sheet", "--pattern", "--include", "--exclude"),
@@ -328,27 +329,22 @@ def check_readme_quickstart(errors: list[str]) -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     required_snippets = {
         "repository clone": "git clone https://github.com/cfarkas/tumorquantai.git",
-        "standard downloader": "wget -c -O",
-        "manifest URL": "https://zenodo.org/records/21466410/files/tumorquantai_lymphoma_mds_manifest.csv?download=1",
-        "sample URL": "https://zenodo.org/records/21466410/files/TumorQuantAI_LymphomaWSI_022.mds?download=1",
-        "manifest checksum": "ad9a9472e8beb302f8b9ba2b3359bacc",
-        "sample checksum": "db2988b5c6bc791510cec4127106509e604e577feafdb15b94c149043ed7067a",
-        "direct converter": "python bin/mds_to_tiff.py",
-        "model-free inspection": "./tumorquantai inspect",
-        "1% run": "./tumorquantai run",
+        "Docker installer": "./tumorquantai install --docker",
+        "Singularity installer": "./tumorquantai install --singularity",
+        "Poetry installer": "./tumorquantai install --poetry",
+        "Conda installer": "./tumorquantai install --conda",
+        "global QuickStart": "tumorquantai quickstart --no-inference",
+        "fixed public sample": "TumorQuantAI_LymphomaWSI_022",
+        "preparation verifier": "examples/quickstart/verify_outputs.py --preparation-only",
     }
     for label, snippet in required_snippets.items():
         if snippet not in readme:
-            errors.append(f"README real one-slide quickstart is missing {label}: {snippet}")
-    download_position = readme.find("wget -c -O")
-    demo_position = readme.find("./tumorquantai demo")
-    if download_position < 0:
-        errors.append("README first quickstart must use wget")
-    elif demo_position >= 0 and demo_position < download_position:
-        errors.append("README synthetic demo must appear after the real WSI quickstart")
+            errors.append(f"README is missing {label}: {snippet}")
+    if "TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart" in readme:
+        errors.append("README QuickStart must not require an edited TQA_ROOT path")
     line_count = len(readme.splitlines())
-    if not 120 <= line_count <= 400:
-        errors.append(f"README should stay concise (120-400 lines); observed {line_count}")
+    if not 100 <= line_count <= 350:
+        errors.append(f"README should stay concise (100-350 lines); observed {line_count}")
     if not os.access(ROOT / "tumorquantai", os.X_OK):
         errors.append("root tumorquantai command is not executable")
         return

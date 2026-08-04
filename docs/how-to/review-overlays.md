@@ -34,7 +34,7 @@ predictions into pathologist ground truth.
 ## Rebuild the navigator
 
 ```bash
-./tumorquantai report /data/results
+tumorquantai report /data/results
 ```
 
 Expected output is a self-contained `START_HERE.html` with relative links only

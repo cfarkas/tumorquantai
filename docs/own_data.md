@@ -41,7 +41,7 @@ TQA_INPUT=/path/to/slides
 TQA_INSPECTION=/path/to/tumorquantai-inspection
 
 # Inspect the WSI folder without running HistoPLUS.
-./tumorquantai inspect "$TQA_INPUT" \
+tumorquantai inspect "$TQA_INPUT" \
   --output "$TQA_INSPECTION"
 ```
 
@@ -49,7 +49,7 @@ When source MPP is not embedded in the TIFF metadata, provide it explicitly:
 
 ```bash
 # Inspect the same folder with a verified source MPP.
-./tumorquantai inspect "$TQA_INPUT" \
+tumorquantai inspect "$TQA_INPUT" \
   --output "$TQA_INSPECTION" \
   --source-mpp 0.261780
 ```
@@ -84,7 +84,7 @@ case_002,/path/to/slides/case_002/1_L0_rgb.tif
 CSV
 
 # Inspect only the samples in the manifest.
-./tumorquantai inspect /path/to/slides \
+tumorquantai inspect /path/to/slides \
   --sample-sheet /path/to/slides/samples.csv \
   --output /path/to/tumorquantai-inspection \
   --source-mpp 0.261780
@@ -108,7 +108,7 @@ For a new cohort, begin with one slide at 1%, review the overlay and MPP, then u
 
 ```bash
 # Check the intended input, output, and work locations.
-./tumorquantai doctor \
+tumorquantai doctor \
   --input /path/to/slides \
   --output /path/to/tumorquantai-results \
   --work-dir /path/to/tumorquantai-work \
@@ -121,7 +121,7 @@ Follow [Configure authorized HistoPLUS access](how-to/model-access.md) when the 
 
 ```bash
 # Run one selected sample at a deterministic 1% on CPU.
-./tumorquantai run /path/to/slides \
+tumorquantai run /path/to/slides \
   --sample-sheet /path/to/slides/samples.csv \
   --output /path/to/tumorquantai-smoke \
   --work-dir /path/to/tumorquantai-work-smoke \
@@ -137,7 +137,7 @@ Review the overlay, summary, class counts, and audit before scaling.
 
 ```bash
 # Run all manifest samples at a deterministic 10% with the GPU profile.
-./tumorquantai run /path/to/slides \
+tumorquantai run /path/to/slides \
   --sample-sheet /path/to/slides/samples.csv \
   --output /path/to/tumorquantai-results-10-percent \
   --work-dir /path/to/tumorquantai-work-10-percent \
@@ -152,7 +152,7 @@ Use `--cpu` instead of `--gpu` when GPU execution is unavailable. Keep different
 
 ```bash
 # Summarize completed, failed, incomplete, excluded, and pending samples.
-./tumorquantai status /path/to/tumorquantai-results-10-percent
+tumorquantai status /path/to/tumorquantai-results-10-percent
 ```
 
 Press **Ctrl+C** to stop. Repeat the exact run command to resume. Do not move or delete the active work directory.
@@ -163,7 +163,7 @@ Press **Ctrl+C** to stop. Repeat the exact run command to resume. Do not move or
 
 ```bash
 # Regenerate the portable report after the workflow finishes.
-./tumorquantai report /path/to/tumorquantai-results-10-percent
+tumorquantai report /path/to/tumorquantai-results-10-percent
 ```
 
 Review:
@@ -182,7 +182,7 @@ Use `--include` and `--exclude` for stable sample-ID globs:
 
 ```bash
 # Run only sample IDs beginning with cohort_A and exclude repeat samples.
-./tumorquantai run /path/to/slides \
+tumorquantai run /path/to/slides \
   --sample-sheet /path/to/slides/samples.csv \
   --output /path/to/tumorquantai-cohort-A \
   --work-dir /path/to/tumorquantai-work-cohort-A \

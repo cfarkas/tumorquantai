@@ -12,7 +12,20 @@ def repository_root() -> Path:
     configured = os.environ.get("TUMORQUANTAI_REPO")
     if configured:
         return Path(configured).expanduser().resolve()
-    return Path(__file__).resolve().parents[1]
+    local = Path(__file__).resolve().parents[1]
+    if (local / "main.nf").is_file():
+        return local
+    for pointer in (
+        Path.home() / ".config/tumorquantai/repository",
+        Path("/etc/tumorquantai/repository"),
+    ):
+        try:
+            candidate = Path(pointer.read_text(encoding="utf-8").strip()).expanduser().resolve()
+        except OSError:
+            continue
+        if (candidate / "main.nf").is_file():
+            return candidate
+    return local
 
 
 def main() -> int:

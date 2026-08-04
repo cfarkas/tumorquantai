@@ -30,7 +30,7 @@ broad `*.tif` pattern that can select thumbnails, companions, or outputs.
 ## Inspect without the model
 
 ```bash
-./tumorquantai inspect /data/slides \
+tumorquantai inspect /data/slides \
   --output /data/tumorquantai-inspection
 ```
 

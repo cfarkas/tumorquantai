@@ -3,7 +3,7 @@
 The beginner command-line interface expands a short command into the existing `run.sh` and Nextflow workflow while preserving the selected input, output, work directory, sampling, seed, source MPP, container, and model identity.
 
 ```text
-./tumorquantai run
+tumorquantai run
         |
         +-- inspect and validate inputs
         +-- select CPU, GPU, or prepared local profile
@@ -17,7 +17,7 @@ The beginner command-line interface expands a short command into the existing `r
 
 ```bash
 # Inspect the input roster without HistoPLUS inference.
-./tumorquantai inspect /path/to/slides \
+tumorquantai inspect /path/to/slides \
   --output /path/to/tumorquantai-inspection \
   --source-mpp 0.261780
 ```
@@ -40,7 +40,7 @@ The random seed is recorded. The same input, preset, seed, and configuration sel
 
 ```bash
 # Run one selected sample on CPU.
-./tumorquantai run /path/to/slides \
+tumorquantai run /path/to/slides \
   --sample-sheet /path/to/slides/samples.csv \
   --output /path/to/results-smoke \
   --work-dir /path/to/work-smoke \
@@ -54,7 +54,7 @@ The random seed is recorded. The same input, preset, seed, and configuration sel
 
 ```bash
 # Run all selected samples at a deterministic 10% on GPU.
-./tumorquantai run /path/to/slides \
+tumorquantai run /path/to/slides \
   --sample-sheet /path/to/slides/samples.csv \
   --output /path/to/results-10-percent \
   --work-dir /path/to/work-10-percent \
@@ -69,7 +69,7 @@ Use `--cpu` instead of `--gpu` when GPU execution is unavailable. CPU and GPU co
 
 ```bash
 # Run every detected tissue tile only after smaller runs pass review.
-./tumorquantai run /path/to/slides \
+tumorquantai run /path/to/slides \
   --sample-sheet /path/to/slides/samples.csv \
   --output /path/to/results-full \
   --work-dir /path/to/work-full \
@@ -89,11 +89,11 @@ Use `--cpu` instead of `--gpu` when GPU execution is unavailable. CPU and GPU co
 | `--profile auto` | Select GPU only when the host and Docker runtime are visible; otherwise CPU |
 | `--profile local` | Expert-prepared local environment without Docker |
 
-Run `./tumorquantai doctor` before a new execution profile.
+Run `tumorquantai doctor` before a new execution profile.
 
 ```bash
 # Check a planned GPU result and work location.
-./tumorquantai doctor \
+tumorquantai doctor \
   --input /path/to/slides \
   --output /path/to/results-10-percent \
   --work-dir /path/to/work-10-percent \
@@ -106,7 +106,7 @@ Use a sample sheet for exact sample identity. Add stable include or exclude glob
 
 ```bash
 # Process cohort_A samples while excluding repeat samples.
-./tumorquantai run /path/to/slides \
+tumorquantai run /path/to/slides \
   --sample-sheet /path/to/slides/samples.csv \
   --output /path/to/results-cohort-A \
   --work-dir /path/to/work-cohort-A \
@@ -121,7 +121,7 @@ Use a sample sheet for exact sample identity. Add stable include or exclude glob
 
 ```bash
 # Run 10% with an explicit deterministic seed.
-./tumorquantai run /path/to/slides \
+tumorquantai run /path/to/slides \
   --output /path/to/results-seed-20260709 \
   --work-dir /path/to/work-seed-20260709 \
   --preset fast \
@@ -136,7 +136,7 @@ Do not compare sampled runs that used different seeds without accounting for the
 
 ```bash
 # Validate discovery and print the expanded plan without inference.
-./tumorquantai run /path/to/slides \
+tumorquantai run /path/to/slides \
   --output /path/to/results-dry-run \
   --preset fast \
   --source-mpp 0.261780 \
@@ -152,7 +152,7 @@ Press **Ctrl+C** to stop. Repeat the exact command with the same output and work
 
 ```bash
 # Display current completion state and the exact local resume command.
-./tumorquantai status /path/to/results-10-percent
+tumorquantai status /path/to/results-10-percent
 ```
 
 TumorQuantAI refuses to mix incompatible runs in one output directory. Use a new output root when changing:
@@ -181,7 +181,7 @@ A failed or incomplete sample:
 
 ```bash
 # Regenerate the portable run summary.
-./tumorquantai report /path/to/results-10-percent
+tumorquantai report /path/to/results-10-percent
 ```
 
 Open `START_HERE.html`, then review overlays, summaries, the aggregation audit, and cohort tables.
@@ -195,7 +195,7 @@ The beginner CLI is recommended for routine use. The compatible expert interface
 ./run.sh --help
 
 # Display the complete beginner and parameter-file options.
-./tumorquantai run --help
+tumorquantai run --help
 ```
 
 Direct `nextflow run` and `run.sh` usage require the user to manage protected parameters, model access, paths, resources, and provenance correctly. See [CLI reference](reference/cli.md), [Parameters](reference/parameters.md), and [Configuration](reference/configuration.md).

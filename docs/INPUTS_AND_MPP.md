@@ -11,7 +11,7 @@ This material is now split into:
 Inspect without inference:
 
 ```bash
-./tumorquantai inspect /data/slides \
+tumorquantai inspect /data/slides \
   --output /data/tumorquantai-inspection
 ```
 
