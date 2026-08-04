@@ -12,6 +12,7 @@ PREFIX="${RUNNER_TEMP}/install-${ROUTE}"
 OUTPUT="${ROUTES_ROOT}/${ROUTE}-results"
 WORK="${ROUTES_ROOT}/${ROUTE}-work"
 CACHE="${ROUTES_ROOT}/${ROUTE}-cache"
+MARKER="${ROUTES_ROOT}/${ROUTE}.success"
 INSTALL_FLAG=""
 BACKEND_FLAG=""
 EXPECTED_BACKEND=""
@@ -55,6 +56,7 @@ case "${ROUTE}" in
 esac
 
 rm -rf "${PREFIX}" "${OUTPUT}" "${WORK}" "${CACHE}"
+rm -f "${MARKER}"
 mkdir -p "${ROUTES_ROOT}"
 
 ./tumorquantai install \
@@ -128,3 +130,6 @@ if str(matching[0].get("included", "")).lower() not in {"true", "1", "yes"}:
 
 print(f"PASS: {route} completed the real one-WSI path for {sample}")
 PY
+
+printf 'success\n' > "${MARKER}"
+test -s "${MARKER}"
