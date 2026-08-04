@@ -35,7 +35,11 @@ FORBIDDEN_TEXT = (
     "screen -S",
     "screen -r",
     "HF_TOKEN=hf_",
-    "TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart",
+    "TQA_ROOT",
+    "REPO_ROOT",
+    "python3 -m venv",
+    "python -m venv",
+    "requirements-tutorial.txt",
 )
 
 SHELL_FENCE = re.compile(
@@ -49,6 +53,9 @@ SHELL_ASSIGN = re.compile(r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=")
 SHELL_FOR = re.compile(r"^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\b")
 SHELL_READ_LOOP = re.compile(
     r"^while\s+IFS=\s+read\s+-r\s+([A-Za-z_][A-Za-z0-9_]*)\s*;\s*do$"
+)
+SHELL_READ_ASSIGN = re.compile(
+    r"^read\b.*\s([A-Za-z_][A-Za-z0-9_]*)$"
 )
 SHELL_ALLOWED = {
     "HOME",
@@ -67,8 +74,6 @@ SHELL_ALLOWED = {
     "COLUMNS",
     "LINES",
     # Variables are deliberately introduced in an earlier numbered tutorial step.
-    "TQA_ROOT",
-    "REPO_ROOT",
     "TQA_INPUT",
     "TQA_INSPECTION",
     "TQA_DATA",
@@ -99,9 +104,10 @@ def undefined_shell_variables(body: str) -> set[str]:
         assignment = SHELL_ASSIGN.match(line)
         loop = SHELL_FOR.match(line)
         read_loop = SHELL_READ_LOOP.match(line)
+        read_assignment = SHELL_READ_ASSIGN.match(line)
         newly_defined = {
             match.group(1)
-            for match in (assignment, loop, read_loop)
+            for match in (assignment, loop, read_loop, read_assignment)
             if match
         }
         for match in SHELL_USE.finditer(line):

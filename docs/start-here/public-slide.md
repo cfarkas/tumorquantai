@@ -4,14 +4,16 @@ The maintained one-slide procedure is [QuickStart Example 1: one public WSI](../
 
 It starts from a fresh clone and provides copy/paste commands for:
 
-1. installing the lightweight tutorial dependencies;
-2. choosing and verifying a mounted storage path;
-3. previewing the fixed one-slide plan;
-4. downloading and validating `TumorQuantAI_LymphomaWSI_022.mds`;
-5. converting L0 and L2 with resume support;
-6. inspecting the source MPP without inference;
-7. optionally running a deterministic 1% HistoPLUS analysis;
+1. installing the global `tumorquantai` command once;
+2. previewing the fixed one-slide plan;
+3. downloading and validating `TumorQuantAI_LymphomaWSI_022.mds`;
+4. converting L0 and L2 with resume support;
+5. inspecting the source MPP without inference;
+6. configuring approved HistoPLUS access;
+7. optionally running a deterministic 1% analysis;
 8. verifying the overlay, summary, class counts, and aggregation audit.
+
+The QuickStart reuses the environment created by `tumorquantai install`; it does not create or activate a separate tutorial virtual environment.
 
 ```bash
 # Open the maintained QuickStart source from the repository.

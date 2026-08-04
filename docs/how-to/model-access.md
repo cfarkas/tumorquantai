@@ -1,79 +1,58 @@
-# Configure authorized HistoPLUS access
+# Configure HistoPLUS access
 
-| | |
-| --- | --- |
-| **For** | Users already authorized to use the gated HistoPLUS model |
-| **Hands-on steps** | Request access, store a read token file or point to an authorized local weight, check readiness |
-| **Prerequisites** | An approved Hugging Face account or organization-approved local weight |
-| **Download/storage** | Model download/cache size depends on the authorized artifact; keep the cache on an approved filesystem |
-| **Writes to** | A mode-0600 token file outside the repository or a read-only weight reference |
+HistoPLUS is hosted as a gated model on Hugging Face. TumorQuantAI can prepare and inspect public slides without it, but inference requires approved access.
 
-Request access on the
-[HistoPLUS model page](https://huggingface.co/Owkin-Bioptimus/histoplus).
-Creating a Hugging Face token does not grant model access. Never send a token
-to TumorQuantAI maintainers.
+## 1. Request access
 
-## Preferred token-file location
+Open the [HistoPLUS model page](https://huggingface.co/Owkin-Bioptimus/histoplus), sign in, and request access. Creating a token does not approve the model request; both steps are required.
 
-Store a read-only token without placing its value on the command line:
+## 2. Create a read token
+
+After the model request is approved, create a Hugging Face access token with **Read** permission.
+
+## 3. Save the token privately
 
 ```bash
+# Create the private TumorQuantAI configuration directory.
 install -d -m 700 "$HOME/.config/tumorquantai"
-umask 077
-read -rsp "Hugging Face read token: " TQA_TOKEN
-printf '%s' "$TQA_TOKEN" > "$HOME/.config/tumorquantai/hf_token"
-unset TQA_TOKEN
+
+# Paste the Hugging Face read token without displaying it.
+read -rsp "Hugging Face read token: " HF_READ_TOKEN
 printf '\n'
+printf '%s' "$HF_READ_TOKEN" > "$HOME/.config/tumorquantai/hf_token"
+unset HF_READ_TOKEN
 chmod 600 "$HOME/.config/tumorquantai/hf_token"
-
-export TUMORQUANTAI_HF_TOKEN_FILE="$HOME/.config/tumorquantai/hf_token"
 ```
 
-Resolution order is:
+TumorQuantAI automatically reads `$HOME/.config/tumorquantai/hf_token`. Do not put the token value after `--token-file`, in an environment file, in a Git command, or in an issue.
 
-1. `TUMORQUANTAI_HF_TOKEN_FILE` when set;
-2. an explicit `run --token-file FILE` path;
-3. `~/.config/tumorquantai/hf_token`;
-4. legacy `HF_TOKEN_FILE` automation when set, with a deprecation warning;
-5. legacy `~/.config/lazyslide-histoplus/hf_token` with a deprecation warning.
-
-The legacy path remains supported. Move it only when doing so will not disrupt
-existing automation. Token contents are never copied to outputs or printed.
-An existing `HF_TOKEN` environment value remains an automation compatibility
-fallback, but a private token file is preferred and documented for new users.
-
-## Authorized local weight
-
-If your organization provides the matching authorized HistoPLUS weight:
+## 4. Check readiness
 
 ```bash
-export HISTOPLUS_WEIGHT_FILE=/approved/model-store/histoplus_cellvit_segmentor_20x.pt
-test -r "$HISTOPLUS_WEIGHT_FILE"
-```
-
-The launcher hashes the file for provenance and mounts it read-only. Do not
-copy it into the repository or result directory.
-When a local weight is selected, TumorQuantAI removes unrelated token
-variables before launching Nextflow or a worker.
-
-## Check readiness
-
-```bash
+# Check the installed runtime, public metadata, and local credential file.
 tumorquantai doctor --online
 ```
 
-The online check validates pinned public model metadata only. The local
-credential item confirms that a private token file or authorized local weight
-is configured and readable; it does not prove account authorization. Actual
-gated access is established only when inference resolves the pinned artifact.
-Doctor never prints the token. Missing gated access is a readiness warning for
-download/inspection-only quickstart stages, but blocks inference.
+Doctor confirms that the token file exists and is private; the first inference confirms that the approved account can download the pinned HistoPLUS artifact.
 
-## Stop and revoke
+## Authorized local weight
 
-Press **Ctrl+C** to stop a check. Revoke a compromised token through Hugging
-Face, then replace only the mode-0600 file. Never attach it to an issue. Cache
-cleanup is optional and must target only the authorized model cache, not an
-entire home directory.
+An organization-provided authorized weight can be selected instead of a token:
 
-**Next:** run the [public one-slide quickstart](../start-here/public-slide.md).
+```bash
+# Run with an authorized local HistoPLUS weight.
+tumorquantai run /path/to/slides \
+  --output /path/to/results \
+  --local-weight /approved/model-store/histoplus_cellvit_segmentor_20x.pt \
+  --preset smoke \
+  --source-mpp 0.261780 \
+  --cpu
+```
+
+The weight is hashed for provenance and read from its original location. Do not copy it into the repository or result directory.
+
+## Replace a compromised token
+
+Revoke it in Hugging Face, repeat the private-file commands with a new read token, and rerun `tumorquantai doctor --online`.
+
+**Next:** run the [public one-slide QuickStart](../quick_start.md).

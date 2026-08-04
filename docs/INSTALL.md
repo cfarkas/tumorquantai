@@ -1,17 +1,16 @@
 # Installation
 
-The installation guide moved to
-[Install and check the computer](how-to/install.md).
-
-Use the canonical offline check:
+Use the maintained [installation guide](installation.md).
 
 ```bash
-tumorquantai doctor --output /mounted/storage/tumorquantai-check
+# Clone, install, and check TumorQuantAI.
+git clone https://github.com/cfarkas/tumorquantai.git
+cd tumorquantai
+./tumorquantai install --docker
+export PATH="$HOME/.local/bin:$PATH"
+tumorquantai doctor
 ```
 
-Authorized model setup is separate:
-[Configure HistoPLUS access](how-to/model-access.md).
+Replace `--docker` with `--singularity`, `--poetry`, or `--conda` when needed. The installer includes the tutorial download and conversion dependencies.
 
-The `run.sh` launcher, direct Nextflow workflow, Docker/local profiles, and
-existing automation remain supported; see [CLI reference](reference/cli.md)
-and [advanced tools](TOOLS.md).
+Authorized model setup is separate: [Configure HistoPLUS access](how-to/model-access.md).

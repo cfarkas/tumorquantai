@@ -1,86 +1,48 @@
 # Install and check the computer
 
-| | |
-| --- | --- |
-| **For** | Users preparing a Linux host for TumorQuantAI |
-| **Hands-on steps** | Clone, run offline doctor, install only missing prerequisites, rerun |
-| **Prerequisites** | Linux shell and permission to use the selected output mount |
-| **Download/storage** | Doctor is offline by default; containers/models are downloaded only for real runs |
-| **Writes to** | A temporary writable-path probe and, only when requested, redacted JSON |
+The repository installer prepares the `tumorquantai` command, its download/conversion dependencies, pinned Nextflow when needed, and one selected execution route.
 
-The recommended inference path is Nextflow on the host plus Docker. Python,
-LazySlide, HistoPLUS, and image dependencies run inside the pinned container.
-
-## Check before installing
+## Install once
 
 ```bash
+# Clone TumorQuantAI and enter the repository.
 git clone https://github.com/cfarkas/tumorquantai.git
 cd tumorquantai
 
-tumorquantai doctor \
-  --output /mounted/storage/tumorquantai-check
-```
-
-Doctor always checks OS/architecture, Java/Nextflow, Docker CLI and daemon
-access, NVIDIA visibility, CPU fallback, caches, and configured model
-readiness. With `--output` and optional `--work-dir`, it also checks the
-selected output/work mount and free space; `--input` checks the chosen input.
-It does not require internet unless `--online` is supplied.
-
-Expected output is a compact `PASS`/`WARN`/`FAIL` table with one next action
-per failure. Exit 0 means no blocking failure; see the [exit-code
-reference](../reference/exit-codes.md).
-
-## Minimum real-run components
-
-- Linux;
-- Java 17 or newer;
-- Nextflow 24.10 or newer;
-- Docker 24 or newer, or a fully prepared local Python environment;
-- NVIDIA driver and NVIDIA Container Toolkit for GPU execution; and
-- enough verified mounted storage for input, conversion, work, result, and
-  cache categories.
-
-The repository helper can install its verified Nextflow launcher without root:
-
-```bash
-./setup_server.sh --install-nextflow
+# Install the command and Docker route.
+./tumorquantai install --docker
 export PATH="$HOME/.local/bin:$PATH"
+
+# Confirm the command and computer readiness.
+tumorquantai --version
+tumorquantai doctor
 ```
 
-It does not install Java, Docker, GPU drivers, or modify system packages.
+Use `--singularity`, `--poetry`, or `--conda` instead of `--docker` when that is the route you will use. Do not create another environment for the tutorials.
 
-## Lightweight public-slide host environment
+## What is checked
 
-The public MDS downloader/converter runs on the host before inference. Use
-Python 3.10 or newer and install only its small declared environment:
+Doctor checks the operating system, Java, Nextflow, the selected container or Conda runtime, GPU visibility, writable caches, and configured HistoPLUS access. Add `--online` to check public release, dataset, and model metadata:
 
 ```bash
-python3 -m venv .venv-tumorquantai-tutorial
-. .venv-tumorquantai-tutorial/bin/activate
-python -m pip install -r requirements-tutorial.txt
-tumorquantai quickstart --output /mounted/storage/tutorial-one-slide --dry-run
+# Include public online metadata checks.
+tumorquantai doctor --online
 ```
 
-Keep this small environment in the checkout only if the checkout itself is on
-an approved filesystem. It contains software packages, never slides, model
-weights, tokens, work files, or results.
-
-## Redacted issue attachment
+## System-wide installation
 
 ```bash
-tumorquantai doctor \
-  --output /mounted/storage/tumorquantai-check \
-  --json > doctor.json
+# Install the command under /usr/local for all users.
+sudo ./tumorquantai install --docker --system
+
+tumorquantai --version
 ```
 
-Review `doctor.json` before sharing. It excludes secret contents and minimizes
-personally identifying paths, but you remain responsible for redaction.
+## First command
 
-## Stop and clean up
+```bash
+# Prepare one public WSI without HistoPLUS inference.
+tumorquantai quickstart --no-inference
+```
 
-Doctor is read-only apart from its small writable-path probe. Press **Ctrl+C**
-to stop. Remove only the explicitly selected check directory if it was created.
-
-**Next:** [configure authorized HistoPLUS access](model-access.md) or run the
-[structural demo](../start-here/demo.md).
+**Next:** [configure HistoPLUS access](model-access.md) or continue to the [one-WSI QuickStart](../quick_start.md).
