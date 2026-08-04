@@ -1,9 +1,13 @@
 name: Apply installable TumorQuantAI command
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/oncotracer-style-v1-overhaul
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
     paths:
       - scripts/apply_installable_cli.py
       - .github/workflows/apply-installable-cli.yml
@@ -17,6 +21,7 @@ concurrency:
 
 jobs:
   apply-test-commit:
+    if: github.head_ref == 'agent/oncotracer-style-v1-overhaul'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -78,9 +83,6 @@ jobs:
           ./tumorquantai install --poetry --dry-run
           ./tumorquantai install --conda --dry-run
           ./tumorquantai quickstart --dry-run
-
-      - name: Remove the temporary patch script
-        run: rm -f scripts/apply_installable_cli.py
 
       - name: Commit and push the completed update
         run: |
