@@ -75,6 +75,25 @@ if old not in text:
     raise SystemExit("Unable to harden the QuickStart backend call replacement")
 text = text.replace(old, new, 1)
 
+# The generic replacement above already adds backend to the QuickStart
+# argparse namespace. Remove the later exact rewrite, which would otherwise
+# look for the pre-replacement text and fail.
+old = '''replace_once(
+    "tumorquantai",
+    '        input=converted, output=smoke_results, preset="smoke", source_mpp=core.TUTORIAL_SOURCE_MPP,\\n        sample=core.TUTORIAL_SAMPLE, profile=args.profile, seed=args.seed,\\n',
+    '        input=converted, output=smoke_results, preset="smoke",\\n'
+    '        source_mpp=core.TUTORIAL_SOURCE_MPP, sample=core.TUTORIAL_SAMPLE,\\n'
+    '        profile=args.profile, backend=args.backend, seed=args.seed,\\n',
+)
+'''
+if old not in text:
+    raise SystemExit("Unable to remove the redundant QuickStart namespace rewrite")
+text = text.replace(
+    old,
+    "# QuickStart backend is injected by the generic manifest-call replacement.\n",
+    1,
+)
+
 old = "    assert 'conda = \"${projectDir}/environment.yml\"' in config\n"
 new = (
     '    assert "conda = params.conda_environment" in config\n'
