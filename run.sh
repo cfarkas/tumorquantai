@@ -526,6 +526,50 @@ if [[ "${BACKEND}" == "singularity" ]]; then
   export NXF_SINGULARITY_CACHEDIR="${NXF_SINGULARITY_CACHEDIR:-${WORK_DIR}/singularity-cache}"
   export NXF_APPTAINER_CACHEDIR="${NXF_APPTAINER_CACHEDIR:-${WORK_DIR}/apptainer-cache}"
   mkdir -p "${NXF_SINGULARITY_CACHEDIR}" "${NXF_APPTAINER_CACHEDIR}"
+
+  # Apptainer/Singularity do not automatically expose every absolute host path
+  # used by the launcher. Bind all workflow inputs read-only and all mutable
+  # workflow/cache paths read-write so a command behaves like the Docker route.
+  SINGULARITY_BIND_PATHS=(
+    "${SCRIPT_DIR}"
+    "${INPUT_DIR}"
+    "${OUTPUT_DIR}"
+    "${WORK_DIR}"
+    "${HF_CACHE}"
+    "${HISTOPLUS_CACHE}"
+  )
+  if [[ -n "${SAMPLE_SHEET}" ]]; then
+    SINGULARITY_BIND_PATHS+=("$(dirname "${SAMPLE_SHEET}")")
+  fi
+  if [[ -n "${HISTOPLUS_WEIGHT_FILE}" ]]; then
+    SINGULARITY_BIND_PATHS+=("$(dirname "${HISTOPLUS_WEIGHT_FILE}")")
+  fi
+  for BIND_PATH in "${SINGULARITY_BIND_PATHS[@]}"; do
+    [[ "${BIND_PATH}" != *:*       && "${BIND_PATH}" != *,*       && ! "${BIND_PATH}" =~ [[:space:]] ]] ||       die "Singularity bind paths cannot contain whitespace, ',' or ':' characters: ${BIND_PATH}"
+  done
+
+  SINGULARITY_BIND_SPECS=(
+    "${SCRIPT_DIR}:${SCRIPT_DIR}:ro"
+    "${INPUT_DIR}:${INPUT_DIR}:ro"
+    "${OUTPUT_DIR}:${OUTPUT_DIR}"
+    "${WORK_DIR}:${WORK_DIR}"
+    "${HF_CACHE}:${HF_CACHE}"
+    "${HISTOPLUS_CACHE}:${HISTOPLUS_CACHE}"
+  )
+  if [[ -n "${SAMPLE_SHEET}" && "${SAMPLE_SHEET}" != "${INPUT_DIR}"/* ]]; then
+    SAMPLE_SHEET_DIR="$(dirname "${SAMPLE_SHEET}")"
+    SINGULARITY_BIND_SPECS+=("${SAMPLE_SHEET_DIR}:${SAMPLE_SHEET_DIR}:ro")
+  fi
+  if [[ -n "${HISTOPLUS_WEIGHT_FILE}" ]]; then
+    HISTOPLUS_WEIGHT_DIR="$(dirname "${HISTOPLUS_WEIGHT_FILE}")"
+    SINGULARITY_BIND_SPECS+=("${HISTOPLUS_WEIGHT_DIR}:${HISTOPLUS_WEIGHT_DIR}:ro")
+  fi
+  GENERATED_BINDPATH="$(IFS=,; printf '%s' "${SINGULARITY_BIND_SPECS[*]}")"
+  EXISTING_APPTAINER_BINDPATH="${APPTAINER_BINDPATH:-}"
+  EXISTING_SINGULARITY_BINDPATH="${SINGULARITY_BINDPATH:-}"
+  export APPTAINER_BINDPATH="${GENERATED_BINDPATH}${EXISTING_APPTAINER_BINDPATH:+,${EXISTING_APPTAINER_BINDPATH}}"
+  export SINGULARITY_BINDPATH="${GENERATED_BINDPATH}${EXISTING_SINGULARITY_BINDPATH:+,${EXISTING_SINGULARITY_BINDPATH}}"
+
   export APPTAINERENV_HF_HOME="${HF_CACHE}"
   export APPTAINERENV_HUGGINGFACE_HUB_CACHE="${HF_CACHE}/hub"
   export APPTAINERENV_HISTOPLUS_CACHE="${HISTOPLUS_CACHE}"
@@ -546,7 +590,6 @@ NF_ARGS=(
   --output_dir "${OUTPUT_DIR}"
   --slide_patterns "${PATTERN_VALUE}"
   --include "${INCLUDE}"
-  --exclude "${EXCLUDE}"
   --dry_run "${DRY_RUN}"
   --container_image "${CONTAINER_IMAGE}"
   --docker_run_options "${DOCKER_RUN_OPTIONS}"
@@ -578,6 +621,7 @@ NF_ARGS=(
 )
 
 [[ -n "${SLIDE_MPP}" ]] && NF_ARGS+=(--slide_mpp "${SLIDE_MPP}")
+[[ -n "${EXCLUDE}" ]] && NF_ARGS+=(--exclude "${EXCLUDE}")
 if [[ -n "${HISTOPLUS_WEIGHT_FILE}" ]]; then
   NF_ARGS+=(
     --histoplus_weight_file "${HISTOPLUS_WEIGHT_FILE}"

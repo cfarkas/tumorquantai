@@ -68,3 +68,29 @@ def test_nextflow_config_exposes_all_runtime_profiles() -> None:
     assert "conda = params.conda_environment" in config
     assert "conda_environment" in config
     assert "withName: /DISCOVER_SLIDES|PROCESS_SLIDE|AGGREGATE_COUNTS/" in config
+
+
+def test_singularity_route_binds_every_required_host_path() -> None:
+    launcher = (ROOT / "run.sh").read_text(encoding="utf-8")
+    assert 'export APPTAINER_BINDPATH=' in launcher
+    assert 'export SINGULARITY_BINDPATH=' in launcher
+    for variable in (
+        "SCRIPT_DIR", "INPUT_DIR", "OUTPUT_DIR", "WORK_DIR",
+        "HF_CACHE", "HISTOPLUS_CACHE",
+    ):
+        assert f'${{{variable}}}:${{{variable}}}' in launcher
+    assert "SAMPLE_SHEET_DIR" in launcher
+    assert "HISTOPLUS_WEIGHT_DIR" in launcher
+
+
+def test_empty_exclude_is_not_forwarded_as_a_nextflow_boolean() -> None:
+    launcher = (ROOT / "run.sh").read_text(encoding="utf-8")
+    base_block = launcher.split("NF_ARGS=(", 1)[1].split(")\n\n", 1)[0]
+    assert '--exclude "${EXCLUDE}"' not in base_block
+    assert '[[ -n "${EXCLUDE}" ]] && NF_ARGS+=(--exclude "${EXCLUDE}")' in launcher
+
+
+def test_resume_command_uses_the_installed_command_name() -> None:
+    cli = CLI.read_text(encoding="utf-8")
+    assert '"tumorquantai", "run", str(input_root)' in cli
+    assert '"./tumorquantai", "run", str(input_root)' not in cli

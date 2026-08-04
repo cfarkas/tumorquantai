@@ -107,8 +107,8 @@ A manual copy also works when it is made from the clone and followed by the inst
 # Optional manual launcher copy.
 sudo cp tumorquantai /usr/local/bin/tumorquantai
 
-# Run from the cloned repository so it can record this location.
-./tumorquantai install --docker
+# Run from the cloned repository and complete the system installation.
+sudo tumorquantai install --docker --system
 ```
 
 The built-in `--system` method is preferred because it also creates the managed Python environment and records the backend.

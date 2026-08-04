@@ -1561,7 +1561,7 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
         command.extend(expert_args)
     display = core.shell_join(command, secret_values)
     resume_parts = [
-        "./tumorquantai", "run", str(input_root), "--output", str(output),
+        "tumorquantai", "run", str(input_root), "--output", str(output),
         "--preset", args.preset, "--source-mpp", f"{source_mpp:.9g}",
         "--percent-slide", f"{percent:g}", "--mpp", f"{float(args.mpp):.15g}",
         "--backend", args.backend, "--profile", profile,
