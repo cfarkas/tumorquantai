@@ -49,8 +49,8 @@ jobs:
 
       - name: Remove temporary patch workflows
         run: |
-          rm -f .github/workflows/apply-simplified-tutorials.yml
-          rm -f .github/workflows/apply-simplified-tutorials-on-pr.yml
+          git rm -f .github/workflows/apply-simplified-tutorials.yml
+          git rm -f .github/workflows/apply-simplified-tutorials-on-pr.yml
 
       - name: Install validation dependencies
         run: |
