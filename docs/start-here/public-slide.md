@@ -13,6 +13,8 @@ It starts from a fresh clone and provides copy/paste commands for:
 7. optionally running a deterministic 1% analysis;
 8. verifying the overlay, summary, class counts, and aggregation audit.
 
+The QuickStart reuses the environment created by `tumorquantai install`; it does not create or activate a separate tutorial virtual environment.
+
 ```bash
 # Open the maintained QuickStart source from the repository.
 sed -n '1,280p' docs/quick_start.md
