@@ -1,4 +1,4 @@
-name: QuickStart #1 — Docker, Singularity, Poetry, and Conda
+name: "QuickStart #1 — Docker, Singularity, Poetry, and Conda"
 
 on:
   pull_request:
@@ -16,6 +16,7 @@ on:
       - requirements-tutorial.txt
       - bin/**
       - tests/fixtures/stub_worker.py
+      - tests/run_quickstart_runtime_route.sh
       - examples/quickstart/**
       - .github/workflows/quickstart-runtime-routes.yml
   push:
@@ -36,7 +37,7 @@ env:
   SAMPLE: TumorQuantAI_LymphomaWSI_022
   DOCKER_IMAGE: tumorquantai-ci-runtime:latest
   SIF_PATH: /mnt/tumorquantai-data/tumorquantai-ci-runtime.sif
-  STUB_WEIGHT: /mnt/tumorquantai-data/tumorquantai-ci-stub-weight.pt
+  STUB_WEIGHT: ${{ runner.temp }}/tumorquantai-ci-stub-weight.pt
 
 jobs:
   validate-four-routes:
@@ -69,7 +70,10 @@ jobs:
           cache-dependency-path: requirements-tutorial.txt
 
       - name: Install public-data preparation dependencies
-        run: python -m pip install --requirement requirements-tutorial.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --requirement requirements-tutorial.txt
+          chmod +x tests/run_quickstart_runtime_route.sh
 
       - name: Install pinned Nextflow
         run: |
@@ -119,6 +123,26 @@ jobs:
           apptainer exec "$SIF_PATH" \
             python -c 'import pandas; print(pandas.__version__)'
 
+      - name: Create the non-biological local test weight
+        run: |
+          printf 'TumorQuantAI deterministic CI stub weight\n' > "$STUB_WEIGHT"
+          test -s "$STUB_WEIGHT"
+
+      - name: Install and run the Docker route
+        id: docker_route
+        continue-on-error: true
+        run: tests/run_quickstart_runtime_route.sh docker
+
+      - name: Install and run the Singularity or Apptainer route
+        id: singularity_route
+        continue-on-error: true
+        run: tests/run_quickstart_runtime_route.sh singularity
+
+      - name: Install and run the Poetry route
+        id: poetry_route
+        continue-on-error: true
+        run: tests/run_quickstart_runtime_route.sh poetry
+
       - name: Install pinned Miniforge
         run: |
           curl -fsSL \
@@ -132,240 +156,24 @@ jobs:
           echo "$RUNNER_TEMP/miniforge/bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/miniforge/bin/conda" --version
 
-      - name: Create the non-biological local test weight
-        run: |
-          printf 'TumorQuantAI deterministic CI stub weight\n' > "$STUB_WEIGHT"
-          test -s "$STUB_WEIGHT"
-
-      - name: Install and run the Docker route
-        run: |
-          PREFIX="$RUNNER_TEMP/install-docker"
-          OUTPUT="$ROUTES_ROOT/docker-results"
-          WORK="$ROUTES_ROOT/docker-work"
-          CACHE="$ROUTES_ROOT/docker-cache"
-
-          ./tumorquantai install \
-            --docker \
-            --prefix "$PREFIX" \
-            --no-nextflow-download
-
-          "$PREFIX/bin/tumorquantai" run "$TQA_ROOT/converted" \
-            --sample-sheet "$TQA_ROOT/converted/samples.csv" \
-            --output "$OUTPUT" \
-            --work-dir "$WORK" \
-            --cache-dir "$CACHE" \
-            --preset smoke \
-            --sample "$SAMPLE" \
-            --source-mpp 0.261780 \
-            --local-weight "$STUB_WEIGHT" \
-            --container-image "$DOCKER_IMAGE" \
-            --docker \
-            --cpu \
-            --cpus 2 \
-            --memory '4 GB' \
-            --num-workers 0 \
-            --celltypes-batch-size 1 \
-            --no-convert-to-pyramidal \
-            --fail-fast \
-            -- \
-            --worker_script "$PWD/tests/fixtures/stub_worker.py"
-
-          python - "$OUTPUT" docker "$SAMPLE" <<'PY'
-          import csv, json, sys
-          from pathlib import Path
-          root, backend, sample = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
-          required = [
-              root / 'START_HERE.html',
-              root / sample / 'summary/summary.json',
-              root / sample / 'cell_types/class_counts.csv',
-              root / 'aggregated_celltypes/sample_aggregation_audit.csv',
-              root / 'aggregated_celltypes/celltype_counts_by_sample.csv',
-          ]
-          for path in required:
-              assert path.is_file() and path.stat().st_size, path
-          manifest = json.loads((root / 'workflow_metadata/tumorquantai_run.json').read_text())
-          assert manifest['completion_status'] == 'complete', manifest
-          assert manifest['execution_backend'] == backend, manifest
-          assert float(manifest['sampling_percent']) == 1.0, manifest
-          with required[3].open(newline='', encoding='utf-8') as handle:
-              rows = list(csv.DictReader(handle))
-          row = next(item for item in rows if item.get('sample_id') == sample)
-          assert str(row.get('included', '')).lower() in {'true', '1', 'yes'}, row
-          print(f'PASS: {backend} route completed for {sample}')
-          PY
-
-      - name: Install and run the Singularity or Apptainer route
-        run: |
-          PREFIX="$RUNNER_TEMP/install-singularity"
-          OUTPUT="$ROUTES_ROOT/singularity-results"
-          WORK="$ROUTES_ROOT/singularity-work"
-          CACHE="$ROUTES_ROOT/singularity-cache"
-
-          ./tumorquantai install \
-            --singularity \
-            --prefix "$PREFIX" \
-            --no-nextflow-download
-
-          "$PREFIX/bin/tumorquantai" run "$TQA_ROOT/converted" \
-            --sample-sheet "$TQA_ROOT/converted/samples.csv" \
-            --output "$OUTPUT" \
-            --work-dir "$WORK" \
-            --cache-dir "$CACHE" \
-            --preset smoke \
-            --sample "$SAMPLE" \
-            --source-mpp 0.261780 \
-            --local-weight "$STUB_WEIGHT" \
-            --container-image "$SIF_PATH" \
-            --singularity \
-            --cpu \
-            --cpus 2 \
-            --memory '4 GB' \
-            --num-workers 0 \
-            --celltypes-batch-size 1 \
-            --no-convert-to-pyramidal \
-            --fail-fast \
-            -- \
-            --worker_script "$PWD/tests/fixtures/stub_worker.py"
-
-          python - "$OUTPUT" singularity "$SAMPLE" <<'PY'
-          import csv, json, sys
-          from pathlib import Path
-          root, backend, sample = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
-          required = [
-              root / 'START_HERE.html',
-              root / sample / 'summary/summary.json',
-              root / sample / 'cell_types/class_counts.csv',
-              root / 'aggregated_celltypes/sample_aggregation_audit.csv',
-              root / 'aggregated_celltypes/celltype_counts_by_sample.csv',
-          ]
-          for path in required:
-              assert path.is_file() and path.stat().st_size, path
-          manifest = json.loads((root / 'workflow_metadata/tumorquantai_run.json').read_text())
-          assert manifest['completion_status'] == 'complete', manifest
-          assert manifest['execution_backend'] == backend, manifest
-          assert float(manifest['sampling_percent']) == 1.0, manifest
-          with required[3].open(newline='', encoding='utf-8') as handle:
-              rows = list(csv.DictReader(handle))
-          row = next(item for item in rows if item.get('sample_id') == sample)
-          assert str(row.get('included', '')).lower() in {'true', '1', 'yes'}, row
-          print(f'PASS: {backend} route completed for {sample}')
-          PY
-
-      - name: Install and run the Poetry route
-        run: |
-          PREFIX="$RUNNER_TEMP/install-poetry"
-          OUTPUT="$ROUTES_ROOT/poetry-results"
-          WORK="$ROUTES_ROOT/poetry-work"
-          CACHE="$ROUTES_ROOT/poetry-cache"
-
-          ./tumorquantai install \
-            --poetry \
-            --prefix "$PREFIX" \
-            --no-nextflow-download
-
-          "$PREFIX/bin/tumorquantai" run "$TQA_ROOT/converted" \
-            --sample-sheet "$TQA_ROOT/converted/samples.csv" \
-            --output "$OUTPUT" \
-            --work-dir "$WORK" \
-            --cache-dir "$CACHE" \
-            --preset smoke \
-            --sample "$SAMPLE" \
-            --source-mpp 0.261780 \
-            --local-weight "$STUB_WEIGHT" \
-            --container-image "$DOCKER_IMAGE" \
-            --docker \
-            --cpu \
-            --cpus 2 \
-            --memory '4 GB' \
-            --num-workers 0 \
-            --celltypes-batch-size 1 \
-            --no-convert-to-pyramidal \
-            --fail-fast \
-            -- \
-            --worker_script "$PWD/tests/fixtures/stub_worker.py"
-
-          python - "$OUTPUT" docker "$SAMPLE" <<'PY'
-          import csv, json, sys
-          from pathlib import Path
-          root, backend, sample = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
-          required = [
-              root / 'START_HERE.html',
-              root / sample / 'summary/summary.json',
-              root / sample / 'cell_types/class_counts.csv',
-              root / 'aggregated_celltypes/sample_aggregation_audit.csv',
-              root / 'aggregated_celltypes/celltype_counts_by_sample.csv',
-          ]
-          for path in required:
-              assert path.is_file() and path.stat().st_size, path
-          manifest = json.loads((root / 'workflow_metadata/tumorquantai_run.json').read_text())
-          assert manifest['completion_status'] == 'complete', manifest
-          assert manifest['execution_backend'] == backend, manifest
-          assert float(manifest['sampling_percent']) == 1.0, manifest
-          with required[3].open(newline='', encoding='utf-8') as handle:
-              rows = list(csv.DictReader(handle))
-          row = next(item for item in rows if item.get('sample_id') == sample)
-          assert str(row.get('included', '')).lower() in {'true', '1', 'yes'}, row
-          print(f'PASS: Poetry launcher with {backend} completed for {sample}')
-          PY
-
       - name: Install and run the Conda route
+        id: conda_route
+        continue-on-error: true
         env:
           NXF_CONDA_CACHEDIR: /mnt/tumorquantai-data/runtime-routes/conda-environments
+        run: tests/run_quickstart_runtime_route.sh conda
+
+      - name: Require all four runtime routes
+        if: always()
         run: |
-          PREFIX="$RUNNER_TEMP/install-conda"
-          OUTPUT="$ROUTES_ROOT/conda-results"
-          WORK="$ROUTES_ROOT/conda-work"
-          CACHE="$ROUTES_ROOT/conda-cache"
-
-          ./tumorquantai install \
-            --conda \
-            --prefix "$PREFIX" \
-            --no-nextflow-download
-
-          "$PREFIX/bin/tumorquantai" run "$TQA_ROOT/converted" \
-            --sample-sheet "$TQA_ROOT/converted/samples.csv" \
-            --output "$OUTPUT" \
-            --work-dir "$WORK" \
-            --cache-dir "$CACHE" \
-            --preset smoke \
-            --sample "$SAMPLE" \
-            --source-mpp 0.261780 \
-            --local-weight "$STUB_WEIGHT" \
-            --conda \
-            --cpu \
-            --cpus 2 \
-            --memory '4 GB' \
-            --num-workers 0 \
-            --celltypes-batch-size 1 \
-            --no-convert-to-pyramidal \
-            --fail-fast \
-            -- \
-            --worker_script "$PWD/tests/fixtures/stub_worker.py" \
-            --conda_environment "$PWD/environment-ci.yml"
-
-          python - "$OUTPUT" conda "$SAMPLE" <<'PY'
-          import csv, json, sys
-          from pathlib import Path
-          root, backend, sample = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
-          required = [
-              root / 'START_HERE.html',
-              root / sample / 'summary/summary.json',
-              root / sample / 'cell_types/class_counts.csv',
-              root / 'aggregated_celltypes/sample_aggregation_audit.csv',
-              root / 'aggregated_celltypes/celltype_counts_by_sample.csv',
-          ]
-          for path in required:
-              assert path.is_file() and path.stat().st_size, path
-          manifest = json.loads((root / 'workflow_metadata/tumorquantai_run.json').read_text())
-          assert manifest['completion_status'] == 'complete', manifest
-          assert manifest['execution_backend'] == backend, manifest
-          assert float(manifest['sampling_percent']) == 1.0, manifest
-          with required[3].open(newline='', encoding='utf-8') as handle:
-              rows = list(csv.DictReader(handle))
-          row = next(item for item in rows if item.get('sample_id') == sample)
-          assert str(row.get('included', '')).lower() in {'true', '1', 'yes'}, row
-          print(f'PASS: {backend} route completed for {sample}')
-          PY
+          printf 'Docker: %s\n' "${{ steps.docker_route.outcome }}"
+          printf 'Singularity/Apptainer: %s\n' "${{ steps.singularity_route.outcome }}"
+          printf 'Poetry: %s\n' "${{ steps.poetry_route.outcome }}"
+          printf 'Conda: %s\n' "${{ steps.conda_route.outcome }}"
+          test "${{ steps.docker_route.outcome }}" = success
+          test "${{ steps.singularity_route.outcome }}" = success
+          test "${{ steps.poetry_route.outcome }}" = success
+          test "${{ steps.conda_route.outcome }}" = success
 
       - name: Upload route reports
         if: always()
