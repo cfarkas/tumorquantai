@@ -59,17 +59,28 @@ jobs:
           python -m pip install 'pytest>=8,<9' 'jsonschema>=4,<5' 'PyYAML>=6,<7'
           python -m pip install 'mkdocs-material>=9.5,<10'
 
-      - name: Validate command, tutorials, and documentation
+      - name: Validate installed command and tests
         run: |
           chmod +x tumorquantai
           python -m py_compile tumorquantai scripts/*.py tests/test_install_command.py
           python -m pytest -q tests/test_install_command.py tests/test_runtime_backends.py
           ./tumorquantai convert --help
           ./tumorquantai install --docker --dry-run
-          python scripts/check_docs_language.py
-          python scripts/check_oncotracer_style_docs.py
-          python scripts/check_repository_hygiene.py
-          mkdocs build --strict
+
+      - name: Validate documentation language
+        run: python scripts/check_docs_language.py
+
+      - name: Validate tutorial structure
+        run: python scripts/check_oncotracer_style_docs.py
+
+      - name: Validate repository hygiene
+        run: python scripts/check_repository_hygiene.py
+
+      - name: Build documentation strictly
+        run: mkdocs build --strict
+
+      - name: Require the simplified tutorial format
+        run: |
           ! grep -R -F 'TQA_ROOT' README.md docs examples
           ! grep -R -F 'REPO_ROOT' README.md docs examples
           ! grep -R -F 'python3 -m venv' README.md docs examples
