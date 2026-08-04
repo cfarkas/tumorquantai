@@ -57,7 +57,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements-tutorial.txt
           python -m pip install 'pytest>=8,<9' 'jsonschema>=4,<5' 'PyYAML>=6,<7'
-          python -m pip install -r docs/requirements.txt
+          python -m pip install 'mkdocs-material>=9.5,<10'
 
       - name: Validate command, tutorials, and documentation
         run: |
