@@ -137,10 +137,10 @@ jobs:
           assert '"tumorquantai", "run", str(input_root)' in Path('tumorquantai').read_text(encoding='utf-8')
           PY
 
-      - name: Commit and push the final runtime fix
+      - name: Commit and push the validated source fixes
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Fix Singularity binds and complete four-route validation"
+          git config user.email "4189828+github-actions[bot]@users.noreply.github.com"
+          git add run.sh tumorquantai docs/installation.md tests/test_runtime_backends.py
+          git commit -m "Fix Singularity binds and launcher arguments"
           git push origin HEAD:agent/oncotracer-style-v1-overhaul
