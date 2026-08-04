@@ -1,0 +1,42 @@
+name: Verify live TumorQuantAI documentation
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-live-pages:
+    if: github.head_ref == 'agent/verify-live-overhaul-pages'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wait for the exact main documentation to appear on GitHub Pages
+        run: |
+          set -Eeuo pipefail
+          base='https://cfarkas.github.io/tumorquantai'
+          for attempt in $(seq 1 48); do
+            echo "Pages check ${attempt}/48"
+            if curl --fail --location --silent --show-error \
+              "$base/quick_start/" -o quick_start.html \
+              && curl --fail --location --silent --show-error \
+              "$base/full_tutorial/" -o full_tutorial.html \
+              && curl --fail --location --silent --show-error \
+              "$base/own_data/" -o own_data.html \
+              && grep -Fq 'QuickStart Example 1: one public WSI' quick_start.html \
+              && grep -Fq 'TumorQuantAI_LymphomaWSI_022' quick_start.html \
+              && grep -Fq 'Full tutorial: 21 public lymphoma WSIs at 10%' full_tutorial.html \
+              && grep -Fq -- '--preset fast' full_tutorial.html \
+              && grep -Fq 'Apply TumorQuantAI to your own WSIs' own_data.html \
+              && grep -Fq 'git clone' quick_start.html \
+              && grep -Fq 'cd</span><span class="w"> </span>tumorquantai' quick_start.html; then
+              echo 'SUCCESS: live GitHub Pages contains the rebuilt tutorials.'
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'The rebuilt documentation did not become visible within eight minutes.' >&2
+          exit 1
