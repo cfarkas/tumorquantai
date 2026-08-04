@@ -166,14 +166,12 @@ jobs:
       - name: Require all four runtime routes
         if: always()
         run: |
-          printf 'Docker: %s\n' "${{ steps.docker_route.outcome }}"
-          printf 'Singularity/Apptainer: %s\n' "${{ steps.singularity_route.outcome }}"
-          printf 'Poetry: %s\n' "${{ steps.poetry_route.outcome }}"
-          printf 'Conda: %s\n' "${{ steps.conda_route.outcome }}"
-          test "${{ steps.docker_route.outcome }}" = success
-          test "${{ steps.singularity_route.outcome }}" = success
-          test "${{ steps.poetry_route.outcome }}" = success
-          test "${{ steps.conda_route.outcome }}" = success
+          for route in docker singularity poetry conda; do
+            marker="$ROUTES_ROOT/${route}.success"
+            printf '%s marker: %s\n' "$route" "$marker"
+            test -s "$marker"
+            grep -Fx 'success' "$marker"
+          done
 
       - name: Upload route reports
         if: always()
@@ -188,6 +186,7 @@ jobs:
             ${{ env.ROUTES_ROOT }}/*-results/START_HERE.html
             ${{ env.ROUTES_ROOT }}/*-results/workflow_metadata/tumorquantai_run.json
             ${{ env.ROUTES_ROOT }}/*-results/aggregated_celltypes/sample_aggregation_audit.csv
+            ${{ env.ROUTES_ROOT }}/*.success
 
       - name: Unmount the CI data path
         if: always()
