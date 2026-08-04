@@ -72,8 +72,12 @@ def test_nextflow_config_exposes_all_runtime_profiles() -> None:
 
 def test_singularity_route_binds_every_required_host_path() -> None:
     launcher = (ROOT / "run.sh").read_text(encoding="utf-8")
-    assert 'export APPTAINER_BINDPATH=' in launcher
-    assert 'export SINGULARITY_BINDPATH=' in launcher
+    config = (ROOT / "nextflow.config").read_text(encoding="utf-8")
+
+    assert 'SINGULARITY_RUN_OPTIONS="--bind ${COMBINED_BINDPATH}"' in launcher
+    assert 'NF_ARGS+=("--singularity_run_options=${SINGULARITY_RUN_OPTIONS}")' in launcher
+    assert 'export APPTAINER_BINDPATH=' not in launcher
+    assert 'export SINGULARITY_BINDPATH=' not in launcher
     for variable in (
         "SCRIPT_DIR", "INPUT_DIR", "OUTPUT_DIR", "WORK_DIR",
         "HF_CACHE", "HISTOPLUS_CACHE",
@@ -81,6 +85,12 @@ def test_singularity_route_binds_every_required_host_path() -> None:
         assert f'${{{variable}}}:${{{variable}}}' in launcher
     assert "SAMPLE_SHEET_DIR" in launcher
     assert "HISTOPLUS_WEIGHT_DIR" in launcher
+
+    assert "singularity_run_options = ''" in config
+    assert config.count("runOptions = params.singularity_run_options") == 2
+    assert config.count(
+        'runOptions = \"--nv ${params.singularity_run_options'
+    ) == 2
 
 
 def test_empty_exclude_is_not_forwarded_as_a_nextflow_boolean() -> None:
