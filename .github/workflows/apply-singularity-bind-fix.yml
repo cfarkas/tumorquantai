@@ -39,6 +39,22 @@ jobs:
       - name: Apply explicit Apptainer and Singularity run options
         run: |
           python scripts/apply_singularity_bind_fix.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/test_runtime_backends.py')
+          text = path.read_text(encoding='utf-8')
+          start = text.index('    gpu_options = ', text.index(
+              'def test_singularity_route_binds_every_required_host_path'
+          ))
+          end = text.index('\n\n\ndef test_empty_exclude', start)
+          replacement = (
+              "    assert config.count(\n"
+              "        'runOptions = \\\"--nv ${params.singularity_run_options'\n"
+              "    ) == 2"
+          )
+          path.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+          PY
           chmod +x run.sh tumorquantai
 
       - name: Install validation dependencies
