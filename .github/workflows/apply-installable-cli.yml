@@ -39,6 +39,16 @@ jobs:
       - name: Apply the installable CLI and documentation update
         run: |
           python scripts/apply_installable_cli.py
+          python - <<'PY'
+          from pathlib import Path
+
+          old = "TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart"
+          new = 'TQA_ROOT="$(dirname "$PWD")/tumorquantai-quickstart-one-wsi"'
+          for path in [Path("README.md"), *Path("docs").rglob("*.md"), *Path("examples").rglob("README.md")]:
+              text = path.read_text(encoding="utf-8")
+              if old in text:
+                  path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
           chmod +x tumorquantai examples/quickstart/verify_outputs.py tests/fixtures/stub_worker.py
 
       - name: Install validation dependencies
