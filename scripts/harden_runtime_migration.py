@@ -132,4 +132,50 @@ if old not in text:
     raise SystemExit("Unable to add the docker:// scheme for Singularity/Apptainer")
 text = text.replace(old, new, 1)
 
+# Preserve compatibility with existing programmatic callers and tests. Older
+# QuickStart Namespace objects have no `backend`, and older callers monkeypatch
+# `resolve_profile` with a one-argument function.
+marker = "# ---------------------------------------------------------------------------\n# Runtime regression tests and CI parsing\n# ---------------------------------------------------------------------------\n"
+compatibility = '''# Preserve backward-compatible programmatic entry points.
+replace_once(
+    "tumorquantai",
+    "import argparse\\n",
+    "import argparse\\nimport inspect\\n",
+)
+replace_once(
+    "tumorquantai",
+    '    requested_profile = resolve_profile(args.profile, args.backend)\\n',
+    '    resolver = resolve_profile\\n'
+    '    resolver_parameter_count = len(inspect.signature(resolver).parameters)\\n'
+    '    requested_profile = (\\n'
+    '        resolver(args.profile)\\n'
+    '        if resolver_parameter_count == 1\\n'
+    '        else resolver(args.profile, args.backend)\\n'
+    '    )\\n',
+)
+
+quickstart_source = read("tumorquantai")
+quickstart_start = quickstart_source.index("def cmd_quickstart(args: argparse.Namespace) -> int:\\n")
+quickstart_end = quickstart_source.index("\\ndef main(", quickstart_start)
+quickstart_section = quickstart_source[quickstart_start:quickstart_end]
+quickstart_section = quickstart_section.replace(
+    "def cmd_quickstart(args: argparse.Namespace) -> int:\\n    root =",
+    "def cmd_quickstart(args: argparse.Namespace) -> int:\\n"
+    "    backend = getattr(args, \\\"backend\\\", \\\"docker\\\")\\n"
+    "    root =",
+    1,
+)
+quickstart_section = quickstart_section.replace("args.backend", "backend")
+quickstart_source = (
+    quickstart_source[:quickstart_start]
+    + quickstart_section
+    + quickstart_source[quickstart_end:]
+)
+write("tumorquantai", quickstart_source)
+
+'''
+if marker not in text:
+    raise SystemExit("Unable to add runtime compatibility patches")
+text = text.replace(marker, compatibility + marker, 1)
+
 path.write_text(text, encoding="utf-8")
