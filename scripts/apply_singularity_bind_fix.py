@@ -179,7 +179,7 @@ new_test = '''def test_singularity_route_binds_every_required_host_path() -> Non
 
     assert "singularity_run_options = ''" in config
     assert config.count("runOptions = params.singularity_run_options") == 2
-    gpu_options = 'runOptions = "--nv ${params.singularity_run_options ?: \'\'}".trim()'
+    gpu_options = "runOptions = \"--nv ${params.singularity_run_options ?: ''}\".trim()"
     assert config.count(gpu_options) == 2
 '''
 runtime_tests = replace_or_verify(
