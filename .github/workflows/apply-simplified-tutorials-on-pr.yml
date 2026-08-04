@@ -40,7 +40,7 @@ jobs:
           if start not in workflow or end not in workflow:
               raise SystemExit('Unable to locate the embedded tutorial patch')
           embedded = workflow.split(start, 1)[1].split(end, 1)[0]
-          marker = "              '''            \"  tumorquantai inspect /data/slides --output /data/tqa-inspection\\\\n\""
+          marker = "              '''            \"  tumorquantai inspect /data/slides --output /data/tqa-inspection"
           if embedded.count(marker) != 2:
               raise SystemExit('Unable to locate both CLI example string literals')
           embedded = embedded.replace(marker, marker.replace("'''", "r'''", 1), 2)
