@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import copy
 import hashlib
 import importlib.util
@@ -95,6 +96,7 @@ PUBLIC_PARAMETER_OPTIONS: dict[str, tuple[str, ...]] = {
 LAUNCHER_PARAMETER_OPTIONS: dict[str, tuple[str, ...]] = {
     "preset": ("--preset",), "sample": ("--sample",),
     "profile": ("--profile", "--cpu", "--gpu"),
+    "backend": ("--backend", "--docker", "--singularity", "--conda"),
     "work_dir": ("--work-dir",), "cache_dir": ("--cache-dir",),
     "hf_cache": ("--hf-cache",), "histoplus_cache": ("--histoplus-cache",),
     "resume": ("--resume", "--no-resume"), "token_file": ("--token-file",),
@@ -127,6 +129,7 @@ LAUNCHER_DEFAULTS: dict[str, Any] = {
     "preset": "smoke",
     "sample": None,
     "profile": "auto",
+    "backend": "docker",
     "work_dir": None,
     "cache_dir": None,
     "hf_cache": None,
@@ -308,6 +311,8 @@ def _validate_launcher_parameter(name: str, value: Any) -> None:
         raise _parameter_error("Parameter 'preset' must be smoke, fast, or full.")
     if name == "profile" and value not in {"auto", "gpu", "cpu", "local"}:
         raise _parameter_error("Parameter 'profile' must be auto, gpu, cpu, or local.")
+    if name == "backend" and value not in {"docker", "singularity", "conda", "local"}:
+        raise _parameter_error("Parameter 'backend' must be docker, singularity, conda, or local.")
     if name == "resume" and not isinstance(value, bool):
         raise _parameter_error("Parameter 'resume' must be a boolean.")
     if name == "sample" and value is not None and not isinstance(value, str):
@@ -547,6 +552,28 @@ def add_execution_profile_options(command: argparse.ArgumentParser) -> None:
     command.set_defaults(profile="auto")
 
 
+def add_execution_backend_options(command: argparse.ArgumentParser) -> None:
+    """Add mutually exclusive software-runtime aliases."""
+    backend = command.add_mutually_exclusive_group()
+    backend.add_argument(
+        "--backend", choices=("docker", "singularity", "conda", "local"),
+        help="software backend (default: docker)",
+    )
+    backend.add_argument(
+        "--docker", dest="backend", action="store_const", const="docker",
+        help="run scientific tasks with Docker",
+    )
+    backend.add_argument(
+        "--singularity", "--apptainer", dest="backend", action="store_const",
+        const="singularity", help="run scientific tasks with Singularity or Apptainer",
+    )
+    backend.add_argument(
+        "--conda", dest="backend", action="store_const", const="conda",
+        help="let Nextflow create and reuse the versioned Conda environment",
+    )
+    command.set_defaults(backend="docker")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="./tumorquantai",
@@ -619,6 +646,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     execution = run.add_argument_group("Execution profile and resources")
     add_execution_profile_options(execution)
+    add_execution_backend_options(execution)
     execution.add_argument("--device", default=suppressed, help="worker inference device: auto, cpu, gpu, cuda, or cuda:N")
     execution.add_argument("--cpus", type=int, default=suppressed, help="CPU cores requested per slide task")
     execution.add_argument("--memory", default=suppressed, help="memory requested per slide task, for example '32 GB'")
@@ -712,28 +740,34 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--convert-only", action="store_true", help="convert an already downloaded sample 022")
     mode.add_argument("--no-inference", action="store_true", help="download, convert, and inspect; do not infer")
     add_execution_profile_options(quickstart)
+    add_execution_backend_options(quickstart)
     quickstart.add_argument("--seed", type=int, default=core.DEFAULT_SEED)
     quickstart.add_argument("--token-file", type=Path, help=argparse.SUPPRESS)
     quickstart.add_argument("--local-weight", type=Path, help="authorized local HistoPLUS weight file")
     return parser
 
 
-def resolve_profile(requested: str) -> str:
+def resolve_profile(requested: str, backend: str = "docker") -> str:
     if requested != "auto":
         return requested
+    if backend in {"conda", "local"}:
+        return "cpu"
     if shutil.which("nvidia-smi"):
         result = subprocess.run(
             ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
         )
-        if result.returncode == 0 and shutil.which("docker"):
-            daemon = subprocess.run(
-                ["docker", "info", "--format", "{{json .Runtimes}}"],
-                text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                check=False,
-            )
-            if daemon.returncode == 0 and "nvidia" in daemon.stdout.lower():
+        if result.returncode == 0:
+            if backend == "singularity":
                 return "gpu"
+            if backend == "docker" and shutil.which("docker"):
+                daemon = subprocess.run(
+                    ["docker", "info", "--format", "{{json .Runtimes}}"],
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                if daemon.returncode == 0 and "nvidia" in daemon.stdout.lower():
+                    return "gpu"
     return "cpu"
 
 
@@ -945,7 +979,20 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
         core.validate_large_data_root(output)
         core.validate_large_data_root(work)
         core.validate_large_data_root(cache_root)
-    requested_profile = resolve_profile(args.profile)
+    if args.profile == "local":
+        args.backend = "local"
+    resolver = resolve_profile
+    resolver_parameter_count = len(inspect.signature(resolver).parameters)
+    requested_profile = (
+        resolver(args.profile)
+        if resolver_parameter_count == 1
+        else resolver(args.profile, args.backend)
+    )
+    if args.backend == "conda" and requested_profile == "gpu":
+        raise core.TumorQuantAIError(
+            "The versioned Conda environment is CPU-only; use Docker or Singularity for GPU execution.",
+            core.EXIT_PREFLIGHT,
+        )
     device = compatible_device_for_profile(
         requested_profile,
         str(args.device),
@@ -954,6 +1001,7 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
     for key, requested in (
         ("preset", args.preset), ("seed", args.seed),
         ("execution_profile", requested_profile),
+        ("execution_backend", args.backend),
     ):
         if key in existing and existing[key] != requested:
             raise core.TumorQuantAIError(
@@ -1043,16 +1091,20 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
             )
     if shutil.which("nextflow") is None:
         raise core.TumorQuantAIError("Nextflow is not installed. Run ./tumorquantai doctor for the exact next action.", core.EXIT_PREFLIGHT)
-    if profile != "local":
+    if args.backend == "docker":
         if shutil.which("docker") is None:
-            raise core.TumorQuantAIError("Docker is not installed; use doctor or a prepared --profile local environment.", core.EXIT_PREFLIGHT)
-        daemon = subprocess.run(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+            raise core.TumorQuantAIError("Docker is not installed.", core.EXIT_PREFLIGHT)
+        daemon = subprocess.run(
+            ["docker", "info"], stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, check=False,
+        )
         if daemon.returncode != 0:
-            raise core.TumorQuantAIError("Docker daemon is unavailable. Run ./tumorquantai doctor for the exact next action.", core.EXIT_PREFLIGHT)
+            raise core.TumorQuantAIError("Docker daemon is unavailable.", core.EXIT_PREFLIGHT)
         if profile == "gpu":
             gpu_visible = subprocess.run(
                 ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                check=False,
             ) if shutil.which("nvidia-smi") else None
             runtimes = subprocess.run(
                 ["docker", "info", "--format", "{{json .Runtimes}}"],
@@ -1064,9 +1116,30 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
                 or runtimes.returncode != 0 or "nvidia" not in runtimes.stdout.lower()
             ):
                 raise core.TumorQuantAIError(
-                    "GPU profile requested, but NVIDIA host/container runtime visibility is not ready. Use doctor or --profile cpu.",
+                    "GPU execution requires NVIDIA visibility in Docker.",
                     core.EXIT_PREFLIGHT,
                 )
+    elif args.backend == "singularity":
+        if shutil.which("apptainer") is None and shutil.which("singularity") is None:
+            raise core.TumorQuantAIError(
+                "Install Apptainer or Singularity before using --singularity.",
+                core.EXIT_PREFLIGHT,
+            )
+        if profile == "gpu" and shutil.which("nvidia-smi") is None:
+            raise core.TumorQuantAIError(
+                "GPU execution requires an NVIDIA device visible on the host.",
+                core.EXIT_PREFLIGHT,
+            )
+    elif args.backend == "conda":
+        if shutil.which("conda") is None:
+            raise core.TumorQuantAIError(
+                "Conda is not installed. Install Miniforge before using --conda.",
+                core.EXIT_PREFLIGHT,
+            )
+    elif args.backend != "local":
+        raise core.TumorQuantAIError(
+            f"Unsupported execution backend: {args.backend}", core.EXIT_USAGE
+        )
 
     percent = float(args.percent_slide)
     container_image = str(args.container_image)
@@ -1084,7 +1157,8 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
     ).expanduser().resolve()
     command = [
         str(ROOT / "run.sh"), "--input-dir", str(input_root), "--output-dir", str(output),
-        "--work-dir", str(work), "--profile", profile, "--percent-slide", f"{percent:g}",
+        "--work-dir", str(work), "--backend", args.backend,
+        "--profile", profile, "--percent-slide", f"{percent:g}",
         "--seed", str(args.seed), "--slide-mpp", f"{source_mpp:.9g}",
         "--mpp", f"{float(args.mpp):.15g}", "--tile-px", str(args.tile_px),
         "--device", device, "--container-image", container_image,
@@ -1143,7 +1217,8 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
         "./tumorquantai", "run", str(input_root), "--output", str(output),
         "--preset", args.preset, "--source-mpp", f"{source_mpp:.9g}",
         "--percent-slide", f"{percent:g}", "--mpp", f"{float(args.mpp):.15g}",
-        "--profile", profile, "--seed", str(args.seed), "--work-dir", str(work),
+        "--backend", args.backend, "--profile", profile,
+        "--seed", str(args.seed), "--work-dir", str(work),
         "--cpus", str(args.cpus), "--memory", str(args.memory),
         "--max-parallel-slides", str(args.max_parallel_slides),
         "--num-workers", str(args.num_workers),
@@ -1176,9 +1251,10 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
         "preset": args.preset, "sampling_percent": percent, "seed": args.seed,
         "source_mpp": source_mpp, "source_mpp_provenance": "supplied" if args.source_mpp else "embedded TIFF metadata",
         "target_mpp": args.mpp, "execution_profile": profile,
+        "execution_backend": args.backend,
         "container_identity": (
-            "not used (local profile)" if profile == "local"
-            else container_image
+            container_image if args.backend in {"docker", "singularity"}
+            else ("environment.yml" if args.backend == "conda" else "not used")
         ),
         "model_revision": args.histoplus_revision, "demonstration": False,
         "selected_samples": selected_samples, "discovered_samples": sample_ids,
@@ -1196,7 +1272,8 @@ def _prepare_run(args: argparse.Namespace) -> tuple[dict[str, Any], list[str], l
     }
     for key in (
         "preset", "sampling_percent", "seed", "source_mpp", "input_signature",
-        "selected_samples", "execution_profile", "expert_args_fingerprint",
+        "selected_samples", "execution_profile", "execution_backend",
+        "expert_args_fingerprint",
     ):
         if key in existing and existing[key] != plan[key]:
             raise core.TumorQuantAIError(
@@ -1223,7 +1300,10 @@ def run_analysis(args: argparse.Namespace) -> int:
     core.write_run_manifest(output, plan)
     print("Expanded engine command (secret paths redacted):")
     print(f"  {plan['expanded_command']}")
-    print(f"Execution path: {plan['execution_profile'].upper()}")
+    print(
+        f"Execution: {plan['execution_backend'].upper()} / "
+        f"{plan['execution_profile'].upper()}"
+    )
     print(f"Sampling: {plan['sampling_percent']:g}% of detected tissue tiles; seed={plan['seed']}")
     print(f"Nextflow work directory: {plan['work_directory']}")
     completed = subprocess.run(command, cwd=output, env=environment, check=False)
@@ -1324,6 +1404,7 @@ def _write_quickstart_manifest(
     *,
     seed: int = core.DEFAULT_SEED,
     profile: str = "auto",
+    backend: str = "docker",
     inference_manifest: dict[str, Any] | None = None,
 ) -> None:
     manifest = core.load_run_manifest(root)
@@ -1352,8 +1433,8 @@ def _write_quickstart_manifest(
         "model_revision": core.MODEL_REVISION,
         "demonstration": False,
         "resume_command": shlex.join([
-            "./tumorquantai", "quickstart", "--output", str(root), "--profile", profile,
-            "--seed", str(seed),
+            "./tumorquantai", "quickstart", "--output", str(root),
+            "--backend", backend, "--profile", profile, "--seed", str(seed),
         ]),
     })
     if not preserve_completed or "container_identity" not in manifest:
@@ -1362,7 +1443,8 @@ def _write_quickstart_manifest(
         manifest["source_checksums"] = verification
     if inference_manifest:
         for key in (
-            "execution_profile", "container_identity", "model_revision",
+            "execution_profile", "execution_backend", "container_identity",
+            "model_revision",
             "expanded_command", "selected_samples", "credential_method",
         ):
             if key in inference_manifest:
@@ -1371,6 +1453,7 @@ def _write_quickstart_manifest(
 
 
 def cmd_quickstart(args: argparse.Namespace) -> int:
+    backend = getattr(args, "backend", "docker")
     root = args.output.expanduser().resolve()
     download = root / "download"
     converted = root / "converted"
@@ -1409,7 +1492,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
     readiness_failures: list[str] = []
     if inference_requested:
         readiness_codes = {"TQA-JAVA", "TQA-NEXTFLOW"}
-        if args.profile != "local":
+        if backend == "docker" and args.profile != "local":
             readiness_codes.update({"TQA-DOCKER-CLI", "TQA-DOCKER-DAEMON"})
         readiness_checks = core.doctor_checks(
                 output=root, work=work, input_path=None, online=False,
@@ -1439,7 +1522,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
         if downloaded.returncode != 0:
             raise core.TumorQuantAIError("Public Zenodo download or integrity verification failed.", core.EXIT_DATA)
     verification = core.verify_tutorial_download(download)
-    _write_quickstart_manifest(root, "download_verified", verification, seed=args.seed, profile=args.profile)
+    _write_quickstart_manifest(root, "download_verified", verification, seed=args.seed, profile=args.profile, backend=backend)
     if args.download_only:
         report, _ = core.generate_report(root)
         print("Download and checksum verification complete.")
@@ -1463,7 +1546,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
         converted, inspection, sample_sheet=converted / "samples.csv",
         source_mpp=core.TUTORIAL_SOURCE_MPP, require_l2=True,
     )
-    _write_quickstart_manifest(root, "converted_and_inspected", verification, seed=args.seed, profile=args.profile)
+    _write_quickstart_manifest(root, "converted_and_inspected", verification, seed=args.seed, profile=args.profile, backend=backend)
     if args.convert_only or args.no_inference:
         report, _ = core.generate_report(root)
         print("One-slide data preparation and model-free inspection complete.")
@@ -1475,7 +1558,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
         print(f"WARNING: {warning}", file=sys.stderr)
     access = core.model_access(args.local_weight, token)
     if not access["ready"]:
-        _write_quickstart_manifest(root, "ready_for_authorized_inference", verification, seed=args.seed, profile=args.profile)
+        _write_quickstart_manifest(root, "ready_for_authorized_inference", verification, seed=args.seed, profile=args.profile, backend=backend)
         report, _ = core.generate_report(root)
         print("Data preparation is complete. Authorized HistoPLUS access is not configured; the data are not corrupt.")
         print("Secure next step: configure ~/.config/tumorquantai/hf_token with mode 0600, then run:")
@@ -1485,7 +1568,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
     if readiness_failures:
         _write_quickstart_manifest(
             root, "ready_with_preflight_blockers", verification,
-            seed=args.seed, profile=args.profile,
+            seed=args.seed, profile=args.profile, backend=backend,
         )
         report, _ = core.generate_report(root)
         print("Data preparation is complete, but local inference prerequisites are not ready: " + ", ".join(readiness_failures))
@@ -1495,7 +1578,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
 
     run_args = argparse.Namespace(
         input=converted, output=smoke_results, preset="smoke", source_mpp=core.TUTORIAL_SOURCE_MPP,
-        sample=core.TUTORIAL_SAMPLE, profile=args.profile, seed=args.seed,
+        sample=core.TUTORIAL_SAMPLE, profile=args.profile, backend=backend, seed=args.seed,
         sample_sheet=converted / "samples.csv", pattern=[], include="*", exclude="",
         work_dir=work, dry_run=False, no_resume=False, token_file=args.token_file,
         local_weight=args.local_weight, expert_args=[],
@@ -1506,7 +1589,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
         child_manifest = core.load_run_manifest(smoke_results)
         _write_quickstart_manifest(
             root, "inference_failed", verification, seed=args.seed,
-            profile=args.profile, inference_manifest=child_manifest,
+            profile=args.profile, backend=backend, inference_manifest=child_manifest,
         )
         top_report, _ = core.generate_report(root)
         print(f"Quickstart inference failed; open first: {top_report}", file=sys.stderr)
@@ -1517,7 +1600,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
         child_manifest = core.load_run_manifest(smoke_results)
         _write_quickstart_manifest(
             root, "audit_failed", verification, seed=args.seed,
-            profile=args.profile, inference_manifest=child_manifest,
+            profile=args.profile, backend=backend, inference_manifest=child_manifest,
         )
         core.generate_report(root)
         raise
@@ -1533,7 +1616,7 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
         "one_slide_smoke_complete",
         verification,
         seed=args.seed,
-        profile=args.profile,
+        profile=args.profile, backend=backend,
         inference_manifest=result_manifest,
     )
     top_report, _ = core.generate_report(root)

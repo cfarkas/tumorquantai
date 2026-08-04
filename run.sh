@@ -7,6 +7,7 @@ INPUT_DIR=""
 OUTPUT_DIR=""
 SAMPLE_SHEET=""
 PROFILE="auto"
+BACKEND="${TUMORQUANTAI_BACKEND:-docker}"
 CONTAINER_IMAGE="${CONTAINER_IMAGE:-}"
 CANONICAL_HF_TOKEN_FILE="${HOME}/.config/tumorquantai/hf_token"
 LEGACY_HF_TOKEN_FILE="${HOME}/.config/lazyslide-histoplus/hf_token"
@@ -75,7 +76,12 @@ Core options:
   --fast                          Alias for --mode fast
   --percent-slide FLOAT           Explicit percent in (0,100]; usable without --mode
   --seed INT                      Sampling seed (default: 20260709)
-  --profile auto|gpu|cpu|local    Execution profile (default: auto)
+  --backend docker|singularity|conda|local
+                                  Software execution backend (default: docker)
+  --docker                       Alias for --backend docker
+  --singularity                  Alias for --backend singularity or Apptainer
+  --conda                        Alias for --backend conda
+  --profile auto|gpu|cpu|local    Compute profile (default: auto; local remains compatible)
   --container-image IMAGE         Docker image override
   --no-resume                     Disable Nextflow cache reuse
   --fail-fast                     Stop after a sample exhausts retries
@@ -116,7 +122,9 @@ Examples:
   ./run.sh --input-dir /data/exported --dry-run
   ./run.sh --input-dir /data/exported --full
   ./run.sh --input-dir /data/exported --fast
-  ./run.sh --input-dir /data/exported --profile cpu --percent-slide 1
+  ./run.sh --input-dir /data/exported --docker --profile cpu --percent-slide 1
+  ./run.sh --input-dir /data/exported --singularity --profile cpu --percent-slide 1
+  ./run.sh --input-dir /data/exported --conda --profile cpu --percent-slide 1
 USAGE
 }
 
@@ -202,6 +210,11 @@ while [[ $# -gt 0 ]]; do
     --slide-mpp) need_value "$@"; SLIDE_MPP="$2"; shift 2 ;;
     --tile-px) need_value "$@"; TILE_PX="$2"; shift 2 ;;
     --device) need_value "$@"; DEVICE="$2"; shift 2 ;;
+    --backend) need_value "$@"; BACKEND="$2"; shift 2 ;;
+    --docker) BACKEND="docker"; shift ;;
+    --singularity|--apptainer) BACKEND="singularity"; shift ;;
+    --conda) BACKEND="conda"; shift ;;
+    --local) BACKEND="local"; shift ;;
     --profile) need_value "$@"; PROFILE="$2"; shift 2 ;;
     --container-image) need_value "$@"; CONTAINER_IMAGE="$2"; shift 2 ;;
     --celltypes-batch-size) need_value "$@"; CELLTYPES_BATCH_SIZE="$2"; shift 2 ;;
@@ -296,15 +309,39 @@ esac
 [[ "${HISTOPLUS_REVISION}" =~ ^[0-9a-fA-F]{40}$ ]] || \
   die "--histoplus-revision must be an immutable full 40-hex commit SHA"
 
-command -v nextflow >/dev/null 2>&1 || die "Nextflow is not installed (see docs/INSTALL.md)"
-if [[ "${PROFILE}" != "local" ]]; then
-  command -v docker >/dev/null 2>&1 || die "Docker is not installed; use --profile local with a prepared environment"
-  docker info >/dev/null 2>&1 || die "Docker daemon is not accessible"
+case "${BACKEND}" in
+  docker|singularity|conda|local) ;;
+  *) die "--backend must be docker, singularity, conda, or local" ;;
+esac
+
+# Backward compatibility: --profile local selects the local backend.
+if [[ "${PROFILE}" == "local" ]]; then
+  BACKEND="local"
 fi
 
+command -v nextflow >/dev/null 2>&1 || die "Nextflow is not installed (see docs/installation.md)"
+case "${BACKEND}" in
+  docker)
+    command -v docker >/dev/null 2>&1 || die "Docker is not installed"
+    docker info >/dev/null 2>&1 || die "Docker daemon is not accessible"
+    ;;
+  singularity)
+    command -v apptainer >/dev/null 2>&1 || command -v singularity >/dev/null 2>&1 || \
+      die "Install Apptainer or Singularity before using --singularity"
+    ;;
+  conda)
+    command -v conda >/dev/null 2>&1 || die "Conda is not installed; install Miniforge before using --conda"
+    ;;
+  local) ;;
+esac
+
 if [[ "${DOCTOR_ONLY}" == "true" ]]; then
-  printf 'nextflow: %s\n' "$(nextflow -version 2>&1 | awk '/version/ { print; exit }')"
-  command -v docker >/dev/null 2>&1 && printf 'docker:   %s\n' "$(docker --version)"
+  printf 'nextflow:    %s\n' "$(nextflow -version 2>&1 | awk '/version/ { print; exit }')"
+  printf 'backend:     %s\n' "${BACKEND}"
+  command -v docker >/dev/null 2>&1 && printf 'docker:      %s\n' "$(docker --version)"
+  command -v apptainer >/dev/null 2>&1 && printf 'apptainer:   %s\n' "$(apptainer --version)"
+  command -v singularity >/dev/null 2>&1 && printf 'singularity: %s\n' "$(singularity --version)"
+  command -v conda >/dev/null 2>&1 && printf 'conda:       %s\n' "$(conda --version)"
   command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi --query-gpu=name,memory.total --format=csv,noheader || true
   printf 'doctor: OK\n'
   exit 0
@@ -378,29 +415,75 @@ unset TUMORQUANTAI_HF_TOKEN_FILE
 export -n HF_TOKEN_FILE HISTOPLUS_WEIGHT_FILE 2>/dev/null || true
 
 case "${PROFILE}" in
-  auto)
-    DOCKER_RUNTIMES="$(docker info --format '{{json .Runtimes}}' 2>/dev/null || true)"
-    if command -v nvidia-smi >/dev/null 2>&1 \
-      && nvidia-smi >/dev/null 2>&1 \
-      && [[ "${DOCKER_RUNTIMES,,}" == *nvidia* ]]; then
-      NF_PROFILE="docker_gpu"
-      DEVICE="cuda"
-    else
-      NF_PROFILE="docker_cpu"
-      DEVICE="cpu"
-    fi
-    ;;
-  gpu|docker_gpu) NF_PROFILE="docker_gpu"; DEVICE="cuda" ;;
-  cpu|docker_cpu) NF_PROFILE="docker_cpu"; DEVICE="cpu" ;;
-  local) NF_PROFILE="local" ;;
+  local) PROFILE="cpu" ;;
+  auto|cpu|gpu|docker_cpu|docker_gpu) ;;
   *) die "Unsupported profile: ${PROFILE}" ;;
 esac
 
-if [[ -z "${CONTAINER_IMAGE}" ]]; then
-  case "${NF_PROFILE}" in
-    docker_gpu) CONTAINER_IMAGE="carlosfarkas/lazyslide-histoplus@sha256:c4b02485d4549a56348cd09995ce0788a6acc8a3e1e600e986b644231a95bd25" ;;
-    *) CONTAINER_IMAGE="carlosfarkas/lazyslide-histoplus@sha256:413bed6b55bc86923321c61453c18ece678da3c125ae44dcbd5f6c3bce7115d4" ;;
+if [[ "${PROFILE}" == "auto" ]]; then
+  case "${BACKEND}" in
+    docker)
+      DOCKER_RUNTIMES="$(docker info --format '{{json .Runtimes}}' 2>/dev/null || true)"
+      if command -v nvidia-smi >/dev/null 2>&1 \
+        && nvidia-smi >/dev/null 2>&1 \
+        && [[ "${DOCKER_RUNTIMES,,}" == *nvidia* ]]; then
+        PROFILE="gpu"
+      else
+        PROFILE="cpu"
+      fi
+      ;;
+    singularity)
+      if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+        PROFILE="gpu"
+      else
+        PROFILE="cpu"
+      fi
+      ;;
+    conda|local) PROFILE="cpu" ;;
   esac
+fi
+
+case "${PROFILE}" in
+  docker_cpu) PROFILE="cpu" ;;
+  docker_gpu) PROFILE="gpu" ;;
+esac
+
+case "${BACKEND}" in
+  docker)
+    NF_PROFILE="docker_${PROFILE}"
+    ;;
+  singularity)
+    if command -v apptainer >/dev/null 2>&1; then
+      NF_PROFILE="apptainer_${PROFILE}"
+    else
+      NF_PROFILE="singularity_${PROFILE}"
+    fi
+    ;;
+  conda)
+    [[ "${PROFILE}" != "gpu" ]] || die "The versioned Conda environment is CPU-only; use Docker or Singularity for GPU execution"
+    NF_PROFILE="conda_cpu"
+    PROFILE="cpu"
+    ;;
+  local)
+    [[ "${PROFILE}" != "gpu" ]] || die "The local backend cannot configure a GPU automatically"
+    NF_PROFILE="local"
+    PROFILE="cpu"
+    ;;
+esac
+
+DEVICE="cpu"
+[[ "${PROFILE}" == "gpu" ]] && DEVICE="cuda"
+
+if [[ -z "${CONTAINER_IMAGE}" && ( "${BACKEND}" == "docker" || "${BACKEND}" == "singularity" ) ]]; then
+  if [[ "${PROFILE}" == "gpu" ]]; then
+    CONTAINER_IMAGE="carlosfarkas/lazyslide-histoplus@sha256:c4b02485d4549a56348cd09995ce0788a6acc8a3e1e600e986b644231a95bd25"
+  else
+    CONTAINER_IMAGE="carlosfarkas/lazyslide-histoplus@sha256:413bed6b55bc86923321c61453c18ece678da3c125ae44dcbd5f6c3bce7115d4"
+  fi
+fi
+
+if [[ "${BACKEND}" == "singularity"   && "${CONTAINER_IMAGE}" != *://*   && "${CONTAINER_IMAGE}" != /*   && "${CONTAINER_IMAGE}" != *.sif ]]; then
+  CONTAINER_IMAGE="docker://${CONTAINER_IMAGE}"
 fi
 
 [[ -n "${DEVICE}" ]] || DEVICE="cpu"
@@ -412,7 +495,7 @@ fi
 
 WORKER_HISTOPLUS_CACHE="${HISTOPLUS_CACHE}"
 DOCKER_RUN_OPTIONS=""
-if [[ "${NF_PROFILE}" != "local" ]]; then
+if [[ "${BACKEND}" == "docker" ]]; then
   for MOUNT_PATH in "${INPUT_DIR}" "${OUTPUT_DIR}" "${HF_CACHE}" "${HISTOPLUS_CACHE}"; do
     [[ "${MOUNT_PATH}" != *:* && ! "${MOUNT_PATH}" =~ [[:space:]] ]] || \
       die "Docker bind-mount paths cannot contain whitespace or ':' characters: ${MOUNT_PATH}"
@@ -437,6 +520,22 @@ if [[ "${NF_PROFILE}" != "local" ]]; then
   HF_TOKEN_DOCKER_OPTION=""
   [[ -n "${HF_TOKEN:-}" ]] && HF_TOKEN_DOCKER_OPTION="-e HF_TOKEN"
   DOCKER_RUN_OPTIONS="-u $(id -u):$(id -g) -e HOME=/home/lazyslide ${HF_TOKEN_DOCKER_OPTION} -e HF_HOME=/home/lazyslide/.cache/huggingface -e HUGGINGFACE_HUB_CACHE=/home/lazyslide/.cache/huggingface/hub -v ${INPUT_DIR}:${INPUT_DIR}:ro -v ${OUTPUT_DIR}:${OUTPUT_DIR} -v ${HF_CACHE}:/home/lazyslide/.cache/huggingface -v ${HISTOPLUS_CACHE}:/home/lazyslide/.cache/histoplus ${SAMPLE_SHEET_MOUNT} ${HISTOPLUS_WEIGHT_MOUNT}"
+fi
+
+if [[ "${BACKEND}" == "singularity" ]]; then
+  export NXF_SINGULARITY_CACHEDIR="${NXF_SINGULARITY_CACHEDIR:-${WORK_DIR}/singularity-cache}"
+  export NXF_APPTAINER_CACHEDIR="${NXF_APPTAINER_CACHEDIR:-${WORK_DIR}/apptainer-cache}"
+  mkdir -p "${NXF_SINGULARITY_CACHEDIR}" "${NXF_APPTAINER_CACHEDIR}"
+  export APPTAINERENV_HF_HOME="${HF_CACHE}"
+  export APPTAINERENV_HUGGINGFACE_HUB_CACHE="${HF_CACHE}/hub"
+  export APPTAINERENV_HISTOPLUS_CACHE="${HISTOPLUS_CACHE}"
+  export SINGULARITYENV_HF_HOME="${HF_CACHE}"
+  export SINGULARITYENV_HUGGINGFACE_HUB_CACHE="${HF_CACHE}/hub"
+  export SINGULARITYENV_HISTOPLUS_CACHE="${HISTOPLUS_CACHE}"
+  if [[ -n "${HF_TOKEN:-}" ]]; then
+    export APPTAINERENV_HF_TOKEN="${HF_TOKEN}"
+    export SINGULARITYENV_HF_TOKEN="${HF_TOKEN}"
+  fi
 fi
 
 NF_ARGS=(
@@ -490,6 +589,7 @@ fi
 [[ "${NEXTFLOW_RESUME}" == "true" ]] && NF_ARGS+=(-resume)
 NF_ARGS+=("${EXTRA_NF_ARGS[@]}")
 
+printf 'backend:    %s\n' "${BACKEND}"
 printf 'profile:    %s\n' "${NF_PROFILE}"
 printf 'input:      %s\n' "${INPUT_DIR}"
 printf 'output:     %s\n' "${OUTPUT_DIR}"
