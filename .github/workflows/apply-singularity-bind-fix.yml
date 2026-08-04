@@ -1,0 +1,83 @@
+name: Apply final Singularity portability fixes
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - scripts/apply_singularity_bind_fix.py
+      - .github/workflows/apply-singularity-bind-fix.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tumorquantai-singularity-bind-fix
+  cancel-in-progress: true
+
+jobs:
+  apply-test-commit:
+    if: github.head_ref == 'agent/oncotracer-style-v1-overhaul'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out overhaul branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: agent/oncotracer-style-v1-overhaul
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+
+      - name: Apply the runtime and acceptance-workflow fixes
+        run: |
+          python scripts/apply_singularity_bind_fix.py
+          chmod +x run.sh tumorquantai
+
+      - name: Install lightweight validation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-tutorial.txt
+          python -m pip install \
+            'pytest>=8,<9' 'jsonschema>=4,<5' 'pandas>=2.2,<3' \
+            'matplotlib>=3.8,<4' 'scipy>=1.15,<2' 'scikit-learn>=1.6,<2' \
+            'openpyxl>=3.1,<4'
+
+      - name: Validate runtime fixes and documentation
+        run: |
+          bash -n run.sh
+          python -m py_compile tumorquantai scripts/*.py tests/test_runtime_backends.py
+          python -m pytest -q \
+            tests/test_runtime_backends.py \
+            tests/test_install_command.py \
+            tests/test_tumorquantai_parameters.py
+          python scripts/check_docs_language.py
+          python scripts/check_oncotracer_style_docs.py
+          python scripts/check_repository_hygiene.py
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+
+          workflow = Path('.github/workflows/quickstart-runtime-routes.yml')
+          yaml.safe_load(workflow.read_text(encoding='utf-8'))
+          launcher = Path('run.sh').read_text(encoding='utf-8')
+          assert 'export APPTAINER_BINDPATH=' in launcher
+          assert 'export SINGULARITY_BINDPATH=' in launcher
+          assert '[[ -n "${EXCLUDE}" ]] && NF_ARGS+=(--exclude "${EXCLUDE}")' in launcher
+          assert 'resume_parts = [\n        "tumorquantai", "run"' in Path('tumorquantai').read_text(encoding='utf-8')
+          PY
+
+      - name: Commit and push the final runtime fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix Singularity binds and complete four-route validation"
+          git push origin HEAD:agent/oncotracer-style-v1-overhaul
