@@ -1,145 +1,52 @@
-name: Apply installable TumorQuantAI command
+name: Installable CLI
 
 on:
   pull_request:
     branches:
       - main
-    types:
-      - opened
-      - synchronize
-      - reopened
-    paths:
-      - scripts/apply_installable_cli.py
-      - .github/workflows/apply-installable-cli.yml
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: tumorquantai-installable-cli
+  group: tumorquantai-installable-cli-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-test-commit:
-    if: github.head_ref == 'agent/oncotracer-style-v1-overhaul'
+  validate-install-command:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
-      - name: Check out overhaul branch
+      - name: Check out repository
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          ref: agent/oncotracer-style-v1-overhaul
-          fetch-depth: 0
 
       - name: Set up Python 3.11
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: '3.11'
 
-      - name: Apply the installable CLI and documentation update
-        run: |
-          python scripts/apply_installable_cli.py
-          python - <<'PY'
-          from pathlib import Path
-
-          old = "TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart"
-          new = 'TQA_ROOT="$(dirname "$PWD")/tumorquantai-quickstart-one-wsi"'
-          for path in [Path("README.md"), *Path("docs").rglob("*.md"), *Path("examples").rglob("README.md")]:
-              text = path.read_text(encoding="utf-8")
-              if old in text:
-                  path.write_text(text.replace(old, new), encoding="utf-8")
-
-          runtime_figure = Path("docs/assets/tutorial/runtime_routes.svg")
-          runtime_figure.parent.mkdir(parents=True, exist_ok=True)
-          runtime_figure.write_text(
-              '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 360" role="img" aria-labelledby="title desc">
-          <title id="title">TumorQuantAI installation and execution methods</title>
-          <desc id="desc">The installed TumorQuantAI command launches the same Nextflow workflow through Docker, Singularity or Apptainer, Poetry, or Conda.</desc>
-          <rect width="1120" height="360" rx="24" fill="#f8fafc"/>
-          <text x="560" y="48" font-family="Arial,sans-serif" font-size="29" font-weight="700" text-anchor="middle" fill="#172033">One command, four execution methods</text>
-          <rect x="405" y="78" width="310" height="78" rx="18" fill="#e8eef9" stroke="#536ea4" stroke-width="3"/>
-          <text x="560" y="112" font-family="Arial,sans-serif" font-size="23" font-weight="700" text-anchor="middle" fill="#283d68">tumorquantai</text>
-          <text x="560" y="139" font-family="Arial,sans-serif" font-size="16" text-anchor="middle" fill="#43577d">same Nextflow workflow and outputs</text>
-          <g font-family="Arial,sans-serif" text-anchor="middle">
-          <rect x="35" y="235" width="230" height="88" rx="16" fill="#ddecff" stroke="#3f72b5" stroke-width="3"/><text x="150" y="273" font-size="22" font-weight="700" fill="#194d82">Docker</text><text x="150" y="300" font-size="15" fill="#2f5e8d">CPU or NVIDIA GPU</text>
-          <rect x="305" y="235" width="230" height="88" rx="16" fill="#e7f3e5" stroke="#4f8a4b" stroke-width="3"/><text x="420" y="268" font-size="20" font-weight="700" fill="#2e5e2c">Singularity</text><text x="420" y="295" font-size="15" fill="#3d713a">or Apptainer on HPC</text>
-          <rect x="575" y="235" width="230" height="88" rx="16" fill="#fff0dc" stroke="#b47a2a" stroke-width="3"/><text x="690" y="273" font-size="22" font-weight="700" fill="#70470f">Poetry</text><text x="690" y="300" font-size="15" fill="#80591f">isolated launcher</text>
-          <rect x="845" y="235" width="230" height="88" rx="16" fill="#eee4f8" stroke="#77509b" stroke-width="3"/><text x="960" y="273" font-size="22" font-weight="700" fill="#4d2b68">Conda</text><text x="960" y="300" font-size="15" fill="#67447f">versioned CPU environment</text>
-          </g>
-          <g stroke="#667085" stroke-width="3" fill="none"><path d="M560 156v42H150v37"/><path d="M560 198H420v37"/><path d="M560 198h130v37"/><path d="M560 198h400v37"/></g>
-          </svg>\n''',
-              encoding="utf-8",
-          )
-
-          cli_reference = Path("docs/reference/cli.md")
-          text = cli_reference.read_text(encoding="utf-8")
-          install_section = (
-              "\n\n## `install`\n\n"
-              "Installs the global `tumorquantai` command, creates an isolated launcher environment, "
-              "records the cloned repository location, and prepares one execution method.\n\n"
-              "Choose exactly one route:\n\n"
-              "- `--docker`: install the command and validate Docker.\n"
-              "- `--singularity` or `--apptainer`: install the command and validate Singularity/Apptainer.\n"
-              "- `--poetry`: create the Poetry-managed launcher; Docker is its default scientific backend.\n"
-              "- `--conda`: install the command and validate Miniforge/Conda.\n\n"
-              "Additional options:\n\n"
-              "- `--prefix DIR`: install under a user-selected prefix; the default is `~/.local`.\n"
-              "- `--system`: install under `/usr/local` and `/etc`, normally with `sudo`.\n"
-              "- `--no-nextflow-download`: keep an administrator-provided Nextflow installation.\n"
-              "- `--dry-run`: print the installation plan without changing files.\n"
-          )
-          if "## `install`" not in text:
-              cli_reference.write_text(text.rstrip() + install_section + "\n", encoding="utf-8")
-          PY
-          chmod +x tumorquantai examples/quickstart/verify_outputs.py tests/fixtures/stub_worker.py
-
-      - name: Install validation dependencies
+      - name: Install lightweight test dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements-tutorial.txt
-          python -m pip install 'mkdocs==1.6.1' 'mkdocs-material==9.6.21'
-          python -m pip install \
-            'pytest>=8,<9' 'jsonschema>=4,<5' 'pandas>=2.2,<3' \
-            'matplotlib>=3.8,<4' 'scipy>=1.15,<2' 'scikit-learn>=1.6,<2' \
-            'openpyxl>=3.1,<4' 'poetry>=2,<3'
+          python -m pip install 'pytest>=8,<9'
 
-      - name: Install pinned Nextflow
+      - name: Validate all installer choices
         run: |
-          curl -fsSL https://github.com/nextflow-io/nextflow/releases/download/v25.10.2/nextflow -o nextflow
-          echo '60aff30ad532030657296ca1fa72e37befda236bfd4fc7358a3cabf5e7589dd7  nextflow' | sha256sum --check
-          chmod +x nextflow
-          echo "$PWD" >> "$GITHUB_PATH"
-
-      - name: Validate the command, documentation, and workflow profiles
-        run: |
-          python -m py_compile \
-            tumorquantai tumorquantai_cli/*.py bin/*.py scripts/*.py \
-            examples/quickstart/verify_outputs.py tests/test_install_command.py
-          python -m pytest -q \
-            tests/test_install_command.py \
-            tests/test_runtime_backends.py \
-            tests/test_tumorquantai_cli.py \
-            tests/test_tumorquantai_parameters.py \
-            tests/test_tutorial_verifiers.py
-          python scripts/check_docs_language.py
-          python scripts/check_oncotracer_style_docs.py
-          python scripts/check_repository_hygiene.py
-          mkdocs build --strict
-          bash -n run.sh
-          poetry check --lock
-          for profile in local docker_cpu docker_gpu singularity_cpu singularity_gpu apptainer_cpu apptainer_gpu conda_cpu; do
-            nextflow config -profile "$profile" -flat >/dev/null
-          done
+          python -m pytest -q tests/test_install_command.py tests/test_runtime_backends.py
           ./tumorquantai install --docker --dry-run
           ./tumorquantai install --singularity --dry-run
           ./tumorquantai install --poetry --dry-run
           ./tumorquantai install --conda --dry-run
-          ./tumorquantai quickstart --dry-run
 
-      - name: Commit and push the completed update
+      - name: Perform a real user-level Docker installation
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Add installable TumorQuantAI command and simpler QuickStart"
-          git push origin HEAD:agent/oncotracer-style-v1-overhaul
+          ./tumorquantai install --docker \
+            --prefix "$RUNNER_TEMP/tumorquantai-install"
+          export PATH="$RUNNER_TEMP/tumorquantai-install/bin:$PATH"
+          tumorquantai --version
+          tumorquantai quickstart --dry-run
