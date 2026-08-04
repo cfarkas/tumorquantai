@@ -78,11 +78,13 @@ jobs:
             -ansi-log false
           test -s "$RUNNER_TEMP/runtime-discovery/workflow_metadata/slides.tsv"
 
-      - name: Remove temporary migration files
+      - name: Prepare a workflow-safe commit
         run: |
           rm -f scripts/harden_runtime_migration.py
           rm -f scripts/apply_oncotracer_runtime.py
-          rm -f .github/workflows/apply-oncotracer-runtime.yml
+          rm -f nextflow
+          git restore .github/workflows/ci.yml
+          git restore .github/workflows/apply-oncotracer-runtime.yml
 
       - name: Commit and push runtime portability
         run: |
