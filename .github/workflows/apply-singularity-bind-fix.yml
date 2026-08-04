@@ -43,61 +43,38 @@ jobs:
 
           path = Path('scripts/apply_singularity_bind_fix.py')
           text = path.read_text(encoding='utf-8')
-          old = '''for name, identifier in (
-              ("Docker", "docker_route"),
-              ("Singularity or Apptainer", "singularity_route"),
-              ("Poetry", "poetry_route"),
-              ("Conda", "conda_route"),
-          ):
-              marker = f"      - name: Install and run the {name} route\\n        run: |\\n"
-              replacement = (
-                  f"      - name: Install and run the {name} route\\n"
-                  f"        id: {identifier}\\n"
-                  "        continue-on-error: true\\n"
-                  "        run: |\\n"
-              )
-              workflow = replace_once(
-                  workflow, marker, replacement, f"{name} route outcome capture"
-              )
-          '''
-          new = '''for name, identifier in (
-              ("Docker", "docker_route"),
-              ("Singularity or Apptainer", "singularity_route"),
-              ("Poetry", "poetry_route"),
-          ):
-              marker = f"      - name: Install and run the {name} route\\n        run: |\\n"
-              replacement = (
-                  f"      - name: Install and run the {name} route\\n"
-                  f"        id: {identifier}\\n"
-                  "        continue-on-error: true\\n"
-                  "        run: |\\n"
-              )
-              workflow = replace_once(
-                  workflow, marker, replacement, f"{name} route outcome capture"
-              )
+          target = '    ("Conda", "conda_route"),\n'
+          if target not in text:
+              raise SystemExit('Unable to remove Conda from the generic route loop')
+          path.write_text(text.replace(target, '', 1), encoding='utf-8')
+          PY
 
-          conda_route = '''      - name: Install and run the Conda route
-                  env:
-                    NXF_CONDA_CACHEDIR: /mnt/tumorquantai-data/runtime-routes/conda-environments
-                  run: |
-          '''
-          conda_replacement = '''      - name: Install and run the Conda route
-                  id: conda_route
-                  continue-on-error: true
-                  env:
-                    NXF_CONDA_CACHEDIR: /mnt/tumorquantai-data/runtime-routes/conda-environments
-                  run: |
-          '''
-          workflow = replace_once(
-              workflow, conda_route, conda_replacement,
-              "Conda route outcome capture",
+          python scripts/apply_singularity_bind_fix.py
+
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/quickstart-runtime-routes.yml')
+          text = path.read_text(encoding='utf-8')
+          old = (
+              '      - name: Install and run the Conda route\n'
+              '        env:\n'
+              '          NXF_CONDA_CACHEDIR: /mnt/tumorquantai-data/runtime-routes/conda-environments\n'
+              '        run: |\n'
           )
-          '''
+          new = (
+              '      - name: Install and run the Conda route\n'
+              '        id: conda_route\n'
+              '        continue-on-error: true\n'
+              '        env:\n'
+              '          NXF_CONDA_CACHEDIR: /mnt/tumorquantai-data/runtime-routes/conda-environments\n'
+              '        run: |\n'
+          )
           if old not in text:
-              raise SystemExit('Unable to repair the Conda route patch block')
+              raise SystemExit('Unable to add the Conda route outcome capture')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
-          python scripts/apply_singularity_bind_fix.py
+
           chmod +x run.sh tumorquantai
 
       - name: Install lightweight validation dependencies
