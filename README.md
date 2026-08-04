@@ -7,17 +7,15 @@
 [![Release](https://img.shields.io/github/v/release/cfarkas/tumorquantai?sort=semver)](https://github.com/cfarkas/tumorquantai/releases/latest)
 [![Dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21466410.svg)](https://doi.org/10.5281/zenodo.21466410)
 
-TumorQuantAI is a Nextflow research workflow for H&E whole-slide images (WSIs). It validates physical scale, samples tissue reproducibly, runs HistoPLUS, and writes overlays, cell coordinates, per-slide summaries, and cohort tables.
+TumorQuantAI is a Nextflow workflow for H&E whole-slide images (WSIs). It validates physical scale, samples tissue reproducibly, runs HistoPLUS, and writes overlays, cell coordinates, per-slide summaries, and cohort tables.
 
 ```text
 H&E WSI -> validated scale -> tissue tiles -> HistoPLUS -> overlays + coordinates + cohort tables
 ```
 
-**Research use only.** TumorQuantAI is not a diagnostic device. Predictions are not diagnoses or pathologist ground truth.
-
 ## Install the `tumorquantai` command
 
-Clone the repository, enter it, and choose one installation method. The installer creates an isolated Python environment, installs the global command under `~/.local/bin`, installs pinned Nextflow when needed, and checks the selected runtime.
+Clone the repository, enter it, and choose one installation method. The installer creates the managed command under `~/.local/bin`, installs pinned Nextflow when needed, and checks the selected runtime.
 
 ```bash
 # Clone TumorQuantAI and enter the repository.
@@ -27,7 +25,7 @@ cd tumorquantai
 # Install the command and prepare the Docker route.
 ./tumorquantai install --docker
 
-# Make the user-level command available in this terminal.
+# Make the installed command available in this terminal.
 export PATH="$HOME/.local/bin:$PATH"
 
 # Confirm that the command is available.
@@ -50,7 +48,28 @@ Choose only one installation command:
 ./tumorquantai install --conda
 ```
 
-For a system-wide command, use `sudo ./tumorquantai install --docker --system` or replace `--docker` with the selected method. The installer does not silently modify the operating-system package manager; when Docker, Apptainer/Singularity, Conda, Java, or another system prerequisite is missing, it prints the exact component that must be installed.
+For a system-wide command, use `sudo ./tumorquantai install --docker --system` or replace `--docker` with the selected method. Do not create another tutorial virtual environment after this installation.
+
+## Configure HistoPLUS access from Hugging Face
+
+HistoPLUS is gated. First open the [HistoPLUS model page](https://huggingface.co/Owkin-Bioptimus/histoplus), sign in, and request access. After access is approved, create a Hugging Face token with **Read** permission and save it in the default private file:
+
+```bash
+# Create the private TumorQuantAI configuration directory.
+install -d -m 700 "$HOME/.config/tumorquantai"
+
+# Paste the Hugging Face read token without displaying it on screen.
+read -rsp "Hugging Face read token: " HF_READ_TOKEN
+printf '\n'
+printf '%s' "$HF_READ_TOKEN" > "$HOME/.config/tumorquantai/hf_token"
+unset HF_READ_TOKEN
+chmod 600 "$HOME/.config/tumorquantai/hf_token"
+
+# Check the installed runtime and the configured credential file.
+tumorquantai doctor --online
+```
+
+TumorQuantAI automatically reads `$HOME/.config/tumorquantai/hf_token`; no environment variable is required. Creating a token does not grant access by itself—the Hugging Face model-access request must also be approved. The first authorized inference confirms that the pinned model artifact can be downloaded. Never paste the token into a command, issue, log, or repository file.
 
 ## QuickStart Example 1: one public WSI
 
@@ -67,36 +86,23 @@ tumorquantai quickstart --no-inference
 python3 examples/quickstart/verify_outputs.py --preparation-only
 ```
 
-The command downloads only `TumorQuantAI_LymphomaWSI_022` from Zenodo record `21466410`, verifies its published size and checksums, converts L0 and L2, and writes `START_HERE.html`. Use `--output /another/directory` only when a different storage location is needed.
-
-After authorized HistoPLUS access is configured, run the same one-slide 1% analysis through one route:
+After HistoPLUS access is configured, run the same one-slide 1% analysis through the installed route:
 
 ```bash
-# Run through Docker on CPU.
-tumorquantai quickstart --docker --cpu
+# Run through the backend selected during installation.
+tumorquantai quickstart --cpu
 
-# Run through Singularity or Apptainer on CPU.
-tumorquantai quickstart --singularity --cpu
-
-# Run through the Poetry-installed command with Docker.
-tumorquantai quickstart --docker --cpu
-
-# Run through Conda on CPU.
-tumorquantai quickstart --conda --cpu
-```
-
-Then verify the inference outputs:
-
-```bash
 # Verify the overlay, summary, coordinates, class counts, and aggregation audit.
 python3 examples/quickstart/verify_outputs.py
 ```
 
-See the [complete one-WSI QuickStart](https://cfarkas.github.io/tumorquantai/quick_start/) for sample identity, checksums, model access, output review, and resume behavior.
+The command downloads only `TumorQuantAI_LymphomaWSI_022` from Zenodo record `21466410`, verifies its published size and checksums, converts L0 and L2, and writes `START_HERE.html`.
+
+See the [complete one-WSI QuickStart](https://cfarkas.github.io/tumorquantai/quick_start/) for sample identity, checksums, output review, and resume behavior.
 
 ## Full tutorial: 21 public lymphoma WSIs at 10%
 
-The [full tutorial](https://cfarkas.github.io/tumorquantai/full_tutorial/) downloads all 21 public lymphoma MDS files, validates every SHA-256 checksum, converts L0/L2, and processes a deterministic 10% of detected tissue tiles per slide. It uses the `fast` preset and seed `20260709`.
+The [full tutorial](https://cfarkas.github.io/tumorquantai/full_tutorial/) starts with `git clone` and `cd tumorquantai`, uses fixed relative tutorial directories, downloads all 21 public lymphoma MDS files, validates every SHA-256 checksum, converts L0/L2 with the installed `tumorquantai convert` command, and processes a deterministic 10% of detected tissue tiles per slide.
 
 ## Run your own WSIs
 
@@ -115,17 +121,15 @@ tumorquantai inspect /path/to/slides \
   --output /path/to/tumorquantai-inspection \
   --source-mpp 0.261780
 
-# Run a reproducible 10% Docker analysis after reviewing the inspection.
+# Run a reproducible 10% analysis after reviewing the inspection.
 tumorquantai run /path/to/slides \
   --output /path/to/tumorquantai-results \
-  --work-dir /path/to/tumorquantai-work \
   --preset fast \
   --source-mpp 0.261780 \
-  --docker \
   --cpu
 ```
 
-Do not copy an MPP from another slide. Use scanner or export provenance.
+Use the physical MPP recorded by the scanner or export software.
 
 ## Inspect these outputs first
 
@@ -143,6 +147,7 @@ A zero is interpretable only for a completed sample. Failed or incomplete sample
 ## Documentation
 
 - [Installation](https://cfarkas.github.io/tumorquantai/installation/)
+- [HistoPLUS access](https://cfarkas.github.io/tumorquantai/how-to/model-access/)
 - [QuickStart Example 1](https://cfarkas.github.io/tumorquantai/quick_start/)
 - [Execution methods](https://cfarkas.github.io/tumorquantai/execution_environments/)
 - [Full 21-slide tutorial](https://cfarkas.github.io/tumorquantai/full_tutorial/)

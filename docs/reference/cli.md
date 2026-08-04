@@ -16,6 +16,12 @@ tumorquantai doctor [--input PATH] [--output PATH] [--work-dir PATH]
 
 tumorquantai demo [--output DIR]
 
+tumorquantai convert INPUT --output DIR
+                       [--manifest CSV] [--levels INT ...]
+                       [--sample-id ID]... [--expected-count INT]
+                       [--source-mpp FLOAT]
+                       [--resume | --overwrite] [--dry-run]
+
 tumorquantai inspect INPUT --output DIR
                         [--source-mpp FLOAT] [--sample-sheet CSV]
                         [--pattern GLOB]... [--include GLOB] [--exclude GLOB]
@@ -79,6 +85,10 @@ minimizes sensitive paths.
 Runs bundled fixtures and a stub worker. It needs no model, GPU, Docker,
 credentials, or public-data download. Every result is labelled structural and
 non-biological.
+
+### `convert`
+
+Runs the maintained Motic MDS converter through the Python environment created by `tumorquantai install`. It verifies manifest-bound inputs, writes resumable L0/L2 TIFF files and `samples.csv`, and removes the need for a separate tutorial virtual environment.
 
 ### `inspect`
 

@@ -6,9 +6,6 @@ This tutorial downloads the complete 21-slide public lymphoma collection from Ze
 
 ![Full 21-slide lymphoma workflow](assets/tutorial/full_lymphoma_flow.svg)
 
-!!! warning "Research use only"
-    The public slides have no diagnostic annotations or pathologist ground truth. This tutorial validates software execution and reproducible sampling, not clinical performance.
-
 ## Dataset and resource scope
 
 | Item | Value |
@@ -22,64 +19,46 @@ This tutorial downloads the complete 21-slide public lymphoma collection from Ze
 | Analysis preset | `fast` |
 | Tissue sampling | Seeded 10% per slide |
 
-L0/L2 conversion can approach 142 GB. Budget at least **300 GB** for downloads, conversion, work, caches, and final results. GPU execution is recommended for the 21-slide inference stage.
+L0/L2 conversion can approach 142 GB. Open a terminal in a mounted storage directory with at least **300 GB** free before cloning the repository. All commands below then use simple paths inside `tumorquantai`.
 
-Complete [QuickStart Example 1](quick_start.md) first. Review its inspection report, overlay, summary, and aggregation audit before scaling to 21 slides.
+Complete [QuickStart Example 1](quick_start.md) first.
 
-## 1. Clone TumorQuantAI
+## 1. Clone and install once
 
 ```bash
 # Clone TumorQuantAI and enter the repository.
 git clone https://github.com/cfarkas/tumorquantai.git
 cd tumorquantai
+
+# Install the command for Docker; choose another installer only when needed.
+./tumorquantai install --docker
+export PATH="$HOME/.local/bin:$PATH"
+tumorquantai --version
 ```
 
-## 2. Install the tutorial environment
+The installer already includes the download, conversion, and inspection dependencies. Do not create another tutorial virtual environment.
+
+## 2. Create the tutorial folders
 
 ```bash
-# Create and activate the tutorial environment.
-python3 -m venv .venv
-. .venv/bin/activate
-
-# Install the download and conversion requirements.
-python -m pip install --upgrade pip
-python -m pip install -r requirements-tutorial.txt
+# Create the fixed relative folder used by the complete tutorial.
+mkdir -p tutorial-data/lymphoma-21/download
 ```
 
-## 3. Set and verify the storage root
-
-Edit only the first path:
-
-```bash
-# Set the only path that must be changed and remember the repository root.
-export TQA_ROOT=/path/to/mounted/storage/tumorquantai-lymphoma-21
-REPO_ROOT="$(pwd)"
-
-# Create and verify the selected storage directory.
-mkdir -p "$TQA_ROOT"
-findmnt -T "$TQA_ROOT"
-df -hT "$TQA_ROOT"
-test -w "$TQA_ROOT"
-```
-
-Do not place the collection, converted TIFFs, model cache, Nextflow work, or results inside the Git checkout, `/`, or an unverified home filesystem.
-
-## 4. Download the authoritative manifest
+## 3. Download the manifest
 
 ```bash
 # Download or resume the public dataset manifest.
 wget --continue \
-  --output-document "$TQA_ROOT/tumorquantai_lymphoma_mds_manifest.csv" \
+  --output-document tutorial-data/lymphoma-21/download/tumorquantai_lymphoma_mds_manifest.csv \
   "https://zenodo.org/records/21466410/files/tumorquantai_lymphoma_mds_manifest.csv?download=1"
 
-# Verify the fixed public manifest MD5.
-echo "ad9a9472e8beb302f8b9ba2b3359bacc  $TQA_ROOT/tumorquantai_lymphoma_mds_manifest.csv" \
+# Verify the published manifest MD5.
+echo "ad9a9472e8beb302f8b9ba2b3359bacc  tutorial-data/lymphoma-21/download/tumorquantai_lymphoma_mds_manifest.csv" \
   | md5sum -c -
 ```
 
-## 5. Download all 21 public MDS files
-
-The repository URL list is generated from the authoritative manifest and preserves the standard `TumorQuantAI_LymphomaWSI_NNN.mds` filenames.
+## 4. Download all 21 public MDS files
 
 ```bash
 # Download or resume all 21 public MDS files.
@@ -87,12 +66,12 @@ while IFS= read -r url; do
   filename="${url##*/}"
   filename="${filename%%\?*}"
   wget --continue \
-    --output-document "$TQA_ROOT/$filename" \
+    --output-document "tutorial-data/lymphoma-21/download/$filename" \
     "$url"
 done < examples/lymphoma/zenodo_all_21.urls.txt
 ```
 
-Use this equivalent curl loop when `wget` is unavailable:
+Use this equivalent loop when only `curl` is available:
 
 ```bash
 # Download or resume all 21 public MDS files with curl.
@@ -100,130 +79,107 @@ while IFS= read -r url; do
   filename="${url##*/}"
   filename="${filename%%\?*}"
   curl --fail --location --retry 5 --continue-at - \
-    --output "$TQA_ROOT/$filename" \
+    --output "tutorial-data/lymphoma-21/download/$filename" \
     "$url"
 done < examples/lymphoma/zenodo_all_21.urls.txt
 ```
 
-## 6. Verify all 21 downloads
+## 5. Verify all downloads
 
 ```bash
-# Validate every slide checksum without changing the parent shell directory.
+# Verify all 21 slide checksums from inside the download directory.
 (
-  cd "$TQA_ROOT"
-  sha256sum -c "$REPO_ROOT/examples/lymphoma/checksums_all_21.sha256"
+  cd tutorial-data/lymphoma-21/download
+  sha256sum -c ../../../examples/lymphoma/checksums_all_21.sha256
 )
 
-# Confirm that exactly 21 standard MDS filenames are present.
-find "$TQA_ROOT" -maxdepth 1 -type f \
-  -name 'TumorQuantAI_LymphomaWSI_*.mds' \
-  -printf '%f\n' \
-  | sort \
-  | tee "$TQA_ROOT/downloaded_slides.txt"
-test "$(wc -l < "$TQA_ROOT/downloaded_slides.txt")" -eq 21
+# Confirm that exactly 21 public MDS files are present.
+test "$(find tutorial-data/lymphoma-21/download -maxdepth 1 -type f \
+  -name 'TumorQuantAI_LymphomaWSI_*.mds' | wc -l)" -eq 21
 ```
 
-`sha256sum` must print `OK` 21 times. Stop before conversion if any file fails.
+`sha256sum` must print `OK` 21 times. Stop if any file fails.
 
-## 7. Convert L0 and L2
+## 6. Convert L0 and L2 with the installed command
 
 ```bash
-# Convert all verified MDS files to resumable L0 and L2 TIFFs.
-python bin/mds_to_tiff.py \
-  --input "$TQA_ROOT" \
-  --manifest "$TQA_ROOT/tumorquantai_lymphoma_mds_manifest.csv" \
-  --output-dir "$TQA_ROOT/slides" \
+# Convert all verified MDS files to resumable L0 and L2 TIFF files.
+tumorquantai convert tutorial-data/lymphoma-21/download \
+  --manifest tutorial-data/lymphoma-21/download/tumorquantai_lymphoma_mds_manifest.csv \
+  --output tutorial-data/lymphoma-21/slides \
   --levels 0 2 \
   --expected-count 21 \
   --source-mpp 0.261780 \
   --resume
 ```
 
-The converter validates the selected MDS files against the manifest before writing TIFFs. Repeat the same command to resume an interrupted conversion.
+Repeat the same command to resume an interrupted conversion.
 
-## 8. Inspect the exact 21-slide roster
+## 7. Inspect the 21-slide roster
 
 ```bash
-# Inspect all converted L0/L2 pairs without HistoPLUS inference.
-tumorquantai inspect "$TQA_ROOT/slides" \
-  --sample-sheet "$TQA_ROOT/slides/samples.csv" \
-  --output "$TQA_ROOT/inspection"
-
-# Confirm that the inspection manifest has 21 sample rows.
-python - <<'PY'
-import csv
-from pathlib import Path
-import os
-
-root = Path(os.environ["TQA_ROOT"])
-manifest = root / "inspection/inspection_manifest.csv"
-with manifest.open(newline="", encoding="utf-8") as handle:
-    rows = list(csv.DictReader(handle))
-assert len(rows) == 21, f"Expected 21 inspected slides, found {len(rows)}"
-print("PASS: 21 slides were inspected")
-PY
+# Inspect all converted L0/L2 pairs without inference.
+tumorquantai inspect tutorial-data/lymphoma-21/slides \
+  --sample-sheet tutorial-data/lymphoma-21/slides/samples.csv \
+  --output tutorial-data/lymphoma-21/inspection
 ```
 
-Open `$TQA_ROOT/inspection/INSPECTION.html`. Require exactly 21 unique primary L0 slides, 21 L2 companions, and source MPP `0.261780`. Stop if the roster or physical scale differs.
+Open `tutorial-data/lymphoma-21/inspection/INSPECTION.html` and confirm 21 primary L0 slides, 21 L2 companions, and source MPP `0.261780`.
 
-## 9. Check inference readiness
+## 8. Configure HistoPLUS access
+
+Follow [Configure HistoPLUS access](how-to/model-access.md), then check readiness:
 
 ```bash
-# Check Java, Nextflow, Docker, storage, and configured model access.
+# Check the installed route, model credential, input, and output location.
 tumorquantai doctor \
-  --input "$TQA_ROOT/slides" \
-  --output "$TQA_ROOT/results-10-percent" \
-  --work-dir "$TQA_ROOT/work-10-percent" \
+  --input tutorial-data/lymphoma-21/slides \
+  --output tutorial-data/lymphoma-21/results-10-percent \
   --online
 ```
 
-Follow [Configure authorized HistoPLUS access](how-to/model-access.md) when model access is not ready. Never place a token value directly in the command.
+## 9. Run all 21 slides at 10%
 
-## 10. Run all 21 slides at 10%
-
-The `fast` preset selects a deterministic 10% of detected tissue tiles from every slide. GPU execution is recommended:
+The backend selected during `tumorquantai install` is used automatically.
 
 ```bash
-# Run all 21 slides at a deterministic 10% with the GPU profile.
-tumorquantai run "$TQA_ROOT/slides" \
-  --sample-sheet "$TQA_ROOT/slides/samples.csv" \
-  --output "$TQA_ROOT/results-10-percent" \
-  --work-dir "$TQA_ROOT/work-10-percent" \
+# Run all 21 slides at a deterministic 10% with the installed backend.
+tumorquantai run tutorial-data/lymphoma-21/slides \
+  --sample-sheet tutorial-data/lymphoma-21/slides/samples.csv \
+  --output tutorial-data/lymphoma-21/results-10-percent \
   --preset fast \
   --source-mpp 0.261780 \
   --gpu
 ```
 
-Use the following CPU command only when a much longer run is acceptable:
+Use `--cpu` when no supported GPU is available. Conda is CPU-only:
 
 ```bash
-# Run the same 10% analysis with the CPU profile.
-tumorquantai run "$TQA_ROOT/slides" \
-  --sample-sheet "$TQA_ROOT/slides/samples.csv" \
-  --output "$TQA_ROOT/results-10-percent-cpu" \
-  --work-dir "$TQA_ROOT/work-10-percent-cpu" \
+# Run the same 10% analysis through Conda on CPU.
+tumorquantai run tutorial-data/lymphoma-21/slides \
+  --sample-sheet tutorial-data/lymphoma-21/slides/samples.csv \
+  --output tutorial-data/lymphoma-21/results-10-percent-conda \
   --preset fast \
   --source-mpp 0.261780 \
+  --conda \
   --cpu
 ```
 
-Use separate output and work directories when comparing CPU and GPU runs. Do not mix different presets, seeds, profiles, or source MPP values in one output root.
-
-## 11. Monitor and resume
+## 10. Monitor and resume
 
 ```bash
 # Summarize completed, failed, incomplete, and pending slides.
-tumorquantai status "$TQA_ROOT/results-10-percent"
+tumorquantai status tutorial-data/lymphoma-21/results-10-percent
 ```
 
-Press **Ctrl+C** to stop. Repeat the identical run command with the same output and work directories. Resume is enabled by default and reuses valid Nextflow tasks.
+Press **Ctrl+C** to stop. Repeat the identical run command to reuse valid Nextflow tasks.
 
-## 12. Verify the 21-slide outputs
+## 11. Verify the outputs
 
 ```bash
 # Verify the exact 21-slide 10% result set.
 python3 examples/lymphoma/verify_fast21_outputs.py \
-  --output "$TQA_ROOT/results-10-percent"
+  --output tutorial-data/lymphoma-21/results-10-percent
 ```
 
 A successful verifier ends with:
@@ -232,46 +188,24 @@ A successful verifier ends with:
 SUCCESS: 21-slide TumorQuantAI 10% tutorial outputs are complete.
 ```
 
-The verifier requires:
-
-- 21 included samples in `sample_aggregation_audit.csv`;
-- no failed, incomplete, pending, or excluded samples;
-- one nonempty overlay, summary, and class-count table per slide;
-- `sampling_percent` or equivalent summary metadata equal to 10;
-- nonempty cohort count and fraction matrices.
-
-## 13. Review the results
+## 12. Review the results
 
 ![TumorQuantAI output map](assets/tutorial/output_map.svg)
 
 Review:
 
-1. `$TQA_ROOT/results-10-percent/START_HERE.html`
+1. `tutorial-data/lymphoma-21/results-10-percent/START_HERE.html`
 2. all 21 `overlays/celltypes_overview_and_zoom.png` files
 3. all 21 `summary/summary.json` files
 4. `aggregated_celltypes/sample_aggregation_audit.csv`
 5. `aggregated_celltypes/celltype_counts_by_sample.csv`
 6. `aggregated_celltypes/celltype_fractions_by_sample.csv`
 
-Ten-percent counts describe sampled tissue tiles. They are not validated whole-slide estimates and must not be multiplied by ten.
-
-## 14. Preserve provenance
-
-Keep:
-
-- the authoritative manifest;
-- `examples/lymphoma/zenodo_all_21.urls.txt` and `checksums_all_21.sha256`;
-- converted `samples.csv`;
-- inspection manifest and report;
-- every per-slide `summary.json`;
-- the aggregation audit and cohort matrices;
-- the TumorQuantAI commit and run command;
-- the Nextflow work directory until the result is reviewed and backed up.
+Ten-percent counts describe sampled tissue tiles and must not be multiplied by ten.
 
 ## Continue
 
 - [Output files](outputs.md)
 - [Sampling and reproducibility](explanation/sampling.md)
 - [Counts versus fractions](explanation/counts-fractions.md)
-- [Failed sample versus biological zero](explanation/failed-vs-zero.md)
 - [Troubleshooting](troubleshooting/index.md)

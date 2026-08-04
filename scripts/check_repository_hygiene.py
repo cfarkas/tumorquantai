@@ -159,6 +159,10 @@ EXPECTED_HELP = {
     "install": ("--docker", "--singularity", "--poetry", "--conda", "--system"),
     "doctor": ("--online", "--json", "--output", "--work-dir"),
     "demo": ("--output",),
+    "convert": (
+        "--output", "--manifest", "--levels", "--sample-id",
+        "--expected-count", "--source-mpp", "--resume", "--overwrite", "--dry-run",
+    ),
     "inspect": ("--output", "--source-mpp", "--sample-sheet", "--pattern", "--include", "--exclude"),
     "run": (
         "--output", "--preset", "--source-mpp", "--sample", "--profile", "--seed",

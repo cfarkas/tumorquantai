@@ -832,6 +832,38 @@ def cmd_install(args: argparse.Namespace) -> int:
     return core.EXIT_OK
 
 
+
+def cmd_convert(args: argparse.Namespace) -> int:
+    """Run the maintained MDS converter through the installed Python environment."""
+    command = [
+        sys.executable,
+        str(ROOT / "bin/mds_to_tiff.py"),
+        "--input", str(args.input.expanduser()),
+        "--output-dir", str(args.output.expanduser()),
+        "--levels", *(str(level) for level in args.levels),
+        "--compression", args.compression,
+        "--compression-level", str(args.compression_level),
+    ]
+    if args.manifest is not None:
+        command.extend(["--manifest", str(args.manifest.expanduser())])
+    for sample_id in args.sample_id:
+        command.extend(["--sample-id", sample_id])
+    if args.expected_count is not None:
+        command.extend(["--expected-count", str(args.expected_count)])
+    if args.source_mpp is not None:
+        command.extend(["--source-mpp", f"{args.source_mpp:.15g}"])
+    if args.resume:
+        command.append("--resume")
+    elif args.overwrite:
+        command.append("--overwrite")
+    if args.dry_run:
+        command.append("--dry-run")
+    print("Running the installed TumorQuantAI MDS converter:")
+    print(f"  {core.shell_join(command)}")
+    completed = subprocess.run(command, check=False)
+    return int(completed.returncode)
+
+
 def _default_quickstart_output() -> Path:
     configured = os.environ.get("TUMORQUANTAI_DATA_ROOT", "").strip()
     if configured:
@@ -882,14 +914,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="tumorquantai",
         description=(
-            "Run, inspect, and understand TumorQuantAI without assembling a long "
-            "Nextflow command. Research use only; not clinically validated."
+            "Run, inspect, convert, and understand TumorQuantAI without "
+            "assembling a long Nextflow command."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
             "  tumorquantai demo\n"
             "  tumorquantai inspect /data/slides --output /data/tqa-inspection\n"
+            "  tumorquantai convert downloads --output slides --resume\n"
             "  tumorquantai quickstart --no-inference"
         ),
     )
@@ -947,6 +980,53 @@ def build_parser() -> argparse.ArgumentParser:
 
     demo = subparsers.add_parser("demo", help="run the bundled structural test")
     demo.add_argument("--output", "--outdir", type=Path, default=Path("tumorquantai-demo"), help="small demo result directory (default: tumorquantai-demo)")
+
+
+    convert = subparsers.add_parser(
+        "convert",
+        help="convert verified Motic MDS files to resumable L0/L2 TIFF files",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    convert.add_argument(
+        "input", type=Path,
+        help="MDS file, legacy raw tree, or directory containing MDS files",
+    )
+    convert.add_argument(
+        "--output", "--output-dir", dest="output", required=True, type=Path,
+        help="directory for converted TIFF files and samples.csv",
+    )
+    convert.add_argument(
+        "--manifest", type=Path,
+        help="authoritative public MDS manifest used for integrity checks",
+    )
+    convert.add_argument("--levels", nargs="+", type=int, default=[0, 2])
+    convert.add_argument(
+        "--sample-id", action="append", default=[],
+        help="convert only this public alias; repeatable",
+    )
+    convert.add_argument(
+        "--expected-count", type=int,
+        help="fail unless exactly this many slides are selected",
+    )
+    convert.add_argument(
+        "--source-mpp", type=positive_float,
+        help="source micrometres per pixel; must match the manifest when both are used",
+    )
+    convert.add_argument("--compression", default="deflate")
+    convert.add_argument("--compression-level", type=int, default=6)
+    convert_mode = convert.add_mutually_exclusive_group()
+    convert_mode.add_argument(
+        "--resume", action="store_true",
+        help="reuse only TIFFs verified by the conversion manifest",
+    )
+    convert_mode.add_argument(
+        "--overwrite", action="store_true",
+        help="replace selected converted files and manifest entries",
+    )
+    convert.add_argument(
+        "--dry-run", action="store_true",
+        help="validate selection and print the conversion plan without writing TIFF files",
+    )
 
     inspect = subparsers.add_parser("inspect", help="inspect slides without inference or model access")
     inspect.add_argument("input", type=Path, help="directory containing exported L0 slides")
@@ -1739,7 +1819,7 @@ def _check_quickstart_dependencies(args: argparse.Namespace) -> None:
     if missing:
         raise core.TumorQuantAIError(
             "Missing public-slide host dependencies: " + ", ".join(missing)
-            + ". Install the documented lightweight tutorial environment before downloading.",
+            + ". Rerun the repository installer for your selected route.",
             core.EXIT_PREFLIGHT,
         )
 
@@ -2003,6 +2083,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_demo(args)
         if args.command == "inspect":
             return cmd_inspect(args)
+        if args.command == "convert":
+            return cmd_convert(args)
         if args.command == "run":
             resolve_run_parameters(args, explicit_keys)
             return run_analysis(args)

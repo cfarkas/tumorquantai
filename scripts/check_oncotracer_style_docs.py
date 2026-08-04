@@ -49,7 +49,11 @@ FORBIDDEN = (
     "/home/student/",
     "screen -S",
     "screen -r",
-    "TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart",
+    "TQA_ROOT",
+    "REPO_ROOT",
+    "python3 -m venv",
+    "python -m venv",
+    "requirements-tutorial.txt",
 )
 
 FIGURES = (
@@ -153,6 +157,7 @@ def check_full_tutorial() -> None:
         "--preset fast",
         "results-10-percent",
         "verify_fast21_outputs.py",
+        "tumorquantai convert",
         "assets/tutorial/full_lymphoma_flow.svg",
     )
     for item in required:
@@ -162,6 +167,19 @@ def check_full_tutorial() -> None:
         fail("The maintained 21-slide tutorial must use 10%, not the full preset")
     if "100%" in text and "not" not in text:
         fail("The maintained 21-slide tutorial contains an unexplained 100% reference")
+
+
+def check_readme_model_access() -> None:
+    text = read("README.md")
+    required = (
+        "https://huggingface.co/Owkin-Bioptimus/histoplus",
+        "$HOME/.config/tumorquantai/hf_token",
+        "chmod 600",
+        "tumorquantai doctor --online",
+    )
+    for item in required:
+        if item not in text:
+            fail(f"README model-access instructions are missing: {item}")
 
 
 def check_figures() -> None:
@@ -195,6 +213,7 @@ def main() -> int:
     check_primary_docs()
     check_quickstart()
     check_full_tutorial()
+    check_readme_model_access()
     check_figures()
     check_example_files()
     print("PASS: TumorQuantAI documentation follows the reproducible OncoTracer-style tutorial structure")
