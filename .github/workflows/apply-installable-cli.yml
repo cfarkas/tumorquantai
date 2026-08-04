@@ -73,26 +73,21 @@ jobs:
 
           cli_reference = Path("docs/reference/cli.md")
           text = cli_reference.read_text(encoding="utf-8")
-          install_section = '''
-
-## `install`
-
-Installs the global `tumorquantai` command, creates an isolated launcher environment, records the cloned repository location, and prepares one execution method.
-
-Choose exactly one route:
-
-- `--docker`: install the command and validate Docker.
-- `--singularity` or `--apptainer`: install the command and validate Singularity/Apptainer.
-- `--poetry`: create the Poetry-managed launcher; Docker is its default scientific backend.
-- `--conda`: install the command and validate Miniforge/Conda.
-
-Additional options:
-
-- `--prefix DIR`: install under a user-selected prefix; the default is `~/.local`.
-- `--system`: install under `/usr/local` and `/etc`, normally with `sudo`.
-- `--no-nextflow-download`: keep an administrator-provided Nextflow installation.
-- `--dry-run`: print the installation plan without changing files.
-'''
+          install_section = (
+              "\n\n## `install`\n\n"
+              "Installs the global `tumorquantai` command, creates an isolated launcher environment, "
+              "records the cloned repository location, and prepares one execution method.\n\n"
+              "Choose exactly one route:\n\n"
+              "- `--docker`: install the command and validate Docker.\n"
+              "- `--singularity` or `--apptainer`: install the command and validate Singularity/Apptainer.\n"
+              "- `--poetry`: create the Poetry-managed launcher; Docker is its default scientific backend.\n"
+              "- `--conda`: install the command and validate Miniforge/Conda.\n\n"
+              "Additional options:\n\n"
+              "- `--prefix DIR`: install under a user-selected prefix; the default is `~/.local`.\n"
+              "- `--system`: install under `/usr/local` and `/etc`, normally with `sudo`.\n"
+              "- `--no-nextflow-download`: keep an administrator-provided Nextflow installation.\n"
+              "- `--dry-run`: print the installation plan without changing files.\n"
+          )
           if "## `install`" not in text:
               cli_reference.write_text(text.rstrip() + install_section + "\n", encoding="utf-8")
           PY
