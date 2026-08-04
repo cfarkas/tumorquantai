@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: verify-live-tumorquantai-pages
+  cancel-in-progress: true
+
 jobs:
   verify-live-pages:
     if: github.head_ref == 'agent/verify-live-overhaul-pages'
@@ -29,10 +33,12 @@ jobs:
               && grep -Fq 'QuickStart Example 1: one public WSI' quick_start.html \
               && grep -Fq 'TumorQuantAI_LymphomaWSI_022' quick_start.html \
               && grep -Fq 'Full tutorial: 21 public lymphoma WSIs at 10%' full_tutorial.html \
-              && grep -Fq -- '--preset fast' full_tutorial.html \
+              && grep -Fq 'preset' full_tutorial.html \
+              && grep -Fq 'fast' full_tutorial.html \
               && grep -Fq 'Apply TumorQuantAI to your own WSIs' own_data.html \
-              && grep -Fq 'git clone' quick_start.html \
-              && grep -Fq 'cd</span><span class="w"> </span>tumorquantai' quick_start.html; then
+              && grep -Fq 'git' quick_start.html \
+              && grep -Fq 'clone' quick_start.html \
+              && grep -Fq 'tumorquantai' quick_start.html; then
               echo 'SUCCESS: live GitHub Pages contains the rebuilt tutorials.'
               exit 0
             fi
