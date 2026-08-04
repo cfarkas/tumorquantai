@@ -1,0 +1,1240 @@
+name: Apply simplified tutorials and HistoPLUS access
+
+on:
+  push:
+    branches:
+      - agent/simplify-tutorials-and-histoplus-access
+    paths:
+      - .github/workflows/apply-simplified-tutorials.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out documentation branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/simplify-tutorials-and-histoplus-access
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Simplify tutorials and add the installed conversion command
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path.cwd()
+
+          def read(path: str) -> str:
+              return (root / path).read_text(encoding="utf-8")
+
+          def write(path: str, text: str) -> None:
+              (root / path).write_text(text.rstrip() + "\n", encoding="utf-8")
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if old not in text:
+                  raise SystemExit(f"Unable to patch {label}")
+              return text.replace(old, new, 1)
+
+          cli = read("tumorquantai")
+          cli = replace_once(
+              cli,
+              '''            "Run, inspect, and understand TumorQuantAI without assembling a long "
+            "Nextflow command. Research use only; not clinically validated."
+''',
+              '''            "Run, inspect, convert, and understand TumorQuantAI without "
+            "assembling a long Nextflow command."
+''',
+              "CLI description",
+          )
+          cli = replace_once(
+              cli,
+              '''            "  tumorquantai inspect /data/slides --output /data/tqa-inspection\n"
+            "  tumorquantai quickstart --no-inference"
+''',
+              '''            "  tumorquantai inspect /data/slides --output /data/tqa-inspection\n"
+            "  tumorquantai convert downloads --output slides --resume\n"
+            "  tumorquantai quickstart --no-inference"
+''',
+              "CLI examples",
+          )
+
+          convert_function = r'''
+
+def cmd_convert(args: argparse.Namespace) -> int:
+    """Run the maintained MDS converter through the installed Python environment."""
+    command = [
+        sys.executable,
+        str(ROOT / "bin/mds_to_tiff.py"),
+        "--input", str(args.input.expanduser()),
+        "--output-dir", str(args.output.expanduser()),
+        "--levels", *(str(level) for level in args.levels),
+        "--compression", args.compression,
+        "--compression-level", str(args.compression_level),
+    ]
+    if args.manifest is not None:
+        command.extend(["--manifest", str(args.manifest.expanduser())])
+    for sample_id in args.sample_id:
+        command.extend(["--sample-id", sample_id])
+    if args.expected_count is not None:
+        command.extend(["--expected-count", str(args.expected_count)])
+    if args.source_mpp is not None:
+        command.extend(["--source-mpp", f"{args.source_mpp:.15g}"])
+    if args.resume:
+        command.append("--resume")
+    elif args.overwrite:
+        command.append("--overwrite")
+    if args.dry_run:
+        command.append("--dry-run")
+    print("Running the installed TumorQuantAI MDS converter:")
+    print(f"  {core.shell_join(command)}")
+    completed = subprocess.run(command, check=False)
+    return int(completed.returncode)
+'''
+          cli = replace_once(
+              cli,
+              "\ndef _default_quickstart_output() -> Path:\n",
+              convert_function + "\n\ndef _default_quickstart_output() -> Path:\n",
+              "convert command function",
+          )
+
+          convert_parser = r'''
+    convert = subparsers.add_parser(
+        "convert",
+        help="convert verified Motic MDS files to resumable L0/L2 TIFF files",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    convert.add_argument(
+        "input", type=Path,
+        help="MDS file, legacy raw tree, or directory containing MDS files",
+    )
+    convert.add_argument(
+        "--output", "--output-dir", dest="output", required=True, type=Path,
+        help="directory for converted TIFF files and samples.csv",
+    )
+    convert.add_argument(
+        "--manifest", type=Path,
+        help="authoritative public MDS manifest used for integrity checks",
+    )
+    convert.add_argument("--levels", nargs="+", type=int, default=[0, 2])
+    convert.add_argument(
+        "--sample-id", action="append", default=[],
+        help="convert only this public alias; repeatable",
+    )
+    convert.add_argument(
+        "--expected-count", type=int,
+        help="fail unless exactly this many slides are selected",
+    )
+    convert.add_argument(
+        "--source-mpp", type=positive_float,
+        help="source micrometres per pixel; must match the manifest when both are used",
+    )
+    convert.add_argument("--compression", default="deflate")
+    convert.add_argument("--compression-level", type=int, default=6)
+    convert_mode = convert.add_mutually_exclusive_group()
+    convert_mode.add_argument(
+        "--resume", action="store_true",
+        help="reuse only TIFFs verified by the conversion manifest",
+    )
+    convert_mode.add_argument(
+        "--overwrite", action="store_true",
+        help="replace selected converted files and manifest entries",
+    )
+    convert.add_argument(
+        "--dry-run", action="store_true",
+        help="validate selection and print the conversion plan without writing TIFF files",
+    )
+
+'''
+          cli = replace_once(
+              cli,
+              '    inspect = subparsers.add_parser("inspect", help="inspect slides without inference or model access")\n',
+              convert_parser + '    inspect = subparsers.add_parser("inspect", help="inspect slides without inference or model access")\n',
+              "convert parser",
+          )
+          cli = replace_once(
+              cli,
+              '''        if args.command == "inspect":
+            return cmd_inspect(args)
+        if args.command == "run":
+''',
+              '''        if args.command == "inspect":
+            return cmd_inspect(args)
+        if args.command == "convert":
+            return cmd_convert(args)
+        if args.command == "run":
+''',
+              "convert dispatch",
+          )
+          cli = replace_once(
+              cli,
+              '''            "Missing public-slide host dependencies: " + ", ".join(missing)
+            + ". Install the documented lightweight tutorial environment before downloading.",
+''',
+              '''            "Missing public-slide host dependencies: " + ", ".join(missing)
+            + ". Rerun the repository installer for your selected route.",
+''',
+              "installed dependency guidance",
+          )
+          write("tumorquantai", cli)
+
+          tests = read("tests/test_install_command.py")
+          tests = replace_once(
+              tests,
+              "import os\nimport runpy\nfrom pathlib import Path\n",
+              "import os\nimport runpy\nimport sys\nfrom pathlib import Path\nfrom types import SimpleNamespace\n",
+              "test imports",
+          )
+          if "test_convert_parser_is_copy_paste_ready" not in tests:
+              tests += r'''
+
+
+def test_convert_parser_is_copy_paste_ready(tmp_path: Path) -> None:
+    namespace = runpy.run_path(str(CLI), run_name="tumorquantai_convert_parser")
+    args = namespace["build_parser"]().parse_args([
+        "convert", str(tmp_path / "download"),
+        "--manifest", str(tmp_path / "manifest.csv"),
+        "--output", str(tmp_path / "slides"),
+        "--levels", "0", "2",
+        "--expected-count", "21",
+        "--source-mpp", "0.261780",
+        "--resume",
+    ])
+    assert args.command == "convert"
+    assert args.levels == [0, 2]
+    assert args.expected_count == 21
+    assert args.resume is True
+
+
+def test_convert_uses_the_installed_python(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    namespace = runpy.run_path(str(CLI), run_name="tumorquantai_convert_command")
+    captured: dict[str, object] = {}
+
+    def fake_run(command: list[str], check: bool = False) -> SimpleNamespace:
+        captured["command"] = command
+        captured["check"] = check
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(namespace["subprocess"], "run", fake_run)
+    args = namespace["build_parser"]().parse_args([
+        "convert", str(tmp_path / "download"),
+        "--output", str(tmp_path / "slides"),
+        "--source-mpp", "0.261780",
+        "--dry-run",
+    ])
+    assert namespace["cmd_convert"](args) == 0
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert command[0] == sys.executable
+    assert command[1].endswith("bin/mds_to_tiff.py")
+    assert "--dry-run" in command
+'''
+          write("tests/test_install_command.py", tests)
+
+          hygiene = read("scripts/check_repository_hygiene.py")
+          hygiene = replace_once(
+              hygiene,
+              '''    "demo": ("--output",),
+    "inspect": ("--output", "--source-mpp", "--sample-sheet", "--pattern", "--include", "--exclude"),
+''',
+              '''    "demo": ("--output",),
+    "convert": (
+        "--output", "--manifest", "--levels", "--sample-id",
+        "--expected-count", "--source-mpp", "--resume", "--overwrite", "--dry-run",
+    ),
+    "inspect": ("--output", "--source-mpp", "--sample-sheet", "--pattern", "--include", "--exclude"),
+''',
+              "repository CLI expectations",
+          )
+          write("scripts/check_repository_hygiene.py", hygiene)
+
+          docs_language = read("scripts/check_docs_language.py")
+          docs_language = replace_once(
+              docs_language,
+              '''    "HF_TOKEN=hf_",
+    "TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart",
+)
+''',
+              '''    "HF_TOKEN=hf_",
+    "TQA_ROOT",
+    "REPO_ROOT",
+    "python3 -m venv",
+    "python -m venv",
+    "requirements-tutorial.txt",
+)
+''',
+              "forbidden tutorial complexity",
+          )
+          docs_language = replace_once(
+              docs_language,
+              '''SHELL_READ_LOOP = re.compile(
+    r"^while\\s+IFS=\\s+read\\s+-r\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*;\\s*do$"
+)
+''',
+              '''SHELL_READ_LOOP = re.compile(
+    r"^while\\s+IFS=\\s+read\\s+-r\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*;\\s*do$"
+)
+SHELL_READ_ASSIGN = re.compile(
+    r"^read\\b.*\\s([A-Za-z_][A-Za-z0-9_]*)$"
+)
+''',
+              "interactive read assignment",
+          )
+          docs_language = replace_once(
+              docs_language,
+              '''    # Variables are deliberately introduced in an earlier numbered tutorial step.
+    "TQA_ROOT",
+    "REPO_ROOT",
+    "TQA_INPUT",
+''',
+              '''    # Variables are deliberately introduced in an earlier numbered tutorial step.
+    "TQA_INPUT",
+''',
+              "obsolete tutorial variables",
+          )
+          docs_language = replace_once(
+              docs_language,
+              '''        read_loop = SHELL_READ_LOOP.match(line)
+        newly_defined = {
+            match.group(1)
+            for match in (assignment, loop, read_loop)
+            if match
+        }
+''',
+              '''        read_loop = SHELL_READ_LOOP.match(line)
+        read_assignment = SHELL_READ_ASSIGN.match(line)
+        newly_defined = {
+            match.group(1)
+            for match in (assignment, loop, read_loop, read_assignment)
+            if match
+        }
+''',
+              "read variable recognition",
+          )
+          write("scripts/check_docs_language.py", docs_language)
+
+          style = read("scripts/check_oncotracer_style_docs.py")
+          style = replace_once(
+              style,
+              '''    "screen -r",
+    "TQA_ROOT=/path/to/mounted/storage/tumorquantai-quickstart",
+)
+''',
+              '''    "screen -r",
+    "TQA_ROOT",
+    "REPO_ROOT",
+    "python3 -m venv",
+    "python -m venv",
+    "requirements-tutorial.txt",
+)
+''',
+              "style forbidden tutorial complexity",
+          )
+          style = replace_once(
+              style,
+              '''        "verify_fast21_outputs.py",
+        "assets/tutorial/full_lymphoma_flow.svg",
+''',
+              '''        "verify_fast21_outputs.py",
+        "tumorquantai convert",
+        "assets/tutorial/full_lymphoma_flow.svg",
+''',
+              "full tutorial converter requirement",
+          )
+          style = replace_once(
+              style,
+              '''def check_figures() -> None:
+''',
+              '''def check_readme_model_access() -> None:
+    text = read("README.md")
+    required = (
+        "https://huggingface.co/Owkin-Bioptimus/histoplus",
+        "$HOME/.config/tumorquantai/hf_token",
+        "chmod 600",
+        "tumorquantai doctor --online",
+    )
+    for item in required:
+        if item not in text:
+            fail(f"README model-access instructions are missing: {item}")
+
+
+def check_figures() -> None:
+''',
+              "README model access check",
+          )
+          style = replace_once(
+              style,
+              '''    check_full_tutorial()
+    check_figures()
+''',
+              '''    check_full_tutorial()
+    check_readme_model_access()
+    check_figures()
+''',
+              "README model access invocation",
+          )
+          write("scripts/check_oncotracer_style_docs.py", style)
+
+          write("README.md", r'''# TumorQuantAI
+
+![TumorQuantAI: whole-slide images to reviewable cell-type measurements](docs/assets/tumorquantai-hero.svg)
+
+[![CI](https://github.com/cfarkas/tumorquantai/actions/workflows/ci.yml/badge.svg)](https://github.com/cfarkas/tumorquantai/actions/workflows/ci.yml)
+[![Documentation](https://github.com/cfarkas/tumorquantai/actions/workflows/docs.yml/badge.svg)](https://cfarkas.github.io/tumorquantai/)
+[![Release](https://img.shields.io/github/v/release/cfarkas/tumorquantai?sort=semver)](https://github.com/cfarkas/tumorquantai/releases/latest)
+[![Dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21466410.svg)](https://doi.org/10.5281/zenodo.21466410)
+
+TumorQuantAI is a Nextflow workflow for H&E whole-slide images (WSIs). It validates physical scale, samples tissue reproducibly, runs HistoPLUS, and writes overlays, cell coordinates, per-slide summaries, and cohort tables.
+
+```text
+H&E WSI -> validated scale -> tissue tiles -> HistoPLUS -> overlays + coordinates + cohort tables
+```
+
+## Install the `tumorquantai` command
+
+Clone the repository, enter it, and choose one installation method. The installer creates the managed command under `~/.local/bin`, installs pinned Nextflow when needed, and checks the selected runtime.
+
+```bash
+# Clone TumorQuantAI and enter the repository.
+git clone https://github.com/cfarkas/tumorquantai.git
+cd tumorquantai
+
+# Install the command and prepare the Docker route.
+./tumorquantai install --docker
+
+# Make the installed command available in this terminal.
+export PATH="$HOME/.local/bin:$PATH"
+
+# Confirm that the command is available.
+tumorquantai --version
+```
+
+Choose only one installation command:
+
+```bash
+# Installation and execution through Docker.
+./tumorquantai install --docker
+
+# Installation and execution through Singularity or Apptainer.
+./tumorquantai install --singularity
+
+# Installation through Poetry; Docker is the default scientific backend.
+./tumorquantai install --poetry
+
+# Installation and execution through Conda.
+./tumorquantai install --conda
+```
+
+For a system-wide command, use `sudo ./tumorquantai install --docker --system` or replace `--docker` with the selected method. Do not create another tutorial virtual environment after this installation.
+
+## Configure HistoPLUS access from Hugging Face
+
+HistoPLUS is gated. First open the [HistoPLUS model page](https://huggingface.co/Owkin-Bioptimus/histoplus), sign in, and request access. After access is approved, create a Hugging Face token with **Read** permission and save it in the default private file:
+
+```bash
+# Create the private TumorQuantAI configuration directory.
+install -d -m 700 "$HOME/.config/tumorquantai"
+
+# Paste the Hugging Face read token without displaying it on screen.
+read -rsp "Hugging Face read token: " HF_READ_TOKEN
+printf '\n'
+printf '%s' "$HF_READ_TOKEN" > "$HOME/.config/tumorquantai/hf_token"
+unset HF_READ_TOKEN
+chmod 600 "$HOME/.config/tumorquantai/hf_token"
+
+# Check the installed runtime and the configured credential file.
+tumorquantai doctor --online
+```
+
+TumorQuantAI automatically reads `$HOME/.config/tumorquantai/hf_token`; no environment variable is required. Creating a token does not grant access by itself—the Hugging Face model-access request must also be approved. The first authorized inference confirms that the pinned model artifact can be downloaded. Never paste the token into a command, issue, log, or repository file.
+
+## QuickStart Example 1: one public WSI
+
+No output path needs to be edited. The default directory is created beside the repository as `tumorquantai-quickstart-one-wsi`.
+
+```bash
+# Preview the fixed one-slide plan without downloading anything.
+tumorquantai quickstart --dry-run
+
+# Download, verify, convert, and inspect sample 022 without HistoPLUS inference.
+tumorquantai quickstart --no-inference
+
+# Verify the public download, L0/L2 conversion, and model-free inspection.
+python3 examples/quickstart/verify_outputs.py --preparation-only
+```
+
+After HistoPLUS access is configured, run the same one-slide 1% analysis through the installed route:
+
+```bash
+# Run through the backend selected during installation.
+tumorquantai quickstart --cpu
+
+# Verify the overlay, summary, coordinates, class counts, and aggregation audit.
+python3 examples/quickstart/verify_outputs.py
+```
+
+The command downloads only `TumorQuantAI_LymphomaWSI_022` from Zenodo record `21466410`, verifies its published size and checksums, converts L0 and L2, and writes `START_HERE.html`.
+
+See the [complete one-WSI QuickStart](https://cfarkas.github.io/tumorquantai/quick_start/) for sample identity, checksums, output review, and resume behavior.
+
+## Full tutorial: 21 public lymphoma WSIs at 10%
+
+The [full tutorial](https://cfarkas.github.io/tumorquantai/full_tutorial/) starts with `git clone` and `cd tumorquantai`, uses fixed relative tutorial directories, downloads all 21 public lymphoma MDS files, validates every SHA-256 checksum, converts L0/L2 with the installed `tumorquantai convert` command, and processes a deterministic 10% of detected tissue tiles per slide.
+
+## Run your own WSIs
+
+Use one L0 TIFF and, for sampled analyses, one L2 companion per sample:
+
+```text
+slides/
+└── case_001/
+    ├── 1_L0_rgb.tif
+    └── 1_L2_rgb.tif
+```
+
+```bash
+# Inspect your own slides without running HistoPLUS.
+tumorquantai inspect /path/to/slides \
+  --output /path/to/tumorquantai-inspection \
+  --source-mpp 0.261780
+
+# Run a reproducible 10% analysis after reviewing the inspection.
+tumorquantai run /path/to/slides \
+  --output /path/to/tumorquantai-results \
+  --preset fast \
+  --source-mpp 0.261780 \
+  --cpu
+```
+
+Use the physical MPP recorded by the scanner or export software.
+
+## Inspect these outputs first
+
+| Path | Purpose |
+| --- | --- |
+| `START_HERE.html` | Run status and links to outputs that exist |
+| `<sample>/overlays/celltypes_overview_and_zoom.png` | Visual alignment and cell-type overlay QC |
+| `<sample>/summary/summary.json` | Completion, scale, sampling, seed, model, and provenance |
+| `<sample>/cell_types/class_counts.csv` | Detected-cell counts in processed tissue tiles |
+| `aggregated_celltypes/sample_aggregation_audit.csv` | Included, failed, incomplete, and excluded samples |
+| `aggregated_celltypes/celltype_fractions_by_sample.csv` | Within-sample cell-type fractions |
+
+A zero is interpretable only for a completed sample. Failed or incomplete samples do not become all-zero columns.
+
+## Documentation
+
+- [Installation](https://cfarkas.github.io/tumorquantai/installation/)
+- [HistoPLUS access](https://cfarkas.github.io/tumorquantai/how-to/model-access/)
+- [QuickStart Example 1](https://cfarkas.github.io/tumorquantai/quick_start/)
+- [Execution methods](https://cfarkas.github.io/tumorquantai/execution_environments/)
+- [Full 21-slide tutorial](https://cfarkas.github.io/tumorquantai/full_tutorial/)
+- [Apply to your own WSIs](https://cfarkas.github.io/tumorquantai/own_data/)
+- [Outputs](https://cfarkas.github.io/tumorquantai/outputs/)
+- [Troubleshooting](https://cfarkas.github.io/tumorquantai/troubleshooting/)
+''')
+
+          write("docs/index.md", r'''# TumorQuantAI
+
+TumorQuantAI converts H&E whole-slide images into reproducible HistoPLUS cell-type outputs with explicit scale, sampling, provenance, and failure auditing.
+
+![TumorQuantAI workflow](assets/tumorquantai-hero.svg)
+
+## Start here
+
+```bash
+# Clone TumorQuantAI and enter the repository.
+git clone https://github.com/cfarkas/tumorquantai.git
+cd tumorquantai
+
+# Install the global command and Docker route.
+./tumorquantai install --docker
+export PATH="$HOME/.local/bin:$PATH"
+
+# Prepare the fixed public WSI without model inference.
+tumorquantai quickstart --no-inference
+```
+
+Choose `--singularity`, `--poetry`, or `--conda` instead of `--docker` during installation when that is your intended route. The installer includes the download, conversion, and inspection dependencies, so tutorials do not create another Python environment.
+
+## Guided workflows
+
+- [Install TumorQuantAI](installation.md)
+- [Configure HistoPLUS access](how-to/model-access.md)
+- [QuickStart Example 1: one public WSI](quick_start.md)
+- [Full tutorial: 21 lymphoma WSIs at 10%](full_tutorial.md)
+- [Apply TumorQuantAI to your own WSIs](own_data.md)
+- [Execution methods](execution_environments.md)
+- [Understand the outputs](outputs.md)
+
+Public WSI download, checksum validation, conversion, and inspection require no HistoPLUS credential. Inference requires approved access to the gated HistoPLUS model.
+''')
+
+          write("docs/how-to/model-access.md", r'''# Configure HistoPLUS access
+
+HistoPLUS is hosted as a gated model on Hugging Face. TumorQuantAI can prepare and inspect public slides without it, but inference requires approved access.
+
+## 1. Request access
+
+Open the [HistoPLUS model page](https://huggingface.co/Owkin-Bioptimus/histoplus), sign in, and request access. Creating a token does not approve the model request; both steps are required.
+
+## 2. Create a read token
+
+After the model request is approved, create a Hugging Face access token with **Read** permission.
+
+## 3. Save the token privately
+
+```bash
+# Create the private TumorQuantAI configuration directory.
+install -d -m 700 "$HOME/.config/tumorquantai"
+
+# Paste the Hugging Face read token without displaying it.
+read -rsp "Hugging Face read token: " HF_READ_TOKEN
+printf '\n'
+printf '%s' "$HF_READ_TOKEN" > "$HOME/.config/tumorquantai/hf_token"
+unset HF_READ_TOKEN
+chmod 600 "$HOME/.config/tumorquantai/hf_token"
+```
+
+TumorQuantAI automatically reads `$HOME/.config/tumorquantai/hf_token`. Do not put the token value after `--token-file`, in an environment file, in a Git command, or in an issue.
+
+## 4. Check readiness
+
+```bash
+# Check the installed runtime, public metadata, and local credential file.
+tumorquantai doctor --online
+```
+
+Doctor confirms that the token file exists and is private; the first inference confirms that the approved account can download the pinned HistoPLUS artifact.
+
+## Authorized local weight
+
+An organization-provided authorized weight can be selected instead of a token:
+
+```bash
+# Run with an authorized local HistoPLUS weight.
+tumorquantai run /path/to/slides \
+  --output /path/to/results \
+  --local-weight /approved/model-store/histoplus_cellvit_segmentor_20x.pt \
+  --preset smoke \
+  --source-mpp 0.261780 \
+  --cpu
+```
+
+The weight is hashed for provenance and read from its original location. Do not copy it into the repository or result directory.
+
+## Replace a compromised token
+
+Revoke it in Hugging Face, repeat the private-file commands with a new read token, and rerun `tumorquantai doctor --online`.
+
+**Next:** run the [public one-slide QuickStart](../quick_start.md).
+''')
+
+          write("docs/full_tutorial.md", r'''<a id="full-tutorial"></a>
+
+# Full tutorial: 21 public lymphoma WSIs at 10%
+
+This tutorial downloads the complete 21-slide public lymphoma collection from Zenodo, validates every MDS file, converts L0 and L2, inspects the exact roster, runs HistoPLUS on a deterministic **10%** of detected tissue tiles from each slide, and verifies the per-slide and cohort outputs.
+
+![Full 21-slide lymphoma workflow](assets/tutorial/full_lymphoma_flow.svg)
+
+## Dataset and resource scope
+
+| Item | Value |
+| --- | --- |
+| Zenodo record | `21466410` |
+| Dataset DOI | `10.5281/zenodo.21466410` |
+| Public MDS files | 21 |
+| Compressed download | `17370771968` bytes, about 16.2 GiB |
+| Source MPP | `0.261780` µm/pixel |
+| Converted levels | L0 and L2 |
+| Analysis preset | `fast` |
+| Tissue sampling | Seeded 10% per slide |
+
+L0/L2 conversion can approach 142 GB. Open a terminal in a mounted storage directory with at least **300 GB** free before cloning the repository. All commands below then use simple paths inside `tumorquantai`.
+
+Complete [QuickStart Example 1](quick_start.md) first.
+
+## 1. Clone and install once
+
+```bash
+# Clone TumorQuantAI and enter the repository.
+git clone https://github.com/cfarkas/tumorquantai.git
+cd tumorquantai
+
+# Install the command for Docker; choose another installer only when needed.
+./tumorquantai install --docker
+export PATH="$HOME/.local/bin:$PATH"
+tumorquantai --version
+```
+
+The installer already includes the download, conversion, and inspection dependencies. Do not create another tutorial virtual environment.
+
+## 2. Create the tutorial folders
+
+```bash
+# Create the fixed relative folder used by the complete tutorial.
+mkdir -p tutorial-data/lymphoma-21/download
+```
+
+## 3. Download the manifest
+
+```bash
+# Download or resume the public dataset manifest.
+wget --continue \
+  --output-document tutorial-data/lymphoma-21/download/tumorquantai_lymphoma_mds_manifest.csv \
+  "https://zenodo.org/records/21466410/files/tumorquantai_lymphoma_mds_manifest.csv?download=1"
+
+# Verify the published manifest MD5.
+echo "ad9a9472e8beb302f8b9ba2b3359bacc  tutorial-data/lymphoma-21/download/tumorquantai_lymphoma_mds_manifest.csv" \
+  | md5sum -c -
+```
+
+## 4. Download all 21 public MDS files
+
+```bash
+# Download or resume all 21 public MDS files.
+while IFS= read -r url; do
+  filename="${url##*/}"
+  filename="${filename%%\?*}"
+  wget --continue \
+    --output-document "tutorial-data/lymphoma-21/download/$filename" \
+    "$url"
+done < examples/lymphoma/zenodo_all_21.urls.txt
+```
+
+Use this equivalent loop when only `curl` is available:
+
+```bash
+# Download or resume all 21 public MDS files with curl.
+while IFS= read -r url; do
+  filename="${url##*/}"
+  filename="${filename%%\?*}"
+  curl --fail --location --retry 5 --continue-at - \
+    --output "tutorial-data/lymphoma-21/download/$filename" \
+    "$url"
+done < examples/lymphoma/zenodo_all_21.urls.txt
+```
+
+## 5. Verify all downloads
+
+```bash
+# Verify all 21 slide checksums from inside the download directory.
+(
+  cd tutorial-data/lymphoma-21/download
+  sha256sum -c ../../../examples/lymphoma/checksums_all_21.sha256
+)
+
+# Confirm that exactly 21 public MDS files are present.
+test "$(find tutorial-data/lymphoma-21/download -maxdepth 1 -type f \
+  -name 'TumorQuantAI_LymphomaWSI_*.mds' | wc -l)" -eq 21
+```
+
+`sha256sum` must print `OK` 21 times. Stop if any file fails.
+
+## 6. Convert L0 and L2 with the installed command
+
+```bash
+# Convert all verified MDS files to resumable L0 and L2 TIFF files.
+tumorquantai convert tutorial-data/lymphoma-21/download \
+  --manifest tutorial-data/lymphoma-21/download/tumorquantai_lymphoma_mds_manifest.csv \
+  --output tutorial-data/lymphoma-21/slides \
+  --levels 0 2 \
+  --expected-count 21 \
+  --source-mpp 0.261780 \
+  --resume
+```
+
+Repeat the same command to resume an interrupted conversion.
+
+## 7. Inspect the 21-slide roster
+
+```bash
+# Inspect all converted L0/L2 pairs without inference.
+tumorquantai inspect tutorial-data/lymphoma-21/slides \
+  --sample-sheet tutorial-data/lymphoma-21/slides/samples.csv \
+  --output tutorial-data/lymphoma-21/inspection
+```
+
+Open `tutorial-data/lymphoma-21/inspection/INSPECTION.html` and confirm 21 primary L0 slides, 21 L2 companions, and source MPP `0.261780`.
+
+## 8. Configure HistoPLUS access
+
+Follow [Configure HistoPLUS access](how-to/model-access.md), then check readiness:
+
+```bash
+# Check the installed route, model credential, input, and output location.
+tumorquantai doctor \
+  --input tutorial-data/lymphoma-21/slides \
+  --output tutorial-data/lymphoma-21/results-10-percent \
+  --online
+```
+
+## 9. Run all 21 slides at 10%
+
+The backend selected during `tumorquantai install` is used automatically.
+
+```bash
+# Run all 21 slides at a deterministic 10% with the installed backend.
+tumorquantai run tutorial-data/lymphoma-21/slides \
+  --sample-sheet tutorial-data/lymphoma-21/slides/samples.csv \
+  --output tutorial-data/lymphoma-21/results-10-percent \
+  --preset fast \
+  --source-mpp 0.261780 \
+  --gpu
+```
+
+Use `--cpu` when no supported GPU is available. Conda is CPU-only:
+
+```bash
+# Run the same 10% analysis through Conda on CPU.
+tumorquantai run tutorial-data/lymphoma-21/slides \
+  --sample-sheet tutorial-data/lymphoma-21/slides/samples.csv \
+  --output tutorial-data/lymphoma-21/results-10-percent-conda \
+  --preset fast \
+  --source-mpp 0.261780 \
+  --conda \
+  --cpu
+```
+
+## 10. Monitor and resume
+
+```bash
+# Summarize completed, failed, incomplete, and pending slides.
+tumorquantai status tutorial-data/lymphoma-21/results-10-percent
+```
+
+Press **Ctrl+C** to stop. Repeat the identical run command to reuse valid Nextflow tasks.
+
+## 11. Verify the outputs
+
+```bash
+# Verify the exact 21-slide 10% result set.
+python3 examples/lymphoma/verify_fast21_outputs.py \
+  --output tutorial-data/lymphoma-21/results-10-percent
+```
+
+A successful verifier ends with:
+
+```text
+SUCCESS: 21-slide TumorQuantAI 10% tutorial outputs are complete.
+```
+
+## 12. Review the results
+
+![TumorQuantAI output map](assets/tutorial/output_map.svg)
+
+Review:
+
+1. `tutorial-data/lymphoma-21/results-10-percent/START_HERE.html`
+2. all 21 `overlays/celltypes_overview_and_zoom.png` files
+3. all 21 `summary/summary.json` files
+4. `aggregated_celltypes/sample_aggregation_audit.csv`
+5. `aggregated_celltypes/celltype_counts_by_sample.csv`
+6. `aggregated_celltypes/celltype_fractions_by_sample.csv`
+
+Ten-percent counts describe sampled tissue tiles and must not be multiplied by ten.
+
+## Continue
+
+- [Output files](outputs.md)
+- [Sampling and reproducibility](explanation/sampling.md)
+- [Counts versus fractions](explanation/counts-fractions.md)
+- [Troubleshooting](troubleshooting/index.md)
+''')
+
+          write("docs/tutorials/four-public-slides.md", r'''# Other example run: four public WSIs at 10%
+
+This intermediate example uses public lymphoma aliases 022, 002, 006, and 016. It downloads four MDS files, validates them, converts L0/L2, inspects the roster, and processes a deterministic 10% of detected tissue tiles.
+
+## 1. Clone and install once
+
+```bash
+# Clone TumorQuantAI and enter the repository.
+git clone https://github.com/cfarkas/tumorquantai.git
+cd tumorquantai
+
+# Install the command for the selected route; Docker is shown.
+./tumorquantai install --docker
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Do not create a separate tutorial Python environment.
+
+## 2. Create the example folder
+
+```bash
+# Create the fixed relative folder used by this example.
+mkdir -p tutorial-data/lymphoma-four/download
+```
+
+## 3. Download the manifest and four slides
+
+```bash
+# Download or resume the authoritative manifest.
+wget --continue \
+  --output-document tutorial-data/lymphoma-four/download/tumorquantai_lymphoma_mds_manifest.csv \
+  "https://zenodo.org/records/21466410/files/tumorquantai_lymphoma_mds_manifest.csv?download=1"
+
+# Download or resume the fixed four public MDS files.
+while IFS= read -r url; do
+  filename="${url##*/}"
+  filename="${filename%%\?*}"
+  wget --continue \
+    --output-document "tutorial-data/lymphoma-four/download/$filename" \
+    "$url"
+done < examples/lymphoma/zenodo_first_four.urls.txt
+```
+
+## 4. Verify the downloads
+
+```bash
+# Verify the manifest and all four slide checksums.
+echo "ad9a9472e8beb302f8b9ba2b3359bacc  tutorial-data/lymphoma-four/download/tumorquantai_lymphoma_mds_manifest.csv" \
+  | md5sum -c -
+(
+  cd tutorial-data/lymphoma-four/download
+  sha256sum -c ../../../examples/lymphoma/checksums_first_four.sha256
+)
+```
+
+## 5. Convert and inspect
+
+```bash
+# Convert the four verified MDS files with the installed command.
+tumorquantai convert tutorial-data/lymphoma-four/download \
+  --manifest tutorial-data/lymphoma-four/download/tumorquantai_lymphoma_mds_manifest.csv \
+  --output tutorial-data/lymphoma-four/slides \
+  --levels 0 2 \
+  --sample-id TumorQuantAI_LymphomaWSI_022 \
+  --sample-id TumorQuantAI_LymphomaWSI_002 \
+  --sample-id TumorQuantAI_LymphomaWSI_006 \
+  --sample-id TumorQuantAI_LymphomaWSI_016 \
+  --expected-count 4 \
+  --source-mpp 0.261780 \
+  --resume
+
+# Inspect the exact four-slide roster without inference.
+tumorquantai inspect tutorial-data/lymphoma-four/slides \
+  --sample-sheet tutorial-data/lymphoma-four/slides/samples.csv \
+  --output tutorial-data/lymphoma-four/inspection
+```
+
+## 6. Run the four-slide 10% analysis
+
+```bash
+# Process a deterministic 10% of detected tissue tiles from all four slides.
+tumorquantai run tutorial-data/lymphoma-four/slides \
+  --sample-sheet tutorial-data/lymphoma-four/slides/samples.csv \
+  --output tutorial-data/lymphoma-four/results-10-percent \
+  --preset fast \
+  --source-mpp 0.261780 \
+  --gpu
+```
+
+Use `--cpu` when GPU execution is unavailable.
+
+## 7. Verify and review
+
+```bash
+# Verify four included 10% results and no failed samples.
+python3 examples/lymphoma/verify_fast21_outputs.py \
+  --output tutorial-data/lymphoma-four/results-10-percent \
+  --expected-samples 4
+```
+
+Continue to the [full 21-slide tutorial](../full_tutorial.md).
+''')
+
+          write("examples/lymphoma/README.md", r'''# Public lymphoma WSI example files
+
+These files support the public tutorials for Zenodo record `21466410`, DOI `10.5281/zenodo.21466410`.
+
+## Included artifacts
+
+| File | Purpose |
+| --- | --- |
+| `tumorquantai_lymphoma_mds_manifest.csv` | Repository copy of the public manifest for review and offline planning |
+| `zenodo_one.urls.txt` | Direct public URL for sample 022 |
+| `zenodo_first_four.urls.txt` | Direct URLs for samples 022, 002, 006, and 016 |
+| `zenodo_all_21.urls.txt` | Direct URLs for all 21 published MDS files |
+| `checksums_one.sha256` | SHA-256 verification for sample 022 |
+| `checksums_first_four.sha256` | SHA-256 verification for the fixed four-slide example |
+| `checksums_all_21.sha256` | SHA-256 verification for the complete collection |
+| `sample_sheet_first4.csv` | Fixed four-slide sample selection |
+| `verify_fast21_outputs.py` | Verifier for 4- or 21-slide 10% results |
+
+## QuickStart Example 1
+
+```bash
+# Clone, install, and prepare the fixed public WSI.
+git clone https://github.com/cfarkas/tumorquantai.git
+cd tumorquantai
+./tumorquantai install --docker
+export PATH="$HOME/.local/bin:$PATH"
+tumorquantai quickstart --no-inference
+```
+
+## Full 21-slide download and conversion
+
+```bash
+# Create the relative tutorial download directory.
+mkdir -p tutorial-data/lymphoma-21/download
+
+# Download all 21 public MDS files.
+while IFS= read -r url; do
+  filename="${url##*/}"
+  filename="${filename%%\?*}"
+  wget --continue \
+    --output-document "tutorial-data/lymphoma-21/download/$filename" \
+    "$url"
+done < examples/lymphoma/zenodo_all_21.urls.txt
+
+# Convert verified MDS files through the installed command.
+tumorquantai convert tutorial-data/lymphoma-21/download \
+  --manifest examples/lymphoma/tumorquantai_lymphoma_mds_manifest.csv \
+  --output tutorial-data/lymphoma-21/slides \
+  --levels 0 2 \
+  --expected-count 21 \
+  --source-mpp 0.261780 \
+  --resume
+```
+
+See [`docs/full_tutorial.md`](../../docs/full_tutorial.md) for manifest download, checksum verification, HistoPLUS access, 10% execution, resume, and output verification.
+
+Public files and documentation use privacy-sanitized aliases only. Never add private mappings, clinical data, model weights, or tokens to this directory.
+''')
+
+          write("docs/QUICKSTART.md", r'''# QuickStart Example 1
+
+The maintained QuickStart is [one public lymphoma WSI](quick_start.md).
+
+```bash
+# Clone TumorQuantAI and enter the repository.
+git clone https://github.com/cfarkas/tumorquantai.git
+cd tumorquantai
+
+# Install the command once; Docker is shown.
+./tumorquantai install --docker
+export PATH="$HOME/.local/bin:$PATH"
+
+# Download, verify, convert, and inspect one public WSI without inference.
+tumorquantai quickstart --no-inference
+```
+
+The installer already contains the public-slide download and conversion dependencies. No tutorial virtual environment or edited output path is needed.
+
+After HistoPLUS access is configured, rerun `tumorquantai quickstart --cpu` to process a deterministic 1% of detected tissue tiles.
+
+Continue to the [complete QuickStart Example 1](quick_start.md).
+''')
+
+          write("docs/start-here/public-slide.md", r'''# Public one-slide QuickStart
+
+The maintained one-slide procedure is [QuickStart Example 1: one public WSI](../quick_start.md).
+
+It starts from a fresh clone and provides copy/paste commands for:
+
+1. installing the global `tumorquantai` command once;
+2. previewing the fixed one-slide plan;
+3. downloading and validating `TumorQuantAI_LymphomaWSI_022.mds`;
+4. converting L0 and L2 with resume support;
+5. inspecting the source MPP without inference;
+6. configuring approved HistoPLUS access;
+7. optionally running a deterministic 1% analysis;
+8. verifying the overlay, summary, class counts, and aggregation audit.
+
+```bash
+# Open the maintained QuickStart source from the repository.
+sed -n '1,280p' docs/quick_start.md
+```
+
+Continue to [QuickStart Example 1](../quick_start.md).
+''')
+
+          write("docs/tutorials/full-collection.md", r'''# Full 21-slide public collection at 10%
+
+The maintained complete procedure is [Full tutorial: 21 public lymphoma WSIs at 10%](../full_tutorial.md).
+
+It begins from a fresh clone and provides copy/paste commands for:
+
+1. installing the global command once;
+2. creating one fixed relative tutorial folder;
+3. downloading the authoritative Zenodo manifest;
+4. downloading all 21 standard MDS filenames;
+5. validating all 21 SHA-256 checksums;
+6. converting L0 and L2 with `tumorquantai convert`;
+7. inspecting the exact 21-slide roster and source MPP;
+8. running a deterministic 10% HistoPLUS analysis with `--preset fast`;
+9. verifying all per-slide and cohort outputs.
+
+```bash
+# Open the maintained full-tutorial source from the repository.
+sed -n '1,300p' docs/full_tutorial.md
+```
+
+The complete public dataset is Zenodo record `21466410`, DOI `10.5281/zenodo.21466410`.
+
+Continue to the [maintained full tutorial](../full_tutorial.md).
+''')
+
+          write("docs/how-to/install.md", r'''# Install and check the computer
+
+The repository installer prepares the `tumorquantai` command, its download/conversion dependencies, pinned Nextflow when needed, and one selected execution route.
+
+## Install once
+
+```bash
+# Clone TumorQuantAI and enter the repository.
+git clone https://github.com/cfarkas/tumorquantai.git
+cd tumorquantai
+
+# Install the command and Docker route.
+./tumorquantai install --docker
+export PATH="$HOME/.local/bin:$PATH"
+
+# Confirm the command and computer readiness.
+tumorquantai --version
+tumorquantai doctor
+```
+
+Use `--singularity`, `--poetry`, or `--conda` instead of `--docker` when that is the route you will use. Do not create another environment for the tutorials.
+
+## What is checked
+
+Doctor checks the operating system, Java, Nextflow, the selected container or Conda runtime, GPU visibility, writable caches, and configured HistoPLUS access. Add `--online` to check public release, dataset, and model metadata:
+
+```bash
+# Include public online metadata checks.
+tumorquantai doctor --online
+```
+
+## System-wide installation
+
+```bash
+# Install the command under /usr/local for all users.
+sudo ./tumorquantai install --docker --system
+
+tumorquantai --version
+```
+
+## First command
+
+```bash
+# Prepare one public WSI without HistoPLUS inference.
+tumorquantai quickstart --no-inference
+```
+
+**Next:** [configure HistoPLUS access](model-access.md) or continue to the [one-WSI QuickStart](../quick_start.md).
+''')
+
+          write("docs/INSTALL.md", r'''# Installation
+
+Use the maintained [installation guide](installation.md).
+
+```bash
+# Clone, install, and check TumorQuantAI.
+git clone https://github.com/cfarkas/tumorquantai.git
+cd tumorquantai
+./tumorquantai install --docker
+export PATH="$HOME/.local/bin:$PATH"
+tumorquantai doctor
+```
+
+Replace `--docker` with `--singularity`, `--poetry`, or `--conda` when needed. The installer includes the tutorial download and conversion dependencies.
+
+Authorized model setup is separate: [Configure HistoPLUS access](how-to/model-access.md).
+''')
+
+          write("docs/TUTORIAL_LYMPHOMA_ZENODO.md", r'''# Public lymphoma WSI tutorials
+
+The public tutorial dataset is [Zenodo record 21466410](https://zenodo.org/records/21466410), DOI [`10.5281/zenodo.21466410`](https://doi.org/10.5281/zenodo.21466410).
+
+Use the maintained tutorials:
+
+1. [QuickStart Example 1: one public WSI](quick_start.md) — fixed sample 022, model-free preparation, and optional seeded 1% inference.
+2. [Full tutorial: all 21 public lymphoma WSIs at 10%](full_tutorial.md) — exact downloads, checksum validation, installed-command L0/L2 conversion, roster inspection, seeded 10% inference, and output verification.
+3. [Other example: four public WSIs at 10%](tutorials/four-public-slides.md) — an intermediate cohort checkpoint.
+
+`tumorquantai quickstart` is deliberately bounded to one WSI. The 21-slide tutorial uses `tumorquantai convert` followed by `tumorquantai run ... --preset fast`, which processes a deterministic 10% of detected tissue tiles per slide.
+''')
+
+          reference = read("docs/reference/cli.md")
+          reference = replace_once(
+              reference,
+              '''tumorquantai demo [--output DIR]
+
+tumorquantai inspect INPUT --output DIR
+''',
+              '''tumorquantai demo [--output DIR]
+
+tumorquantai convert INPUT --output DIR
+                       [--manifest CSV] [--levels INT ...]
+                       [--sample-id ID]... [--expected-count INT]
+                       [--source-mpp FLOAT]
+                       [--resume | --overwrite] [--dry-run]
+
+tumorquantai inspect INPUT --output DIR
+''',
+              "CLI convert synopsis",
+          )
+          reference = replace_once(
+              reference,
+              '''### `inspect`
+
+Discovers candidate primary slides/companions''',
+              '''### `convert`
+
+Runs the maintained Motic MDS converter through the Python environment created by `tumorquantai install`. It verifies manifest-bound inputs, writes resumable L0/L2 TIFF files and `samples.csv`, and removes the need for a separate tutorial virtual environment.
+
+### `inspect`
+
+Discovers candidate primary slides/companions''',
+              "CLI convert description",
+          )
+          write("docs/reference/cli.md", reference)
+          PY
+
+      - name: Remove the temporary patch workflow
+        run: rm -f .github/workflows/apply-simplified-tutorials.yml
+
+      - name: Install validation dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-tutorial.txt
+          python -m pip install 'pytest>=8,<9' 'jsonschema>=4,<5' 'PyYAML>=6,<7'
+          python -m pip install -r docs/requirements.txt
+
+      - name: Validate command, tutorials, and documentation
+        run: |
+          chmod +x tumorquantai
+          python -m py_compile tumorquantai scripts/*.py tests/test_install_command.py
+          python -m pytest -q tests/test_install_command.py tests/test_runtime_backends.py
+          ./tumorquantai convert --help
+          ./tumorquantai install --docker --dry-run
+          python scripts/check_docs_language.py
+          python scripts/check_oncotracer_style_docs.py
+          python scripts/check_repository_hygiene.py
+          mkdocs build --strict
+          ! grep -R -F 'TQA_ROOT' README.md docs examples
+          ! grep -R -F 'REPO_ROOT' README.md docs examples
+          ! grep -R -F 'python3 -m venv' README.md docs examples
+          ! grep -R -F 'requirements-tutorial.txt' README.md docs examples
+          git diff --check
+
+      - name: Commit and push the validated update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md docs examples tumorquantai tests scripts .github/workflows
+          git commit -m "Simplify tutorials and document HistoPLUS access"
+          git push origin HEAD:agent/simplify-tutorials-and-histoplus-access
