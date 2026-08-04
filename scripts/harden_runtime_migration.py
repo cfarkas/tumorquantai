@@ -94,6 +94,14 @@ text = text.replace(
     1,
 )
 
+# The runtime test is itself written from a Python triple-quoted string. Keep
+# its newline separator escaped in the generated source file.
+old = r'    rendered = "\n".join(map(str, dependencies))'
+new = r'    rendered = "\\n".join(map(str, dependencies))'
+if old not in text:
+    raise SystemExit("Unable to escape the generated runtime test newline")
+text = text.replace(old, new, 1)
+
 old = "    assert 'conda = \"${projectDir}/environment.yml\"' in config\n"
 new = (
     '    assert "conda = params.conda_environment" in config\n'
