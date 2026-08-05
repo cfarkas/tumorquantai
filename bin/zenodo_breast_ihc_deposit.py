@@ -18,6 +18,7 @@ import os
 import re
 import stat
 import sys
+import time
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date
@@ -44,6 +45,7 @@ EXPECTED_UPLOAD_FILES = 55
 ZENODO_DEFAULT_QUOTA_BYTES = 50_000_000_000
 ZENODO_MAX_ALLOCATED_BYTES = 200_000_000_000
 MAX_BUNDLE_MEMBER_BYTES = 32 * 1024 * 1024
+MAX_UPLOAD_RETRIES = 5
 
 CASE_ARCHIVE_RE = re.compile(r"^(TQA_BC_[A-Z2-7]{20})\.zip$")
 CORE_AUXILIARY_FILES = frozenset(
@@ -1247,6 +1249,25 @@ class HardenedZenodoClient(base.ZenodoClient):
         )
         return self.json_response(response, "Create-deposition request")
 
+    def upload_file(
+        self, bucket_url: str, upload: base.UploadFile
+    ) -> dict[str, object]:
+        """Send one PUT; the caller reconciles the draft before any retry."""
+        url = f"{bucket_url.rstrip('/')}/{quote(upload.remote_name, safe='')}"
+        with upload.local_path.open("rb") as handle:
+            response = self.request(
+                "PUT",
+                url,
+                expected=(200, 201),
+                data=handle,
+                timeout=(
+                    base.UPLOAD_CONNECT_WRITE_TIMEOUT_SECONDS,
+                    base.UPLOAD_RESPONSE_TIMEOUT_SECONDS,
+                ),
+                retries=0,
+            )
+        return self.json_response(response, f"Upload of {upload.remote_name}")
+
 
 def validate_upload_response(
     payload: dict[str, object],
@@ -1267,6 +1288,107 @@ def validate_upload_response(
         checksum = checksum[4:]
     if size != upload.size_bytes or checksum != upload.md5:
         raise DepositError(f"Zenodo upload verification failed: {upload.remote_name}")
+
+
+def _reconcile_ambiguous_upload(
+    *,
+    client: HardenedZenodoClient,
+    deposition_id: str,
+    api_url: str,
+    metadata: dict[str, object],
+    uploads_by_name: dict[str, base.UploadFile],
+    confirmed_remote_names: set[str],
+    upload: base.UploadFile,
+) -> bool:
+    """Return whether an ambiguous PUT committed, without mutating the draft."""
+    refreshed = client.get_draft(deposition_id)
+    validate_open_unpublished_draft(refreshed, metadata)
+    remote_files = strict_remote_files(
+        refreshed, api_url=api_url, deposition_id=deposition_id
+    )
+    unexpected = sorted(set(remote_files) - set(uploads_by_name))
+    if unexpected:
+        raise DepositError(
+            "Zenodo draft contains an unreviewed file after an ambiguous upload"
+        )
+    for name, remote in remote_files.items():
+        if not base.file_matches(remote, uploads_by_name[name]):
+            raise DepositError(
+                "Zenodo draft contains a pending or mismatched file after an "
+                f"ambiguous upload: {name}; refusing to delete or replace it"
+            )
+    missing = sorted(confirmed_remote_names - set(remote_files))
+    if missing:
+        raise DepositError(
+            "Zenodo draft lost a previously verified file during upload "
+            f"reconciliation: {missing[0]}"
+        )
+    confirmed_remote_names.update(remote_files)
+    return upload.remote_name in remote_files
+
+
+def _upload_file_with_reconciliation(
+    *,
+    client: HardenedZenodoClient,
+    bucket_url: str,
+    deposition_id: str,
+    api_url: str,
+    metadata: dict[str, object],
+    uploads_by_name: dict[str, base.UploadFile],
+    confirmed_remote_names: set[str],
+    upload: base.UploadFile,
+    retries: int,
+) -> str:
+    """Retry only after the exact draft confirms that the target is absent."""
+    upload_retries = min(retries, MAX_UPLOAD_RETRIES)
+    last_error: DepositError | None = None
+    for attempt in range(upload_retries + 1):
+        if attempt:
+            retry_after = (
+                last_error.retry_after_seconds
+                if isinstance(last_error, base.ZenodoRequestError)
+                else None
+            )
+            time.sleep(
+                retry_after
+                if retry_after is not None
+                else base.retry_delay(None, attempt - 1)
+            )
+            if _reconcile_ambiguous_upload(
+                client=client,
+                deposition_id=deposition_id,
+                api_url=api_url,
+                metadata=metadata,
+                uploads_by_name=uploads_by_name,
+                confirmed_remote_names=confirmed_remote_names,
+                upload=upload,
+            ):
+                return "verified-existing"
+        try:
+            response = client.upload_file(bucket_url, upload)
+            validate_upload_response(response, upload)
+        except DepositError as exc:
+            last_error = exc
+        else:
+            confirmed_remote_names.add(upload.remote_name)
+            return "uploaded"
+        committed = _reconcile_ambiguous_upload(
+            client=client,
+            deposition_id=deposition_id,
+            api_url=api_url,
+            metadata=metadata,
+            uploads_by_name=uploads_by_name,
+            confirmed_remote_names=confirmed_remote_names,
+            upload=upload,
+        )
+        if committed:
+            return "verified-existing"
+        if isinstance(last_error, base.ZenodoRequestError) and not last_error.retryable:
+            raise last_error
+    raise DepositError(
+        f"Zenodo upload remained absent after {upload_retries + 1} reconciled "
+        f"single-PUT attempts: {upload.remote_name}"
+    ) from last_error
 
 
 def _plan_result(
@@ -1448,16 +1570,30 @@ def deposit_breast_ihc(
     uploaded_state = state.get("uploaded")
     if not isinstance(uploaded_state, dict):
         raise DepositError("Deposit state uploaded map is invalid")
+    confirmed_remote_names = {
+        name
+        for name, remote in remote_files.items()
+        if base.file_matches(remote, uploads_by_name[name])
+    }
     for upload in package_data.uploads:
         existing = remote_files.get(upload.remote_name)
-        if existing is not None and base.file_matches(existing, upload):
+        if upload.remote_name in confirmed_remote_names:
             status = "verified-existing"
         else:
             if existing is not None:
                 client.delete_file(existing.delete_url)
-            response = client.upload_file(bucket_url, upload)
-            validate_upload_response(response, upload)
-            status = "uploaded"
+                confirmed_remote_names.discard(upload.remote_name)
+            status = _upload_file_with_reconciliation(
+                client=client,
+                bucket_url=bucket_url,
+                deposition_id=deposition_id,
+                api_url=api_url,
+                metadata=metadata,
+                uploads_by_name=uploads_by_name,
+                confirmed_remote_names=confirmed_remote_names,
+                upload=upload,
+                retries=retries,
+            )
         uploaded_state[upload.remote_name] = {
             "size_bytes": upload.size_bytes,
             "md5": upload.md5,

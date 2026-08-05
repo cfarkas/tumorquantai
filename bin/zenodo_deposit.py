@@ -90,6 +90,25 @@ class DepositError(RuntimeError):
     pass
 
 
+class ZenodoRequestError(DepositError):
+    """A sanitized HTTP/transport failure with structured retry semantics."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool,
+        status_code: int | None = None,
+        transport_exception_type: str | None = None,
+        retry_after_seconds: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+        self.status_code = status_code
+        self.transport_exception_type = transport_exception_type
+        self.retry_after_seconds = retry_after_seconds
+
+
 @dataclass(frozen=True)
 class UploadFile:
     local_path: Path
@@ -697,12 +716,21 @@ def release_fingerprint(
     return hashlib.sha256(encoded).hexdigest()
 
 
-def retry_delay(response: requests.Response | None, attempt: int) -> float:
+def bounded_retry_after(response: requests.Response | None) -> float | None:
     if response is not None:
         try:
-            return min(float(response.headers.get("Retry-After", "")), 60.0)
+            value = float(response.headers.get("Retry-After", ""))
         except (TypeError, ValueError):
-            pass
+            return None
+        if math.isfinite(value) and value >= 0:
+            return min(value, 60.0)
+    return None
+
+
+def retry_delay(response: requests.Response | None, attempt: int) -> float:
+    retry_after = bounded_retry_after(response)
+    if retry_after is not None:
+        return retry_after
     return min(2.0 ** attempt, 30.0)
 
 
@@ -765,6 +793,7 @@ class ZenodoClient:
         expected_set = set(expected)
         last_error: Exception | None = None
         last_status: int | None = None
+        last_retry_after: float | None = None
         for attempt in range(attempts + 1):
             response: requests.Response | None = None
             try:
@@ -781,33 +810,44 @@ class ZenodoClient:
                 )
                 last_error = None
                 last_status = response.status_code
+                last_retry_after = bounded_retry_after(response)
                 if response.status_code in expected_set:
                     return response
                 if response.status_code not in RETRYABLE_STATUSES:
-                    raise DepositError(
+                    response.close()
+                    raise ZenodoRequestError(
                         f"Zenodo API request failed: {method} {urlparse(url).path} "
-                        f"returned HTTP {response.status_code}"
+                        f"returned HTTP {response.status_code}",
+                        retryable=False,
+                        status_code=response.status_code,
                     )
             except requests.RequestException as exc:
                 last_error = exc
                 last_status = None
+                last_retry_after = None
             if response is not None:
                 response.close()
             if attempt == attempts:
                 break
             time.sleep(retry_delay(response, attempt))
         if last_error is not None:
-            raise DepositError(
+            exception_type = type(last_error).__name__
+            raise ZenodoRequestError(
                 f"Zenodo API request failed after {attempts + 1} attempts: "
                 f"{method} {urlparse(url).path}; final transport exception: "
-                f"{type(last_error).__name__}"
+                f"{exception_type}",
+                retryable=True,
+                transport_exception_type=exception_type,
             ) from last_error
         status_diagnostic = (
             f"; final HTTP status: {last_status}" if last_status is not None else ""
         )
-        raise DepositError(
+        raise ZenodoRequestError(
             f"Zenodo API request failed after {attempts + 1} attempts: "
-            f"{method} {urlparse(url).path}{status_diagnostic}"
+            f"{method} {urlparse(url).path}{status_diagnostic}",
+            retryable=True,
+            status_code=last_status,
+            retry_after_seconds=last_retry_after,
         )
 
     @staticmethod

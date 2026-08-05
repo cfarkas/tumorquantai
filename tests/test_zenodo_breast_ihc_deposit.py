@@ -428,6 +428,20 @@ def run_deposit(
     return deposit.deposit_breast_ihc(**arguments)
 
 
+def small_upload(tmp_path: Path) -> base.UploadFile:
+    path = tmp_path / "single-put.zip"
+    path.write_bytes(b"synthetic single PUT")
+    return base.make_small_upload(path, path.name, "case-archive")
+
+
+def requests_response(status: int, payload: dict[str, object]):
+    response = base.requests.Response()
+    response.status_code = status
+    response._content = json.dumps(payload).encode("utf-8")
+    response._content_consumed = True
+    return response
+
+
 def test_plan_fully_validates_exact_fixed_release_without_token_or_state(
     synthetic_release: SyntheticRelease,
 ) -> None:
@@ -495,6 +509,289 @@ def test_uploads_exact_draft_and_resumes_without_reupload(
     second = run_deposit(release, monkeypatch, server)
     assert second["remote_file_count"] == 55
     assert server.upload_count == 55
+
+
+def test_bucket_upload_is_exactly_one_put_attempt(tmp_path: Path) -> None:
+    upload = small_upload(tmp_path)
+
+    class RetryableSession:
+        calls = 0
+
+        def request(self, method: str, url: str, **kwargs: object):
+            self.calls += 1
+            return requests_response(503, {})
+
+    session = RetryableSession()
+    client = deposit.HardenedZenodoClient(
+        "synthetic-token", retries=5, session=session
+    )
+    with pytest.raises(deposit.DepositError, match="after 1 attempts"):
+        client.upload_file("https://zenodo.org/api/files/bucket", upload)
+    assert session.calls == 1
+
+
+def test_permanent_http_failure_reconciles_once_without_second_put(
+    synthetic_release: SyntheticRelease,
+    tmp_path: Path,
+) -> None:
+    upload = small_upload(tmp_path)
+    metadata = deposit.public_metadata_from_file(synthetic_release.metadata)
+    server = FakeZenodoServer(metadata=dict(metadata))
+
+    class PermanentFailureSession:
+        put_calls = 0
+        get_calls = 0
+
+        def request(self, method: str, url: str, **kwargs: object):
+            if method == "PUT":
+                self.put_calls += 1
+                return requests_response(403, {"message": "must-not-leak"})
+            if method == "GET":
+                self.get_calls += 1
+                return requests_response(200, server.draft())
+            raise AssertionError(f"unexpected method: {method}")
+
+    session = PermanentFailureSession()
+    client = deposit.HardenedZenodoClient(
+        "synthetic-token", retries=5, session=session
+    )
+    with pytest.raises(base.ZenodoRequestError) as raised:
+        deposit._upload_file_with_reconciliation(
+            client=client,
+            bucket_url="https://zenodo.org/api/files/synthetic-bucket",
+            deposition_id="42",
+            api_url=deposit.DEFAULT_API_URL,
+            metadata=metadata,
+            uploads_by_name={upload.remote_name: upload},
+            confirmed_remote_names=set(),
+            upload=upload,
+            retries=5,
+        )
+    assert raised.value.retryable is False
+    assert raised.value.status_code == 403
+    assert "must-not-leak" not in str(raised.value)
+    assert session.put_calls == 1
+    assert session.get_calls == 1
+
+
+def test_retry_after_is_bounded_and_honored_after_absence(
+    synthetic_release: SyntheticRelease,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upload = small_upload(tmp_path)
+    metadata = deposit.public_metadata_from_file(synthetic_release.metadata)
+    server = FakeZenodoServer(metadata=dict(metadata))
+
+    class RetryAfterSession:
+        put_calls = 0
+        get_calls = 0
+
+        def request(self, method: str, url: str, **kwargs: object):
+            if method == "GET":
+                self.get_calls += 1
+                return requests_response(200, server.draft())
+            if method == "PUT":
+                self.put_calls += 1
+                if self.put_calls == 1:
+                    response = requests_response(503, {})
+                    response.headers["Retry-After"] = "999"
+                    return response
+                return requests_response(
+                    201,
+                    {
+                        "key": upload.remote_name,
+                        "size": upload.size_bytes,
+                        "checksum": f"md5:{upload.md5}",
+                    },
+                )
+            raise AssertionError(f"unexpected method: {method}")
+
+    delays: list[float] = []
+    monkeypatch.setattr(deposit.time, "sleep", delays.append)
+    session = RetryAfterSession()
+    client = deposit.HardenedZenodoClient(
+        "synthetic-token", retries=5, session=session
+    )
+    status = deposit._upload_file_with_reconciliation(
+        client=client,
+        bucket_url="https://zenodo.org/api/files/synthetic-bucket",
+        deposition_id="42",
+        api_url=deposit.DEFAULT_API_URL,
+        metadata=metadata,
+        uploads_by_name={upload.remote_name: upload},
+        confirmed_remote_names=set(),
+        upload=upload,
+        retries=5,
+    )
+    assert status == "uploaded"
+    assert session.put_calls == 2
+    assert session.get_calls == 2
+    assert delays == [60.0]
+
+
+def test_lost_response_is_accepted_when_exact_file_committed(
+    synthetic_release: SyntheticRelease,
+    tmp_path: Path,
+) -> None:
+    upload = small_upload(tmp_path)
+    metadata = deposit.public_metadata_from_file(synthetic_release.metadata)
+    server = FakeZenodoServer(metadata=dict(metadata))
+
+    class AmbiguousClient:
+        upload_calls = 0
+        draft_calls = 0
+
+        def upload_file(self, _bucket_url: str, item: base.UploadFile):
+            self.upload_calls += 1
+            server.files[item.remote_name] = (item.size_bytes, item.md5)
+            raise deposit.DepositError("response was lost")
+
+        def get_draft(self, _deposition_id: str) -> dict[str, object]:
+            self.draft_calls += 1
+            return server.draft()
+
+    client = AmbiguousClient()
+    confirmed: set[str] = set()
+    status = deposit._upload_file_with_reconciliation(
+        client=client,
+        bucket_url="https://zenodo.org/api/files/synthetic-bucket",
+        deposition_id="42",
+        api_url=deposit.DEFAULT_API_URL,
+        metadata=metadata,
+        uploads_by_name={upload.remote_name: upload},
+        confirmed_remote_names=confirmed,
+        upload=upload,
+        retries=5,
+    )
+    assert status == "verified-existing"
+    assert client.upload_calls == 1
+    assert client.draft_calls == 1
+    assert confirmed == {upload.remote_name}
+
+
+def test_commit_during_backoff_prevents_replacement_put(
+    synthetic_release: SyntheticRelease,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upload = small_upload(tmp_path)
+    metadata = deposit.public_metadata_from_file(synthetic_release.metadata)
+    server = FakeZenodoServer(metadata=dict(metadata))
+
+    class DelayedClient:
+        upload_calls = 0
+        draft_calls = 0
+
+        def upload_file(self, _bucket_url: str, _item: base.UploadFile):
+            self.upload_calls += 1
+            raise deposit.DepositError("response was lost")
+
+        def get_draft(self, _deposition_id: str) -> dict[str, object]:
+            self.draft_calls += 1
+            return server.draft()
+
+    delays: list[float] = []
+
+    def commit_while_waiting(delay: float) -> None:
+        delays.append(delay)
+        server.files[upload.remote_name] = (upload.size_bytes, upload.md5)
+
+    monkeypatch.setattr(deposit.time, "sleep", commit_while_waiting)
+    client = DelayedClient()
+    status = deposit._upload_file_with_reconciliation(
+        client=client,
+        bucket_url="https://zenodo.org/api/files/synthetic-bucket",
+        deposition_id="42",
+        api_url=deposit.DEFAULT_API_URL,
+        metadata=metadata,
+        uploads_by_name={upload.remote_name: upload},
+        confirmed_remote_names=set(),
+        upload=upload,
+        retries=5,
+    )
+    assert status == "verified-existing"
+    assert client.upload_calls == 1
+    assert client.draft_calls == 2
+    assert delays == [1.0]
+
+
+def test_absent_file_retries_with_bounded_count(
+    synthetic_release: SyntheticRelease,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upload = small_upload(tmp_path)
+    metadata = deposit.public_metadata_from_file(synthetic_release.metadata)
+    server = FakeZenodoServer(metadata=dict(metadata))
+
+    class AbsentClient:
+        upload_calls = 0
+
+        def upload_file(self, _bucket_url: str, _item: base.UploadFile):
+            self.upload_calls += 1
+            raise deposit.DepositError("transport failed")
+
+        def get_draft(self, _deposition_id: str) -> dict[str, object]:
+            return server.draft()
+
+    delays: list[float] = []
+    monkeypatch.setattr(deposit.time, "sleep", delays.append)
+    client = AbsentClient()
+    with pytest.raises(deposit.DepositError, match="6 reconciled single-PUT"):
+        deposit._upload_file_with_reconciliation(
+            client=client,
+            bucket_url="https://zenodo.org/api/files/synthetic-bucket",
+            deposition_id="42",
+            api_url=deposit.DEFAULT_API_URL,
+            metadata=metadata,
+            uploads_by_name={upload.remote_name: upload},
+            confirmed_remote_names=set(),
+            upload=upload,
+            retries=99,
+        )
+    assert client.upload_calls == deposit.MAX_UPLOAD_RETRIES + 1
+    assert delays == [1.0, 2.0, 4.0, 8.0, 16.0]
+
+
+def test_ambiguous_mismatch_is_never_deleted_or_replaced(
+    synthetic_release: SyntheticRelease,
+    tmp_path: Path,
+) -> None:
+    upload = small_upload(tmp_path)
+    metadata = deposit.public_metadata_from_file(synthetic_release.metadata)
+    server = FakeZenodoServer(metadata=dict(metadata))
+
+    class MismatchClient:
+        upload_calls = 0
+        delete_calls = 0
+
+        def upload_file(self, _bucket_url: str, item: base.UploadFile):
+            self.upload_calls += 1
+            server.files[item.remote_name] = (item.size_bytes, "0" * 32)
+            raise deposit.DepositError("response was lost")
+
+        def get_draft(self, _deposition_id: str) -> dict[str, object]:
+            return server.draft()
+
+        def delete_file(self, _url: str) -> None:
+            self.delete_calls += 1
+
+    client = MismatchClient()
+    with pytest.raises(deposit.DepositError, match="refusing to delete or replace"):
+        deposit._upload_file_with_reconciliation(
+            client=client,
+            bucket_url="https://zenodo.org/api/files/synthetic-bucket",
+            deposition_id="42",
+            api_url=deposit.DEFAULT_API_URL,
+            metadata=metadata,
+            uploads_by_name={upload.remote_name: upload},
+            confirmed_remote_names=set(),
+            upload=upload,
+            retries=5,
+        )
+    assert client.upload_calls == 1
+    assert client.delete_calls == 0
 
 
 def test_rejects_unexpected_remote_file_before_upload(
