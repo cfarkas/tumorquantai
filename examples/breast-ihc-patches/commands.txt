@@ -16,7 +16,7 @@ tumorquantai --patches /path/to/breast-ihc-tiff-patches \
 tumorquantai status /path/to/breast-ihc-patch-results
 tumorquantai report /path/to/breast-ihc-patch-results
 
-# The dataset and Zenodo DOI are pending governance review and publication.
+# Public raw-only example: https://doi.org/10.5281/zenodo.21797920 (CC BY 4.0).
 
 # Create the alias secret outside the repository and public staging.
 install -d -m 700 /path/outside/repository/private-release-material
@@ -73,8 +73,9 @@ python3 bin/package_breast_ihc_patch_release.py \
 # Packaging validates canonical MPP provenance and recomputes decoded-RGB hashes.
 # Exact archive bytes require the same inputs and supported tool/runtime.
 # Source filesystem metadata is ignored; arbitrary Python versions are not promised.
-# The packager cannot upload or publish. Size/quota, privacy/governance review,
-# and publication remain pending under Zenodo's default 50 GB/100-file limits.
+# The packager cannot upload or publish. The published cohort totals
+# 74,958,557,152 bytes; every new release needs its own quota and independent
+# privacy, governance, rights, metadata, and publication reviews.
 
 # Fully revalidate the exact 55-file package without a token or network request.
 python3 bin/zenodo_breast_ihc_deposit.py \

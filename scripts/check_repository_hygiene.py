@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 import urllib.parse
 from pathlib import Path
 
@@ -294,8 +295,63 @@ def check_metadata(files: list[Path], errors: list[str]) -> None:
             errors.append("CITATION.cff missing required project fields: " + ", ".join(sorted(missing)))
         if str(cff.get("cff-version")) != "1.2.0" or cff.get("type") != "software":
             errors.append("CITATION.cff must describe CFF 1.2.0 software")
-        if str(cff.get("version")) != "0.4.0":
-            errors.append("CITATION.cff version must remain aligned with real release 0.4.0")
+        pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        package_version = str(pyproject["tool"]["poetry"]["version"])
+        version_sources = {
+            "CITATION.cff": str(cff.get("version")),
+            "pyproject.toml": package_version,
+        }
+        text_sources = (
+            (
+                "bin/tumorquantai_core.py",
+                r'^VERSION = "([^"]+)"$',
+            ),
+            (
+                "nextflow.config",
+                r"^\s*version = '([^']+)'\s*$",
+            ),
+            (
+                "build_and_push.sh",
+                r'^TAG="\$\{TAG:-([^}]+)\}"$',
+            ),
+            (
+                "scripts/check_external_resources.py",
+                r'^SOFTWARE_RELEASE = "v([^"]+)"$',
+            ),
+        )
+        for relative, pattern in text_sources:
+            text = (ROOT / relative).read_text(encoding="utf-8")
+            match = re.search(pattern, text, re.MULTILINE)
+            if match is None:
+                errors.append(f"cannot determine software version from {relative}")
+            else:
+                version_sources[relative] = match.group(1)
+        if not re.fullmatch(r"[1-9][0-9]*\.[0-9]+\.[0-9]+", package_version):
+            errors.append(
+                "software release version must be a stable semantic version"
+            )
+        for source, observed in version_sources.items():
+            if observed != package_version:
+                errors.append(
+                    f"{source} version {observed!r} does not match "
+                    f"pyproject.toml {package_version!r}"
+                )
+        release_date = str(cff.get("date-released"))
+        changelog_heading = f"## {package_version} — {release_date}"
+        if changelog_heading not in (ROOT / "CHANGELOG.md").read_text(
+            encoding="utf-8"
+        ):
+            errors.append(
+                "CHANGELOG.md has no heading matching the software version "
+                "and CITATION.cff release date"
+            )
+        for relative in ("CITATIONS.md", "docs/reference/citations.md"):
+            citation = (ROOT / relative).read_text(encoding="utf-8")
+            if f"Version {package_version}." not in citation:
+                errors.append(
+                    f"{relative} software citation does not match "
+                    f"pyproject.toml {package_version!r}"
+                )
         if "10.5281/zenodo.21466410" in (ROOT / "CITATION.cff").read_text(encoding="utf-8"):
             errors.append("dataset DOI must not be assigned as the TumorQuantAI software DOI in CITATION.cff")
     except Exception as exc:

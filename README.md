@@ -5,9 +5,17 @@
 [![CI](https://github.com/cfarkas/tumorquantai/actions/workflows/ci.yml/badge.svg)](https://github.com/cfarkas/tumorquantai/actions/workflows/ci.yml)
 [![Documentation](https://github.com/cfarkas/tumorquantai/actions/workflows/docs.yml/badge.svg)](https://cfarkas.github.io/tumorquantai/)
 [![Release](https://img.shields.io/github/v/release/cfarkas/tumorquantai?sort=semver)](https://github.com/cfarkas/tumorquantai/releases/latest)
-[![Dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21466410.svg)](https://doi.org/10.5281/zenodo.21466410)
+[![Lymphoma dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21466410.svg)](https://doi.org/10.5281/zenodo.21466410)
+[![Breast-IHC dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21797920.svg)](https://doi.org/10.5281/zenodo.21797920)
 
 TumorQuantAI is a Nextflow workflow for H&E whole-slide images (WSIs). It validates physical scale, samples tissue reproducibly, runs HistoPLUS, and writes overlays, cell coordinates, per-slide summaries, and cohort tables.
+
+Version 1.0.0 is distributed as a GitHub source release. It does not publish a
+standalone PyPI workflow package, a new TumorQuantAI application container, or
+model weights; scientific execution uses separately published runtime images
+at immutable digests. See the
+[v1.0.0 release notes](docs/maintainers/RELEASE_NOTES_1.0.0.md) for scope,
+compatibility, validation boundaries, and research-use limitations.
 
 ```text
 H&E WSI -> validated scale -> tissue tiles -> HistoPLUS -> overlays + coordinates + cohort tables

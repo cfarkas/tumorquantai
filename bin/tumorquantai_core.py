@@ -29,7 +29,8 @@ from typing import Any, Iterable, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.4.0"
+VERSION = "1.0.0"
+RELEASE_TAG = f"v{VERSION}"
 DATASET_RECORD = "21466410"
 DATASET_DOI = "10.5281/zenodo.21466410"
 DATASET_RELEASE = "v0.4.0"
@@ -537,7 +538,12 @@ def doctor_checks(
     ))
     if online:
         checks.extend((
-            online_check("https://api.github.com/repos/cfarkas/tumorquantai/releases/tags/v0.4.0", "TQA-ONLINE-GITHUB", "GitHub release metadata"),
+            online_check(
+                "https://api.github.com/repos/cfarkas/tumorquantai/releases/tags/"
+                f"{RELEASE_TAG}",
+                "TQA-ONLINE-GITHUB",
+                "GitHub release metadata",
+            ),
             online_check(f"https://zenodo.org/api/records/{DATASET_RECORD}", "TQA-ONLINE-ZENODO", "Zenodo tutorial record"),
             online_check(f"https://huggingface.co/api/models/Owkin-Bioptimus/histoplus/revision/{MODEL_REVISION}", "TQA-ONLINE-MODEL", "Pinned HistoPLUS revision metadata"),
         ))

@@ -70,6 +70,29 @@ def test_nextflow_config_exposes_all_runtime_profiles() -> None:
     assert "withName: /DISCOVER_SLIDES|PROCESS_SLIDE|AGGREGATE_COUNTS/" in config
 
 
+def test_direct_gpu_profiles_select_the_pinned_gpu_runtime() -> None:
+    config = (ROOT / "nextflow.config").read_text(encoding="utf-8")
+    gpu_image = (
+        "carlosfarkas/lazyslide-histoplus@sha256:"
+        "c4b02485d4549a56348cd09995ce0788a6acc8a3e1e600e986b644231a95bd25"
+    )
+    assignment = f"params.container_image = '{gpu_image}'"
+
+    boundaries = {
+        "docker_gpu": "singularity_cpu",
+        "singularity_gpu": "apptainer_cpu",
+        "apptainer_gpu": "conda_cpu",
+    }
+    assert config.count(assignment) == len(boundaries)
+    for profile, following_profile in boundaries.items():
+        block = config.split(f"\n    {profile} {{", 1)[1].split(
+            f"\n    {following_profile} {{", 1
+        )[0]
+        assert assignment in block
+        assert "params.device = 'cuda'" in block
+        assert block.index(assignment) < block.index("process {")
+
+
 def test_singularity_route_binds_every_required_host_path() -> None:
     launcher = (ROOT / "run.sh").read_text(encoding="utf-8")
     config = (ROOT / "nextflow.config").read_text(encoding="utf-8")

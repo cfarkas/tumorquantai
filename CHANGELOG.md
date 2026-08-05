@@ -2,24 +2,38 @@
 
 ## Unreleased
 
-- Added the `tumorquantai` beginner CLI with offline doctor, credential-free
-  structural demo, model-free inspection, safe smoke/fast/full presets,
-  failure-aware status, portable report, and a one-public-slide quickstart.
-- Rebuilt the README as a command-first landing page and reorganized the
-  MkDocs site into beginner starts, tutorials, how-to guides, explanations,
-  reference, troubleshooting, and maintainer material.
-- Documented public Zenodo record 21466410, DOI
-  `10.5281/zenodo.21466410`, dataset-matched software `v0.4.0`, and the fixed
-  alias-022 1% path without Zenodo credentials.
-- Added a live GitHub usability benchmark, license-decision record, separate
-  citation guidance, community templates, and lightweight documentation/CLI
-  quality gates.
-- Preserved `run.sh`, direct Nextflow, scientific/output invariants, legacy
-  token-file compatibility, and explicit failed-sample-versus-zero semantics.
-- Hardened published weight provenance: existing weight filename, byte size,
-  and SHA-256 fields remain, while private filesystem paths, device/inode
-  numbers, and filesystem timestamps are no longer emitted. Consumers that
-  read those location fields must treat them as intentionally removed.
+- No unreleased changes.
+
+## 1.0.0 — 2026-08-05
+
+- Established the supported v1 command-line, run-provenance, and documented
+  required-output contracts, with additive and corrective changes governed by
+  the published compatibility policy.
+- Added the `tumorquantai` command with installation routes for Docker,
+  Singularity/Apptainer, Poetry, and Conda; offline doctor and demo commands;
+  model-free inspection; safe smoke/fast/full presets; failure-aware status;
+  portable reports; and a one-public-slide quickstart.
+- Added the exact `--patches PATH --paper-figures --output DIR` TIFF route,
+  per-input physical-scale validation, QC/ROI figures with scale bars,
+  detected-cell count plots/tables, and failure-aware cohort aggregation.
+- Added privacy-sanitized breast-IHC release preparation, deterministic ZIP64
+  packaging, resumable large Zenodo uploads, one-action publication, and
+  public-record reconciliation. The raw-only dataset is published separately
+  as Zenodo record `21797920`, DOI `10.5281/zenodo.21797920`.
+- Rebuilt the README and MkDocs site into task-oriented starts, tutorials,
+  how-to guides, explanations, reference material, troubleshooting, and
+  maintainer checks. The lymphoma tutorial remains matched to immutable
+  software release `v0.4.0` and dataset DOI `10.5281/zenodo.21466410`.
+- Added exact-head CI for documentation, installation, public-slide
+  preparation, and Docker/Singularity/Poetry/Conda orchestration routes.
+- Corrected direct Nextflow GPU profiles to select the pinned GPU runtime
+  digest while preserving explicit container overrides.
+- Preserved `run.sh`, direct Nextflow, worker overrides, scientific/output
+  invariants, legacy token-file compatibility, and explicit
+  failed-sample-versus-zero semantics.
+- Hardened published weight provenance: filename, byte size, and SHA-256 remain,
+  while private paths, device/inode numbers, and filesystem timestamps are no
+  longer emitted.
 
 ## 0.4.0 — 2026-07-20
 

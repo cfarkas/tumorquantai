@@ -3,11 +3,11 @@
 This directory accompanies the
 [breast IHC raw-TIFF patch tutorial](../../docs/tutorials/breast-ihc-patches.md).
 It contains command templates only. It does not contain TIFFs, private case
-mappings, clinical data, checksums, a public manifest, or a download URL.
-
-The example dataset and Zenodo DOI are pending governance review and
-publication. Do not assign the lymphoma tutorial DOI or any placeholder DOI to
-this collection.
+mappings, clinical data, checksums, or a public manifest. The public raw-only
+dataset is [Zenodo record 21797920](https://zenodo.org/records/21797920), DOI
+[`10.5281/zenodo.21797920`](https://doi.org/10.5281/zenodo.21797920), under
+CC BY 4.0. Do not assign the lymphoma tutorial DOI to this collection or use
+either dataset DOI as a TumorQuantAI software DOI.
 
 ## Embedded-MPP CPU run
 
@@ -89,11 +89,11 @@ packager tool/runtime produce exact archive bytes despite different source
 filesystem timestamps or modes. It does not promise byte identity across
 arbitrary Python versions or ZIP implementations.
 
-For this cohort, 51 cases and 1,901 sanitized TIFFs become 51 forced-ZIP64 case
-archives plus `TQA_BreastIHC_manifest_bundle.zip`, `packaging_report.json`,
-`SHA256SUMS`, and `MD5SUMS`: exactly 55 top-level upload files. This is below
-Zenodo's default 100-file limit; the default 50 GB size limit, measured package
-size, any quota request, privacy/governance review, and publication remain
-pending.
+For this published cohort, 51 cases and 1,901 sanitized TIFFs become 51
+forced-ZIP64 case archives plus `TQA_BreastIHC_manifest_bundle.zip`,
+`packaging_report.json`, `SHA256SUMS`, and `MD5SUMS`: exactly 55 top-level
+files totaling 74,958,557,152 bytes. The required record quota, privacy,
+governance, rights, metadata, and publication reviews were completed for
+record 21797920. A new release requires its own independent reviews and quota.
 
 The same templates are available as plain text in [`commands.txt`](commands.txt).

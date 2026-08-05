@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -12,16 +13,24 @@ import urllib.request
 from typing import Any
 
 
+SOFTWARE_RELEASE = "v1.0.0"
 RECORD = "21466410"
 DOI = "10.5281/zenodo.21466410"
 SAMPLE_FILE = "TumorQuantAI_LymphomaWSI_022.mds"
 SAMPLE_SIZE = 125_350_400
 SAMPLE_MD5 = "94bb5b08ccf1957f8c42a579e8b33cfb"
 MODEL_REVISION = "cde2eee81af9e39b03802fc33d4f284733b5ee5e"
+BREAST_RECORD = "21797920"
+BREAST_DOI = "10.5281/zenodo.21797920"
+BREAST_FILE_COUNT = 55
+BREAST_TOTAL_BYTES = 74_958_557_152
+BREAST_ROSTER_SHA256 = (
+    "a16f5cf00acc5aa20463f8a942175f11db608e082f7d067da917c8b29dd842fc"
+)
 
 
 def request(url: str, *, expect_json: bool = False) -> tuple[int, Any]:
-    headers = {"User-Agent": "TumorQuantAI-external-check/0.4.0"}
+    headers = {"User-Agent": "TumorQuantAI-external-check/1.0.0"}
     github_token = os.environ.get("GITHUB_TOKEN", "").strip()
     if github_token and url.startswith("https://api.github.com/"):
         headers["Authorization"] = "Bearer " + github_token
@@ -54,17 +63,115 @@ def zenodo_record_is_public(record: dict[str, Any]) -> bool:
     )
 
 
-def main() -> int:
+def breast_roster_sha256(files: list[dict[str, Any]]) -> str:
+    """Hash the sorted public filename, byte-size, and Zenodo checksum roster."""
+    rows = []
+    for item in files:
+        name = str(item.get("key") or item.get("filename") or "")
+        size = item.get("size", item.get("filesize"))
+        checksum = str(item.get("checksum") or "").lower()
+        rows.append(f"{name}\t{size}\t{checksum}\n")
+    return hashlib.sha256("".join(sorted(rows)).encode("utf-8")).hexdigest()
+
+
+def breast_record_failures(record: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    if str(record.get("id")) != BREAST_RECORD or record.get("doi") != BREAST_DOI:
+        failures.append("breast-IHC Zenodo record ID/DOI changed")
+    if not zenodo_record_is_public(record):
+        failures.append("breast-IHC Zenodo record is not reported as public")
+    metadata = record.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    license_value = metadata.get("license")
+    license_id = (
+        license_value.get("id")
+        if isinstance(license_value, dict)
+        else license_value
+    )
+    if str(license_id).casefold() != "cc-by-4.0":
+        failures.append("breast-IHC Zenodo license is not CC BY 4.0")
+    resource_type = metadata.get("resource_type")
+    resource_id = (
+        resource_type.get("type")
+        if isinstance(resource_type, dict)
+        else metadata.get("upload_type")
+    )
+    if str(resource_id).casefold() != "dataset":
+        failures.append("breast-IHC Zenodo resource type is not dataset")
+    files = record.get("files")
+    if not isinstance(files, list) or not all(
+        isinstance(item, dict) for item in files
+    ):
+        failures.append("breast-IHC Zenodo file roster is invalid")
+        return failures
+    names = [str(item.get("key") or item.get("filename") or "") for item in files]
+    sizes = [item.get("size", item.get("filesize")) for item in files]
+    checksums = [str(item.get("checksum") or "").lower() for item in files]
+    if (
+        len(files) != BREAST_FILE_COUNT
+        or any(not name for name in names)
+        or len(set(names)) != len(names)
+    ):
+        failures.append("breast-IHC Zenodo file count/names changed")
+    if (
+        any(not isinstance(size, int) or size <= 0 for size in sizes)
+        or sum(size for size in sizes if isinstance(size, int))
+        != BREAST_TOTAL_BYTES
+    ):
+        failures.append("breast-IHC Zenodo total byte count changed")
+    if any(
+        len(checksum) != 36
+        or not checksum.startswith("md5:")
+        or any(character not in "0123456789abcdef" for character in checksum[4:])
+        for checksum in checksums
+    ):
+        failures.append("breast-IHC Zenodo checksum metadata is invalid")
+    elif breast_roster_sha256(files) != BREAST_ROSTER_SHA256:
+        failures.append(
+            "breast-IHC Zenodo filename/size/checksum roster changed"
+        )
+    return failures
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--pre-release",
+        action="store_true",
+        help=(
+            "check public dependencies and datasets before the new GitHub "
+            "software release exists"
+        ),
+    )
+    args = parser.parse_args(argv)
     failures: list[str] = []
     checks: list[str] = []
+    if not args.pre_release:
+        try:
+            _status, release = request(
+                "https://api.github.com/repos/cfarkas/tumorquantai/releases/tags/"
+                f"{SOFTWARE_RELEASE}",
+                expect_json=True,
+            )
+            if (
+                release.get("tag_name") != SOFTWARE_RELEASE
+                or release.get("draft")
+                or release.get("prerelease")
+            ):
+                failures.append(
+                    f"GitHub release {SOFTWARE_RELEASE} identity/state changed"
+                )
+            checks.append("GitHub release")
+        except RuntimeError as exc:
+            failures.append(str(exc))
+
     try:
-        _status, release = request(
-            "https://api.github.com/repos/cfarkas/tumorquantai/releases/tags/v0.4.0",
+        _status, breast_record = request(
+            f"https://zenodo.org/api/records/{BREAST_RECORD}",
             expect_json=True,
         )
-        if release.get("tag_name") != "v0.4.0" or release.get("draft") or release.get("prerelease"):
-            failures.append("GitHub release v0.4.0 identity/state changed")
-        checks.append("GitHub release")
+        failures.extend(breast_record_failures(breast_record))
+        checks.append("breast-IHC Zenodo record")
     except RuntimeError as exc:
         failures.append(str(exc))
 
@@ -84,7 +191,8 @@ def main() -> int:
         failures.append(str(exc))
 
     for label, url, expect_json in (
-        ("dataset DOI", f"https://doi.org/{DOI}", False),
+        ("lymphoma dataset DOI", f"https://doi.org/{DOI}", False),
+        ("breast-IHC dataset DOI", f"https://doi.org/{BREAST_DOI}", False),
         ("GitHub Pages", "https://cfarkas.github.io/tumorquantai/", False),
         ("pinned HistoPLUS revision", f"https://huggingface.co/api/models/Owkin-Bioptimus/histoplus/revision/{MODEL_REVISION}", True),
     ):

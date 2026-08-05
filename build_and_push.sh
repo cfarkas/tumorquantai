@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE="${IMAGE:-carlosfarkas/tumorquantai}"
-TAG="${TAG:-0.4.0}"
+TAG="${TAG:-1.0.0}"
 FLAVOR="${FLAVOR:-both}"
 PUSH="false"
 NO_CACHE="false"

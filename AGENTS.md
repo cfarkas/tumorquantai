@@ -79,11 +79,13 @@ Hugging Face checks belong in scheduled/manual CI.
 ## Release, dataset, and licensing rules
 
 Keep software release, documentation, and public tutorial metadata distinct.
-The current matched facts are software release `v0.4.0`, Zenodo record
-`21466410`, dataset DOI `10.5281/zenodo.21466410`, sample
-`TumorQuantAI_LymphomaWSI_022`, and source MPP `0.261780`. Verify these against
-the version record before changing them. Never assign the dataset DOI to the
-software or invent performance, clinical-validation, or biological claims.
+The current software release is `v1.0.0`. The lymphoma tutorial remains
+immutably matched to software `v0.4.0`, Zenodo record `21466410`, dataset DOI
+`10.5281/zenodo.21466410`, sample `TumorQuantAI_LymphomaWSI_022`, and source
+MPP `0.261780`. The separate raw breast-IHC patch dataset is Zenodo record
+`21797920`, DOI `10.5281/zenodo.21797920`. Verify these identities against
+their public records before changing them. Never assign either dataset DOI to
+the software or invent performance, clinical-validation, or biological claims.
 
 This repository has no declared open-source license. Source visibility is not
 reuse permission. Do not add a license or license badge until the owner records

@@ -29,7 +29,7 @@ MANIFEST = ROOT / "examples/lymphoma/tumorquantai_lymphoma_mds_manifest.csv"
 RECORD = "21466410"
 API_URL = f"https://zenodo.org/api/records/{RECORD}"
 FILE_URL = f"https://zenodo.org/records/{RECORD}/files/{{filename}}?download=1"
-USER_AGENT = "TumorQuantAI-Zenodo-URL-check/0.4.0"
+USER_AGENT = "TumorQuantAI-Zenodo-URL-check/1.0.0"
 MANIFEST_FILENAME = "tumorquantai_lymphoma_mds_manifest.csv"
 MANIFEST_SIZE = 10_108
 MANIFEST_MD5 = "ad9a9472e8beb302f8b9ba2b3359bacc"
