@@ -28,6 +28,9 @@
   preparation, and Docker/Singularity/Poetry/Conda orchestration routes.
 - Corrected direct Nextflow GPU profiles to select the pinned GPU runtime
   digest while preserving explicit container overrides.
+- Adopted the MIT License for TumorQuantAI repository code and documentation;
+  third-party software, model artifacts, containers, and datasets retain their
+  separate licenses or terms.
 - Preserved `run.sh`, direct Nextflow, worker overrides, scientific/output
   invariants, legacy token-file compatibility, and explicit
   failed-sample-versus-zero semantics.

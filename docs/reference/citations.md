@@ -11,6 +11,8 @@ Use the repository `CITATION.cff` and record the exact release/tag or commit:
 
 TumorQuantAI has no software DOI. DOIs `10.5281/zenodo.21466410` and
 `10.5281/zenodo.21797920` belong to separate datasets, not the software.
+Repository code and documentation are licensed under MIT; third-party
+software, models, weights, containers, and datasets retain separate terms.
 
 ## Public lymphoma tutorial dataset
 

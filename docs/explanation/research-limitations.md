@@ -23,6 +23,8 @@ are not substitutes for an appropriate study design, independent validation,
 domain-expert review, data governance, or regulatory assessment.
 
 Model and dataset access/licensing are separate from repository source
-visibility. The repository currently has no declared open-source license.
+visibility. TumorQuantAI repository code and documentation use the MIT License;
+third-party software, models, weights, containers, and datasets retain separate
+licenses or terms.
 
 **Next:** review the [provenance reference](../reference/provenance.md).

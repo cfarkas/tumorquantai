@@ -23,7 +23,8 @@ Release preparation does not itself authorize a merge, tag, or publication.
 - [ ] Citation separates software, dataset, LazySlide, and HistoPLUS.
 - [ ] `cffconvert --infile CITATION.cff --validate` passes with pinned
       `cffconvert==2.0.0`; the dataset DOI is not assigned to the software.
-- [ ] License wording matches the actual repository license state.
+- [ ] The exact MIT `LICENSE`, CFF/package identifiers, README, and release-note
+      wording remain aligned.
 
 ## Dataset consistency
 
@@ -51,7 +52,7 @@ Release preparation does not itself authorize a merge, tag, or publication.
 ## Release action
 
 - [ ] Owner reviews changelog/version and authorizes the release.
-- [ ] The owner-approved software-license state is recorded exactly.
+- [ ] The owner-approved MIT software-license decision is recorded exactly.
 - [ ] Distribution scope is explicit; `v1.0.0` is a GitHub source release
       unless separately validated standalone packages or containers exist.
 - [ ] Create a tag only after all above checks and normal review.

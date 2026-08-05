@@ -85,4 +85,6 @@ Use controlled research sample IDs and redact diagnostic reports before opening 
 
 ## License status
 
-The repository currently has no declared open-source license. Source visibility does not grant permission to copy, modify, or redistribute it. The Zenodo dataset and gated HistoPLUS model have separate licenses or terms.
+TumorQuantAI repository code and documentation are licensed under MIT. The
+Zenodo datasets, dependencies, container contents, and gated HistoPLUS model or
+weights have separate licenses or terms.

@@ -1,53 +1,42 @@
-# License decision status
+# Software license decision
 
-## Current status
+## Owner decision
 
-TumorQuantAI has no repository `LICENSE` file and no declared open-source
-license. The source is publicly visible, but copyright protection applies by
-default: visibility alone does not grant permission to copy, modify,
-redistribute, or create derivative works beyond rights supplied by law or a
-separate agreement.
+On 2026-08-05, the owner selected the MIT License for TumorQuantAI release
+`v1.0.0`. The canonical license text is tracked in the repository root as
+`LICENSE`, with copyright notice:
 
-This is a material reuse and contribution blocker. It requires an accountable
-owner decision and must not be “fixed” by a contributor selecting a license on
-the owner's behalf.
+> Copyright (c) 2026 Carlos Farkas
 
-## Decisions that must remain separate
+Repository and citation/package metadata identify the license with SPDX
+identifier `MIT`.
 
-An owner should review at least:
+## Scope and boundaries
 
-1. **Repository code and documentation** — who owns the copyright and can grant
-   permission?
-2. **Dependencies and container contents** — are their licenses compatible
-   with the intended distribution and use?
-3. **HistoPLUS model/code/weights** — gated access and model terms are separate
-   from the TumorQuantAI source license; weights are not redistributed here.
-4. **Public tutorial dataset** — Zenodo access and its declared CC BY 4.0 terms
-   are separate from software; that dataset license cannot be applied to
-   repository code or model weights.
-5. **Private WSI/clinical data** — institutional governance, consent, privacy,
-   and data-use agreements are not replaced by an open-source license.
-6. **Contributions** — decide whether a contributor agreement, sign-off, or
-   other provenance policy is needed.
-7. **Patents, trademarks, and warranty** — obtain appropriate advice for the
-   intended project scope.
+The repository MIT License covers TumorQuantAI code and associated
+documentation distributed in this release to the extent held and licensable by
+the copyright holder. It does not relicense or override terms for:
 
-## Owner checklist
+1. third-party dependencies or files incorporated from other projects;
+2. CPU/GPU runtime image contents supplied under their component licenses;
+3. LazySlide, HistoPLUS code, gated model artifacts, or model weights;
+4. the lymphoma and breast-IHC Zenodo datasets, which separately declare
+   CC BY 4.0;
+5. private WSI, clinical data, institutional materials, or user-provided data;
+6. names, logos, trademarks, patents, or rights not granted by the MIT text.
 
-- [ ] Confirm ownership/authority for every repository component.
-- [ ] Inventory dependency and container licenses.
-- [ ] Review HistoPLUS/LazySlide terms and redistribution boundaries.
-- [ ] Confirm the Zenodo record's intended dataset license/reuse statement.
-- [ ] Choose a software license with qualified institutional/legal guidance.
-- [ ] Add the exact license text and repository metadata in one reviewed PR.
-- [ ] Decide whether existing contributions need consent or clarification.
-- [ ] Update README, documentation, package/container metadata, and release
-      notes without applying the dataset DOI to the software.
-- [ ] Document the effective date and treatment of earlier source versions.
+Model access, data governance, consent, privacy, and institutional data-use
+requirements remain independent of the repository software license. Neither
+dataset DOI is a TumorQuantAI software DOI.
 
-Until that checklist is completed, public wording must remain:
-“source visible; no reuse permission granted by an absent license.”
+## Maintainer requirements
 
-This owner license decision is the only expected manual governance action for
-the usability overhaul. Future release/tag creation is a separate routine
-release action, not unfinished implementation.
+- Preserve the exact `LICENSE` text and copyright notice in distributions.
+- Keep `MIT` aligned in `CITATION.cff`, package metadata, README, release notes,
+  and repository hosting metadata.
+- Do not describe third-party software, containers, models, weights, or
+  datasets as MIT-licensed by TumorQuantAI unless their owners separately do so.
+- Inventory dependency and container licenses before redistributing a new
+  bundled artifact.
+- Record any future license or copyright-scope change as a new explicit owner
+  decision with an effective release.

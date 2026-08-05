@@ -14,6 +14,9 @@ exact release/tag or Git commit used:
 TumorQuantAI does not currently have a software DOI. Do not use the tutorial
 dataset DOI as a software DOI.
 
+Repository code and documentation are licensed under MIT. Third-party
+software, models, weights, containers, and datasets retain separate terms.
+
 ## Public lymphoma tutorial dataset
 
 If the Zenodo MDS files or their manifest are used, cite:

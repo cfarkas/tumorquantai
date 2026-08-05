@@ -87,6 +87,8 @@ MPP `0.261780`. The separate raw breast-IHC patch dataset is Zenodo record
 their public records before changing them. Never assign either dataset DOI to
 the software or invent performance, clinical-validation, or biological claims.
 
-This repository has no declared open-source license. Source visibility is not
-reuse permission. Do not add a license or license badge until the owner records
-an explicit decision. Do not create a release or tag as part of routine fixes.
+This repository is licensed under MIT as recorded in `LICENSE` and
+`docs/maintainers/LICENSE_DECISION.md`. Do not apply the repository license to
+third-party dependencies, container contents, HistoPLUS code/weights, public
+datasets, or private WSI/clinical data; each retains its own terms. Do not
+create a release or tag as part of routine fixes.

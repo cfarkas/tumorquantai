@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -19,6 +20,9 @@ from jsonschema.validators import Draft202012Validator
 
 
 ROOT = Path(__file__).resolve().parents[1]
+MIT_LICENSE_SHA256 = (
+    "28895c76567bc0105eba32986d2e8912e9b53f7aea287268f305179559101d69"
+)
 STALE_PATTERNS = {
     "pre-publication claim": re.compile(r"pre[ -]?publication", re.IGNORECASE),
     "unpublished claim": re.compile(r"\bunpublished\b", re.IGNORECASE),
@@ -289,7 +293,17 @@ def check_metadata(files: list[Path], errors: list[str]) -> None:
             errors.append(f"invalid YAML in {path.relative_to(ROOT)}: {exc}")
     try:
         cff = yaml.safe_load((ROOT / "CITATION.cff").read_text(encoding="utf-8"))
-        required = {"cff-version", "message", "title", "type", "authors", "version", "date-released", "repository-code"}
+        required = {
+            "cff-version",
+            "message",
+            "title",
+            "type",
+            "authors",
+            "version",
+            "date-released",
+            "repository-code",
+            "license",
+        }
         missing = required.difference(cff or {})
         if missing:
             errors.append("CITATION.cff missing required project fields: " + ", ".join(sorted(missing)))
@@ -297,6 +311,17 @@ def check_metadata(files: list[Path], errors: list[str]) -> None:
             errors.append("CITATION.cff must describe CFF 1.2.0 software")
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         package_version = str(pyproject["tool"]["poetry"]["version"])
+        package_license = str(pyproject["tool"]["poetry"].get("license"))
+        if str(cff.get("license")) != "MIT" or package_license != "MIT":
+            errors.append(
+                "CITATION.cff and pyproject.toml must identify the owner-approved "
+                "software license as MIT"
+            )
+        license_path = ROOT / "LICENSE"
+        if not license_path.is_file():
+            errors.append("repository root is missing the owner-approved LICENSE")
+        elif hashlib.sha256(license_path.read_bytes()).hexdigest() != MIT_LICENSE_SHA256:
+            errors.append("LICENSE does not match the approved MIT text and copyright notice")
         version_sources = {
             "CITATION.cff": str(cff.get("version")),
             "pyproject.toml": package_version,

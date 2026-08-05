@@ -40,13 +40,10 @@ image digests. HistoPLUS is gated, its terms are separate, and users must obtain
 their own authorized access. TumorQuantAI does not redistribute HistoPLUS
 weights.
 
-The repository's declared software-license state must be read independently
-from dataset licenses. The CC BY 4.0 terms of either public example dataset do
-not license TumorQuantAI code, dependencies, containers, or model weights.
-At release-candidate preparation time, the software is **source visible; no
-reuse permission is granted by an absent license**. Publication requires the
-owner to explicitly approve that state or replace it with an owner-approved
-software license and corresponding metadata.
+TumorQuantAI repository code and documentation are released under the MIT
+License. That license does not relicense third-party dependencies, runtime
+image contents, HistoPLUS code/weights, or public datasets. The two example
+datasets retain their separate CC BY 4.0 terms and DOIs.
 
 ## Compatibility and reproducibility
 
@@ -71,7 +68,7 @@ software license and corresponding metadata.
 
 Local release-candidate validation completed 480 CPU-only repository tests,
 shell and Python syntax checks, the structural demo, fixture inspection,
-CLI routes, repository hygiene over 198 source paths, canonical CFF validation,
+CLI routes, repository hygiene over 199 source paths, canonical CFF validation,
 a strict documentation build, Dockerfile static validation, and public
 pre-release metadata checks. The exact checksum-verified Nextflow 25.10.2
 runtime passed configuration resolution plus discovery-only, normal
