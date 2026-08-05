@@ -1,8 +1,9 @@
 [tool.poetry]
 name = "tumorquantai-launcher"
-version = "0.5.0"
+version = "1.0.0"
 description = "Poetry-managed launcher for the TumorQuantAI Nextflow workflow"
 authors = ["Carlos Farkas"]
+license = "MIT"
 readme = "README.md"
 packages = [{ include = "tumorquantai_cli" }]
 

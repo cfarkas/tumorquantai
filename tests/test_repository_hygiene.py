@@ -41,6 +41,12 @@ def scan_text_path(
     return errors
 
 
+def test_release_metadata_versions_are_aligned() -> None:
+    errors: list[str] = []
+    HYGIENE.check_metadata([], errors)
+    assert errors == []
+
+
 @pytest.mark.parametrize(
     "relative",
     [

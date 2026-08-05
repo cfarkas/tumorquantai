@@ -5,9 +5,23 @@
 [![CI](https://github.com/cfarkas/tumorquantai/actions/workflows/ci.yml/badge.svg)](https://github.com/cfarkas/tumorquantai/actions/workflows/ci.yml)
 [![Documentation](https://github.com/cfarkas/tumorquantai/actions/workflows/docs.yml/badge.svg)](https://cfarkas.github.io/tumorquantai/)
 [![Release](https://img.shields.io/github/v/release/cfarkas/tumorquantai?sort=semver)](https://github.com/cfarkas/tumorquantai/releases/latest)
-[![Dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21466410.svg)](https://doi.org/10.5281/zenodo.21466410)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Lymphoma dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21466410.svg)](https://doi.org/10.5281/zenodo.21466410)
+[![Breast-IHC dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21797920.svg)](https://doi.org/10.5281/zenodo.21797920)
 
 TumorQuantAI is a Nextflow workflow for H&E whole-slide images (WSIs). It validates physical scale, samples tissue reproducibly, runs HistoPLUS, and writes overlays, cell coordinates, per-slide summaries, and cohort tables.
+
+Version 1.0.0 is distributed as a GitHub source release. It does not publish a
+standalone PyPI workflow package, a new TumorQuantAI application container, or
+model weights; scientific execution uses separately published runtime images
+at immutable digests. See the
+[v1.0.0 release notes](docs/maintainers/RELEASE_NOTES_1.0.0.md) for scope,
+compatibility, validation boundaries, and research-use limitations.
+
+TumorQuantAI repository code and documentation are licensed under the
+[MIT License](LICENSE). Third-party dependencies, runtime image contents,
+HistoPLUS code/weights, and public datasets retain their separate licenses or
+terms.
 
 ```text
 H&E WSI -> validated scale -> tissue tiles -> HistoPLUS -> overlays + coordinates + cohort tables
@@ -104,6 +118,33 @@ See the [complete one-WSI QuickStart](https://cfarkas.github.io/tumorquantai/qui
 
 The [full tutorial](https://cfarkas.github.io/tumorquantai/full_tutorial/) starts with `git clone` and `cd tumorquantai`, uses fixed relative tutorial directories, downloads all 21 public lymphoma MDS files, validates every SHA-256 checksum, converts L0/L2 with the installed `tumorquantai convert` command, and processes a deterministic 10% of detected tissue tiles per slide.
 
+## Other example run: breast IHC TIFF patches at 100%
+
+The patch route accepts authorized local raw TIFF patches, processes every
+discovered patch without percentage subsampling, and can write paper-ready and
+QC figures. Use TIFF-embedded physical pixel size when it is reliable:
+
+```bash
+# Process every local TIFF patch on CPU and request paper/QC figures.
+tumorquantai --patches /path/to/breast-ihc-tiff-patches \
+  --paper-figures \
+  --output /path/to/breast-ihc-patch-results \
+  --cpu
+```
+
+If the TIFFs do not contain reliable micrometres-per-pixel metadata, provide one
+verified common value with `--source-mpp`. Do not copy an MPP from another
+scanner, objective, or export. The public, raw-only example dataset is available
+from [Zenodo record 21797920](https://zenodo.org/records/21797920) under CC BY
+4.0, with dataset DOI
+[`10.5281/zenodo.21797920`](https://doi.org/10.5281/zenodo.21797920). Its 55
+files comprise 51 case archives containing 1,901 TIFF patches plus four
+auxiliary files: one manifest bundle, one packaging report, and two checksum
+rosters (74,958,557,152 bytes total). Generated paper and QC figures are local
+workflow outputs and are not part of the Zenodo deposit. This
+DOI identifies the breast-IHC dataset, not the TumorQuantAI software or the
+separate lymphoma dataset. See the [breast IHC patch tutorial](https://cfarkas.github.io/tumorquantai/tutorials/breast-ihc-patches/).
+
 ## Run your own WSIs
 
 Use one L0 TIFF and, for sampled analyses, one L2 companion per sample:
@@ -151,6 +192,7 @@ A zero is interpretable only for a completed sample. Failed or incomplete sample
 - [QuickStart Example 1](https://cfarkas.github.io/tumorquantai/quick_start/)
 - [Execution methods](https://cfarkas.github.io/tumorquantai/execution_environments/)
 - [Full 21-slide tutorial](https://cfarkas.github.io/tumorquantai/full_tutorial/)
+- [Breast IHC TIFF patches at 100%](https://cfarkas.github.io/tumorquantai/tutorials/breast-ihc-patches/)
 - [Apply to your own WSIs](https://cfarkas.github.io/tumorquantai/own_data/)
 - [Outputs](https://cfarkas.github.io/tumorquantai/outputs/)
 - [Troubleshooting](https://cfarkas.github.io/tumorquantai/troubleshooting/)

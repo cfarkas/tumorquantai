@@ -15,6 +15,22 @@ The public tutorial dataset is:
 
 Cite the dataset when its MDS slides, manifest, checksums, or derived tutorial TIFFs are used.
 
+## Public breast-IHC raw patch dataset
+
+The public raw-only breast-IHC example dataset is:
+
+- Zenodo record: `21797920`
+- DOI: [`10.5281/zenodo.21797920`](https://doi.org/10.5281/zenodo.21797920)
+- License: CC BY 4.0
+- Contents: 55 files comprising 51 case archives with 1,901 TIFF patches plus
+  four auxiliary files: one manifest bundle, one packaging report, and two
+  checksum rosters (74,958,557,152 bytes total)
+
+Cite this dataset when its TIFF patches, manifest, or checksums are used.
+Generated paper and QC figures are local TumorQuantAI outputs and are not part
+of the Zenodo deposit. This DOI identifies the breast-IHC dataset; it is not a
+software DOI and does not replace the separate citation for TumorQuantAI.
+
 ## HistoPLUS and LazySlide
 
 Cite the HistoPLUS model and LazySlide software according to their official documentation and terms. Record the pinned HistoPLUS revision and weight identity from each TumorQuantAI summary.
@@ -69,4 +85,6 @@ Use controlled research sample IDs and redact diagnostic reports before opening 
 
 ## License status
 
-The repository currently has no declared open-source license. Source visibility does not grant permission to copy, modify, or redistribute it. The Zenodo dataset and gated HistoPLUS model have separate licenses or terms.
+TumorQuantAI repository code and documentation are licensed under MIT. The
+Zenodo datasets, dependencies, container contents, and gated HistoPLUS model or
+weights have separate licenses or terms.

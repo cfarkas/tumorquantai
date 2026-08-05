@@ -8,9 +8,12 @@ not clinically validated.
 ## Entry points
 
 - Main command-line interface: `./tumorquantai doctor|demo|inspect|run|status|report`
+- Full raw-TIFF patch route: `./tumorquantai --patches PATH --paper-figures --output DIR`
 - Public one-slide path: `./tumorquantai quickstart --output MOUNTED_PATH`
 - Compatible expert interfaces: `./run.sh` and `nextflow run .`
 - Scientific worker: `lazyslide_histoplus_wsi_celltype.py`
+- Offline breast-IHC release helpers: `bin/prepare_breast_ihc_patch_release.py`
+  and `bin/package_breast_ihc_patch_release.py` (no upload or publication)
 
 Keep the main command-line interface a thin, testable wrapper. Do not duplicate or
 silently change the biological/image-analysis engine.
@@ -76,12 +79,16 @@ Hugging Face checks belong in scheduled/manual CI.
 ## Release, dataset, and licensing rules
 
 Keep software release, documentation, and public tutorial metadata distinct.
-The current matched facts are software release `v0.4.0`, Zenodo record
-`21466410`, dataset DOI `10.5281/zenodo.21466410`, sample
-`TumorQuantAI_LymphomaWSI_022`, and source MPP `0.261780`. Verify these against
-the version record before changing them. Never assign the dataset DOI to the
-software or invent performance, clinical-validation, or biological claims.
+The current software release is `v1.0.0`. The lymphoma tutorial remains
+immutably matched to software `v0.4.0`, Zenodo record `21466410`, dataset DOI
+`10.5281/zenodo.21466410`, sample `TumorQuantAI_LymphomaWSI_022`, and source
+MPP `0.261780`. The separate raw breast-IHC patch dataset is Zenodo record
+`21797920`, DOI `10.5281/zenodo.21797920`. Verify these identities against
+their public records before changing them. Never assign either dataset DOI to
+the software or invent performance, clinical-validation, or biological claims.
 
-This repository has no declared open-source license. Source visibility is not
-reuse permission. Do not add a license or license badge until the owner records
-an explicit decision. Do not create a release or tag as part of routine fixes.
+This repository is licensed under MIT as recorded in `LICENSE` and
+`docs/maintainers/LICENSE_DECISION.md`. Do not apply the repository license to
+third-party dependencies, container contents, HistoPLUS code/weights, public
+datasets, or private WSI/clinical data; each retains its own terms. Do not
+create a release or tag as part of routine fixes.

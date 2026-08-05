@@ -1,7 +1,7 @@
 # Release checklist
 
-Use this checklist for a future release. The usability overhaul itself remains
-under `Unreleased` and does not create a tag.
+Use this checklist for the `v1.0.0` release candidate and future releases.
+Release preparation does not itself authorize a merge, tag, or publication.
 
 ## Code and compatibility
 
@@ -23,7 +23,8 @@ under `Unreleased` and does not create a tag.
 - [ ] Citation separates software, dataset, LazySlide, and HistoPLUS.
 - [ ] `cffconvert --infile CITATION.cff --validate` passes with pinned
       `cffconvert==2.0.0`; the dataset DOI is not assigned to the software.
-- [ ] License wording matches the actual repository license state.
+- [ ] The exact MIT `LICENSE`, CFF/package identifiers, README, and release-note
+      wording remain aligned.
 
 ## Dataset consistency
 
@@ -32,11 +33,16 @@ under `Unreleased` and does not create a tag.
 - [ ] Alias 022 is `125350400` bytes with source MPP `0.261780`.
 - [ ] Repository manifest matches the authoritative record manifest.
 - [ ] Public quickstart selects only alias 022 and requires no Zenodo token.
+- [ ] Breast-IHC record `21797920` and DOI `10.5281/zenodo.21797920`
+      resolve with 55 unique files totaling `74,958,557,152` bytes under
+      CC BY 4.0.
+- [ ] Both dataset DOIs remain separate from the software citation and license.
 
 ## Safety and CI
 
 - [ ] Tests require no GPU, gated model, real WSI, or public-data download.
-- [ ] Scheduled/manual external-link checks pass separately.
+- [ ] Pre-release external checks pass with
+      `python scripts/check_external_resources.py --pre-release`.
 - [ ] No tokens, weights, WSI, PHI, patient tables, large outputs, or caches are
       tracked.
 - [ ] `git diff --check` and forbidden-artifact/secret scans pass.
@@ -46,6 +52,12 @@ under `Unreleased` and does not create a tag.
 ## Release action
 
 - [ ] Owner reviews changelog/version and authorizes the release.
+- [ ] The owner-approved MIT software-license decision is recorded exactly.
+- [ ] Distribution scope is explicit; `v1.0.0` is a GitHub source release
+      unless separately validated standalone packages or containers exist.
 - [ ] Create a tag only after all above checks and normal review.
+- [ ] After publication, the default external check reconciles the public
+      non-draft/non-prerelease GitHub release for the new tag.
 - [ ] Do not assign the dataset DOI to software.
-- [ ] Do not publish or merge automatically from a usability PR.
+- [ ] Merge, tag, and publish only with explicit owner authorization and the
+      exact-head checks above; never infer authorization from a usability PR.

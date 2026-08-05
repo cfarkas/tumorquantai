@@ -1,9 +1,9 @@
 # Contributing
 
-Focused issues and pull requests are welcome. This source-visible repository
-does not yet declare an open-source license; contribution/reuse permissions
-must not be inferred from public visibility. See
-`docs/maintainers/LICENSE_DECISION.md`.
+Focused issues and pull requests are welcome. TumorQuantAI repository code and
+documentation are available under the MIT License. Third-party dependencies,
+containers, models, weights, and datasets retain their separate terms. See
+`LICENSE` and `docs/maintainers/LICENSE_DECISION.md`.
 
 ## Before opening a change
 

@@ -332,8 +332,8 @@ shared release, push that image and replace the local tag with its immutable
 registry digest. Mount inputs read-only and keep outputs on a controlled mount:
 
 ```bash
-docker build --build-arg FLAVOR=cpu -t tumorquantai:0.4.0-cpu .
-IMAGE=tumorquantai:0.4.0-cpu
+docker build --build-arg FLAVOR=cpu -t tumorquantai:1.0.0-cpu .
+IMAGE=tumorquantai:1.0.0-cpu
 
 docker run --rm \
   --user "$(id -u):$(id -g)" \

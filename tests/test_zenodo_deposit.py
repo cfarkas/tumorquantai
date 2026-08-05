@@ -543,6 +543,102 @@ class ZenodoDepositTests(unittest.TestCase):
         self.assertEqual(result["size"], len(payload))
         self.assertEqual(session.bodies, [payload, payload])
 
+    def test_upload_uses_bounded_connect_write_timeout(self) -> None:
+        payload = b"bounded upload timeout"
+        source = self.root / "bounded-timeout.bin"
+        source.write_bytes(payload)
+        upload = deposit_tool.make_small_upload(
+            source, "bounded-timeout.bin", "test"
+        )
+
+        class CaptureSession:
+            timeout: tuple[float, float] | None = None
+
+            def request(
+                inner_self, method: str, url: str, **kwargs: object
+            ) -> requests.Response:
+                inner_self.timeout = kwargs["timeout"]
+                return response(
+                    201,
+                    {
+                        "size": len(payload),
+                        "checksum": "md5:"
+                        + hashlib.md5(payload, usedforsecurity=False).hexdigest(),
+                    },
+                )
+
+        session = CaptureSession()
+        client = deposit_tool.ZenodoClient(
+            "test-secret-token",
+            "https://zenodo.example/api",
+            session=session,
+        )
+        client.upload_file("https://zenodo.example/api/files/bucket", upload)
+        self.assertEqual(
+            session.timeout,
+            (
+                deposit_tool.UPLOAD_CONNECT_WRITE_TIMEOUT_SECONDS,
+                deposit_tool.UPLOAD_RESPONSE_TIMEOUT_SECONDS,
+            ),
+        )
+        assert session.timeout is not None
+        self.assertGreater(session.timeout[0], 15.0)
+        self.assertLessEqual(session.timeout[0], 10 * 60.0)
+
+    def test_final_retryable_http_diagnostic_is_sanitized(self) -> None:
+        class StatusSession:
+            def request(
+                self, method: str, url: str, **kwargs: object
+            ) -> requests.Response:
+                return response(503, {"message": "response-body-must-not-leak"})
+
+        client = deposit_tool.ZenodoClient(
+            "test-secret-token",
+            "https://zenodo.example/api",
+            retries=1,
+            session=StatusSession(),
+        )
+        with mock.patch.object(deposit_tool.time, "sleep"):
+            with self.assertRaises(deposit_tool.DepositError) as raised:
+                client.request(
+                    "GET",
+                    "https://zenodo.example/api/check?query-must-not-leak",
+                    expected=(200,),
+                )
+        message = str(raised.exception)
+        self.assertIn("final HTTP status: 503", message)
+        self.assertIn("GET /api/check", message)
+        self.assertNotIn("query-must-not-leak", message)
+        self.assertNotIn("test-secret-token", message)
+        self.assertNotIn("response-body-must-not-leak", message)
+
+    def test_final_transport_exception_diagnostic_is_sanitized(self) -> None:
+        class ErrorSession:
+            def request(
+                self, method: str, url: str, **kwargs: object
+            ) -> requests.Response:
+                raise requests.ConnectionError("exception-detail-must-not-leak")
+
+        client = deposit_tool.ZenodoClient(
+            "test-secret-token",
+            "https://zenodo.example/api",
+            retries=1,
+            session=ErrorSession(),
+        )
+        with mock.patch.object(deposit_tool.time, "sleep"):
+            with self.assertRaises(deposit_tool.DepositError) as raised:
+                client.request(
+                    "GET",
+                    "https://zenodo.example/api/check?query-must-not-leak",
+                    expected=(200,),
+                )
+        message = str(raised.exception)
+        self.assertIn("final transport exception: ConnectionError", message)
+        self.assertIn("GET /api/check", message)
+        self.assertNotIn("query-must-not-leak", message)
+        self.assertNotIn("test-secret-token", message)
+        self.assertNotIn("exception-detail-must-not-leak", message)
+
     def test_authenticated_client_refuses_cross_origin_url(self) -> None:
         session = FakeZenodoSession()
         client = deposit_tool.ZenodoClient(

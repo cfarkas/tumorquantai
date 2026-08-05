@@ -14,7 +14,7 @@ body:
     id: version
     attributes:
       label: TumorQuantAI release or commit
-      placeholder: v0.4.0 or a full Git commit
+      placeholder: v1.0.0 or a full Git commit
     validations:
       required: true
   - type: dropdown

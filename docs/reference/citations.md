@@ -6,13 +6,15 @@ Cite each resource actually used; do not assign one resource's DOI to another.
 
 Use the repository `CITATION.cff` and record the exact release/tag or commit:
 
-> Farkas, Carlos. *TumorQuantAI*. Version 0.4.0. 2026.
+> Farkas, Carlos. *TumorQuantAI*. Version 1.0.0. 2026.
 > https://github.com/cfarkas/tumorquantai
 
-TumorQuantAI has no software DOI. DOI `10.5281/zenodo.21466410` belongs to the
-dataset, not the software.
+TumorQuantAI has no software DOI. DOIs `10.5281/zenodo.21466410` and
+`10.5281/zenodo.21797920` belong to separate datasets, not the software.
+Repository code and documentation are licensed under MIT; third-party
+software, models, weights, containers, and datasets retain separate terms.
 
-## Public tutorial dataset
+## Public lymphoma tutorial dataset
 
 When the public MDS files or manifest are used:
 
@@ -21,6 +23,18 @@ When the public MDS files or manifest are used:
 
 The record declares CC BY 4.0, identifies TumorQuantAI `v0.4.0` as its matched
 software, and contains no diagnostic annotations or pathologist ground truth.
+
+## Public breast-IHC raw-patch dataset
+
+When the published raw TIFF patches or release manifest are used:
+
+> Farkas, Carlos. (2026). *TumorQuantAI breast cancer immunohistochemistry
+> patch dataset for marker quantification and reproducible paper figures*
+> (Version 1.0). Zenodo. https://doi.org/10.5281/zenodo.21797920
+
+The record declares CC BY 4.0 for the dataset. Generated paper/QC figures are
+local workflow outputs, not deposit contents. This DOI does not identify or
+license TumorQuantAI software, model weights, dependencies, or containers.
 
 ## LazySlide and HistoPLUS
 

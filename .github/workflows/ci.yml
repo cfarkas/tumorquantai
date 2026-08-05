@@ -109,7 +109,9 @@ jobs:
           echo "$PWD" >> "$GITHUB_PATH"
 
       - name: Parse Nextflow configuration
-        run: nextflow config -flat >/dev/null
+        run: |
+          nextflow config -flat >/dev/null
+          python scripts/check_nextflow_profiles.py
 
       - name: Nextflow discovery-only smoke test
         run: |

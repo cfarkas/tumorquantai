@@ -73,6 +73,17 @@ def option_value(arguments: list[str], name: str) -> str:
     return arguments[arguments.index(name) + 1]
 
 
+def write_patch_tiff(path: Path, *, mpp: float | None = None) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    options: dict[str, object] = {"photometric": "rgb"}
+    if mpp is not None:
+        options.update({
+            "resolution": (10_000.0 / mpp, 10_000.0 / mpp),
+            "resolutionunit": "CENTIMETER",
+        })
+    tifffile.imwrite(path, np.zeros((16, 16, 3), dtype=np.uint8), **options)
+
+
 @pytest.mark.parametrize(
     "command", [None, "doctor", "demo", "inspect", "run", "status", "report", "quickstart"]
 )
@@ -274,6 +285,53 @@ def test_implausible_generic_tiff_resolution_does_not_establish_mpp(tmp_path: Pa
     assert supplied["summary"]["missing_source_mpp"] == 0
 
 
+def test_embedded_tiff_mpp_accepts_matching_resolution_axes(tmp_path: Path) -> None:
+    input_root = tmp_path / "matching-axes" / "case"
+    input_root.mkdir(parents=True)
+    tifffile.imwrite(
+        input_root / "1_L0_rgb.tif",
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        photometric="rgb", resolution=(40_000, 40_000),
+        resolutionunit="CENTIMETER",
+    )
+
+    inspected = core.inspect_inputs(
+        tmp_path / "matching-axes", tmp_path / "matching-inspection",
+    )
+
+    assert inspected["summary"]["missing_source_mpp"] == 0
+    assert inspected["slides"][0]["source_mpp"] == pytest.approx(0.25)
+    assert inspected["slides"][0]["source_mpp_provenance"] == "embedded TIFF metadata"
+
+
+def test_embedded_tiff_mpp_rejects_conflicting_axes_but_explicit_override_wins(
+    tmp_path: Path,
+) -> None:
+    input_root = tmp_path / "conflicting-axes" / "case"
+    input_root.mkdir(parents=True)
+    tifffile.imwrite(
+        input_root / "1_L0_rgb.tif",
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        photometric="rgb", resolution=(40_000, 20_000),
+        resolutionunit="CENTIMETER",
+    )
+
+    inferred = core.inspect_inputs(
+        tmp_path / "conflicting-axes", tmp_path / "conflicting-inspection",
+    )
+    assert inferred["summary"]["missing_source_mpp"] == 1
+    assert inferred["slides"][0]["source_mpp"] is None
+    assert "anisotropic" in inferred["slides"][0]["metadata_reader"]
+
+    supplied = core.inspect_inputs(
+        tmp_path / "conflicting-axes", tmp_path / "supplied-inspection",
+        source_mpp=0.4,
+    )
+    assert supplied["summary"]["missing_source_mpp"] == 0
+    assert supplied["slides"][0]["source_mpp"] == pytest.approx(0.4)
+    assert supplied["slides"][0]["source_mpp_provenance"] == "supplied"
+
+
 @pytest.mark.parametrize("value", ["inf", "-inf", "nan"])
 def test_nonfinite_explicit_mpp_is_rejected_with_usage_exit(
     tmp_path: Path, value: str,
@@ -331,6 +389,208 @@ def test_run_fails_closed_without_source_mpp(tmp_path: Path) -> None:
     )
     assert result.returncode == core.EXIT_PREFLIGHT
     assert "Source MPP" in result.stderr
+
+
+def test_patch_compatibility_reuses_full_cpu_run_and_records_resume_contract(
+    tmp_path: Path,
+) -> None:
+    environment, capture = fake_nextflow(tmp_path)
+    patches = tmp_path / "raw-patches"
+    write_patch_tiff(patches / "case-a.tif")
+    write_patch_tiff(patches / "nested" / "case-b.ome.tiff")
+    output = tmp_path / "patch-results"
+
+    result = invoke(
+        tmp_path,
+        "--patches", str(patches), "--paper-figures", "--output", str(output),
+        "--source-mpp", "0.5", "--backend", "local", "--dry-run",
+        environment=environment,
+    )
+
+    assert result.returncode == core.EXIT_OK, result.stderr
+    arguments = capture.read_text(encoding="utf-8").splitlines()
+    assert option_value(arguments, "--percent_slide") == "100"
+    assert option_value(arguments, "--max_sampled_patches") == "0"
+    assert option_value(arguments, "--convert_to_pyramidal") == "false"
+    assert option_value(arguments, "--qc_patch_count") == "1"
+    manifest = core.load_run_manifest(output)
+    assert manifest["input_mode"] == "patches"
+    assert manifest["preset"] == "full"
+    assert manifest["sampling_percent"] == 100
+    assert manifest["execution_profile"] == "cpu"
+    assert len(manifest["selected_samples"]) == 2
+    assert manifest["selected_samples"] == manifest["discovered_samples"]
+    resume = manifest["resume_command"]
+    assert resume.startswith(
+        f"tumorquantai --patches {patches} --paper-figures --output {output}"
+    )
+    for expected in (
+        "--preset full", "--percent-slide 100", "--max-sampled-patches 0",
+        "--qc-patch-count 1", "--no-convert-to-pyramidal", "--profile cpu",
+    ):
+        assert expected in resume
+    assert "--pattern" not in resume
+
+
+def test_patch_compatibility_single_file_selects_only_that_file(
+    tmp_path: Path,
+) -> None:
+    environment, _capture = fake_nextflow(tmp_path)
+    patch_root = tmp_path / "file-mode"
+    selected = patch_root / "chosen.ome.tif"
+    write_patch_tiff(selected, mpp=0.5)
+    write_patch_tiff(patch_root / "nested" / selected.name, mpp=0.5)
+    output = patch_root / "results"
+
+    result = invoke(
+        tmp_path,
+        "--patches", str(selected), "--paper-figures", "--output", str(output),
+        "--backend", "local", "--dry-run", environment=environment,
+    )
+
+    assert result.returncode == core.EXIT_OK, result.stderr
+    manifest = core.load_run_manifest(output)
+    assert manifest["source_mpp_provenance"] == "per-input embedded TIFF metadata"
+    assert manifest["selected_samples"] == [selected.name]
+    assert manifest["discovered_samples"] == [selected.name]
+    assert f"--patches {selected}" in manifest["resume_command"]
+    assert "--include" not in manifest["resume_command"]
+
+
+def test_patch_compatibility_uses_per_input_embedded_mpp_for_mixed_scales(
+    tmp_path: Path,
+) -> None:
+    environment, capture = fake_nextflow(tmp_path)
+    patches = tmp_path / "mixed-scale-patches"
+    write_patch_tiff(patches / "field-40x.tif", mpp=0.25)
+    write_patch_tiff(patches / "nested" / "field-4x.tiff", mpp=2.5)
+    output = tmp_path / "mixed-scale-results"
+
+    result = invoke(
+        tmp_path,
+        "--patches", str(patches), "--paper-figures", "--output", str(output),
+        "--backend", "local", "--dry-run", environment=environment,
+    )
+
+    assert result.returncode == core.EXIT_OK, result.stderr
+    arguments = capture.read_text(encoding="utf-8").splitlines()
+    assert "--slide_mpp" not in arguments
+    manifest = core.load_run_manifest(output)
+    assert manifest["source_mpp"] is None
+    assert manifest["source_mpp_values"] == [0.25, 2.5]
+    assert manifest["source_mpp_provenance"] == "per-input embedded TIFF metadata"
+    assert "--source-mpp" not in manifest["resume_command"]
+
+    changed_scale = invoke(
+        tmp_path,
+        "--patches", str(patches), "--paper-figures", "--output", str(output),
+        "--source-mpp", "0.5", "--backend", "local", "--dry-run",
+        environment=environment,
+    )
+    assert changed_scale.returncode == core.EXIT_PREFLIGHT
+    assert "incompatible source MPP" in changed_scale.stderr
+
+
+def test_ordinary_slide_run_still_rejects_mixed_embedded_mpp(tmp_path: Path) -> None:
+    environment, _capture = fake_nextflow(tmp_path)
+    slides = tmp_path / "mixed-scale-slides"
+    write_patch_tiff(slides / "first_L0_rgb.tif", mpp=0.25)
+    write_patch_tiff(slides / "second_L0_rgb.tif", mpp=2.5)
+
+    result = invoke(
+        tmp_path,
+        "run", str(slides), "--output", str(tmp_path / "ordinary-results"),
+        "--preset", "full", "--backend", "local", "--profile", "cpu",
+        "--dry-run", environment=environment,
+    )
+
+    assert result.returncode == core.EXIT_PREFLIGHT
+    assert "inconsistent source MPP" in result.stderr
+
+
+def test_patch_compatibility_preserves_physical_scale_fail_closed(
+    tmp_path: Path,
+) -> None:
+    environment, _capture = fake_nextflow(tmp_path)
+    patch = tmp_path / "missing-scale.tif"
+    write_patch_tiff(patch)
+
+    result = invoke(
+        tmp_path,
+        "--patches", str(patch), "--paper-figures", "--output",
+        str(tmp_path / "missing-scale-results"), "--backend", "local", "--dry-run",
+        environment=environment,
+    )
+
+    assert result.returncode == core.EXIT_PREFLIGHT
+    assert "Source MPP is missing or unreadable" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        (("--preset", "smoke"), "preset full"),
+        (("--preset", "fast"), "preset full"),
+        (("--percent-slide", "99"), "must be 100"),
+        (("--max-sampled-patches", "1"), "must be 0"),
+        (("--qc-patch-count", "0"), "at least 1"),
+        (("--convert-to-pyramidal",), "processed directly"),
+        (("--pattern", "*.tif"), "incompatible with --patches"),
+    ],
+)
+def test_patch_compatibility_rejects_incomplete_or_sampled_modes(
+    tmp_path: Path, extra: tuple[str, ...], message: str,
+) -> None:
+    result = invoke(
+        tmp_path,
+        "--patches", str(tmp_path / "patches"), "--paper-figures", "--output",
+        str(tmp_path / "result"), *extra,
+    )
+    assert result.returncode == core.EXIT_USAGE
+    assert message in result.stderr
+    assert not (tmp_path / "result").exists()
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        (("--patches", "/patches", "--output", "/result"), "--paper-figures"),
+        (("--paper-figures", "--output", "/result"), "--patches PATH"),
+        (("--patches", "/patches", "--paper-figures"), "--output DIR"),
+        (("run", "--patches", "/patches", "--paper-figures", "--output", "/result"), "top-level"),
+    ],
+)
+def test_patch_compatibility_requires_exact_top_level_contract(
+    tmp_path: Path, arguments: tuple[str, ...], message: str,
+) -> None:
+    result = invoke(tmp_path, *arguments)
+    assert result.returncode == core.EXIT_USAGE
+    assert message in result.stderr
+
+
+def test_patch_input_mode_cannot_resume_as_an_ordinary_slide_run(
+    tmp_path: Path,
+) -> None:
+    environment, _capture = fake_nextflow(tmp_path)
+    patches = tmp_path / "mode-patches"
+    write_patch_tiff(patches / "case.tif")
+    output = tmp_path / "mode-results"
+    patch_result = invoke(
+        tmp_path,
+        "--patches", str(patches), "--paper-figures", "--output", str(output),
+        "--source-mpp", "0.5", "--backend", "local", "--dry-run",
+        environment=environment,
+    )
+    assert patch_result.returncode == core.EXIT_OK, patch_result.stderr
+
+    ordinary_result = invoke(
+        tmp_path,
+        "run", str(patches), "--output", str(output), "--pattern", "*.tif",
+        "--preset", "full", "--source-mpp", "0.5", "--profile", "cpu",
+        "--backend", "local", "--dry-run", environment=environment,
+    )
+    assert ordinary_result.returncode == core.EXIT_PREFLIGHT
+    assert "input_mode" in ordinary_result.stderr
 
 
 def test_incompatible_presets_cannot_mix_in_one_output(tmp_path: Path) -> None:
@@ -710,6 +970,64 @@ def test_completed_quickstart_root_delegates_status_to_smoke_results(tmp_path: P
     _report, failed_payload = core.generate_report(root)
     failed_paths = {item["path"] for item in failed_payload["links"]}
     assert "smoke-results/complete/summary/summary.json" in failed_paths
+
+
+def test_status_and_report_preserve_mixed_per_input_mpp_provenance(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "mixed-mpp-status"
+    output.mkdir()
+    core.write_run_manifest(output, {
+        "source_mpp": None,
+        "source_mpp_values": [0.25, 2.5],
+        "source_mpp_provenance": "per-input embedded TIFF metadata",
+        "resume_command": "tumorquantai --patches patches --paper-figures --output results",
+    })
+
+    status = core.collect_status(output)
+    assert status["run"]["source_mpp"] is None
+    assert status["run"]["source_mpp_values"] == [0.25, 2.5]
+    assert (
+        status["run"]["source_mpp_provenance"]
+        == "per-input embedded TIFF metadata"
+    )
+    human = core.format_status(status)
+    assert "Source MPP values (µm/pixel): 0.25, 2.5" in human
+    assert "Source MPP provenance: per-input embedded TIFF metadata" in human
+
+    _report, payload = core.generate_report(output)
+    assert payload["run"]["source_mpp_values"] == [0.25, 2.5]
+    document = (output / "START_HERE.html").read_text(encoding="utf-8")
+    assert "Source MPP values (µm/pixel)" in document
+    assert "0.25, 2.5" in document
+    assert "per-input embedded TIFF metadata" in document
+    text_summary = (output / core.RUN_SUMMARY).read_text(encoding="utf-8")
+    assert "Source MPP values (µm/pixel): 0.25, 2.5" in text_summary
+
+
+def test_status_and_report_keep_legacy_single_source_mpp_readable(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "single-mpp-status"
+    output.mkdir()
+    core.write_run_manifest(output, {
+        "source_mpp": 0.26178,
+        "source_mpp_provenance": "explicit --source-mpp",
+        "resume_command": "tumorquantai run slides --output results --source-mpp 0.26178",
+    })
+
+    status = core.collect_status(output)
+    assert status["run"]["source_mpp"] == pytest.approx(0.26178)
+    assert "source_mpp_values" not in status["run"]
+    human = core.format_status(status)
+    assert "Source MPP (µm/pixel): 0.26178" in human
+    assert "Source MPP values" not in human
+
+    core.generate_report(output)
+    document = (output / "START_HERE.html").read_text(encoding="utf-8")
+    assert "Source MPP (µm/pixel)" in document
+    assert "Source MPP values" not in document
+    assert "explicit --source-mpp" in document
 
 
 def test_trace_promotes_incomplete_sample_to_failed_but_not_successful_retry(tmp_path: Path) -> None:

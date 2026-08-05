@@ -1,0 +1,129 @@
+# Embedded-MPP route: every selected TIFF must contain reliable physical scale.
+tumorquantai --patches /path/to/breast-ihc-tiff-patches \
+  --paper-figures \
+  --output /path/to/breast-ihc-patch-results \
+  --cpu
+
+# Explicit-MPP route: enter one verified common value for the selected TIFFs.
+read -rp "Verified source MPP in micrometres per pixel: " SOURCE_MPP
+tumorquantai --patches /path/to/breast-ihc-tiff-patches \
+  --paper-figures \
+  --output /path/to/breast-ihc-patch-results \
+  --source-mpp "$SOURCE_MPP" \
+  --cpu
+
+# Report distinct per-input MPP values/provenance and refresh START_HERE.html.
+tumorquantai status /path/to/breast-ihc-patch-results
+tumorquantai report /path/to/breast-ihc-patch-results
+
+# Public raw-only example: https://doi.org/10.5281/zenodo.21797920 (CC BY 4.0).
+
+# Create the alias secret outside the repository and public staging.
+install -d -m 700 /path/outside/repository/private-release-material
+umask 077
+dd if=/dev/urandom \
+  of=/path/outside/repository/private-release-material/alias-secret.bin \
+  bs=32 count=1 status=none
+chmod 600 /path/outside/repository/private-release-material/alias-secret.bin
+
+# The private source CSV also requires mpp_provenance for every row.
+# Example safe canonical value: measured_scale_bar_calibration
+# Use an externally audited MPP; source TIFF resolution tags may be wrong/missing.
+
+# Replace both count placeholders with exact integers; dry-run is mandatory.
+python3 bin/prepare_breast_ihc_patch_release.py \
+  --source-manifest /path/outside/repository/private-source-selection.csv \
+  --alias-secret-file /path/outside/repository/private-release-material/alias-secret.bin \
+  --public-output /path/outside/repository/breast-ihc-public-draft \
+  --private-linkage /path/outside/repository/private-release-material/private-linkage.csv \
+  --expected-cases REPLACE_WITH_INCLUDED_CASE_COUNT \
+  --expected-files REPLACE_WITH_INCLUDED_TIFF_COUNT \
+  --dry-run
+
+# Only after the dry run passes, create the local draft without --dry-run.
+python3 bin/prepare_breast_ihc_patch_release.py \
+  --source-manifest /path/outside/repository/private-source-selection.csv \
+  --alias-secret-file /path/outside/repository/private-release-material/alias-secret.bin \
+  --public-output /path/outside/repository/breast-ihc-public-draft \
+  --private-linkage /path/outside/repository/private-release-material/private-linkage.csv \
+  --expected-cases REPLACE_WITH_INCLUDED_CASE_COUNT \
+  --expected-files REPLACE_WITH_INCLUDED_TIFF_COUNT
+
+# This command is offline-only and cannot upload or publish the draft.
+
+# Replace both placeholders with the exact sanitized roster counts.
+# For this cohort only: case count is 51 and TIFF count is 1901.
+# A packager dry run is mandatory and writes no package output.
+python3 bin/package_breast_ihc_patch_release.py \
+  --source-draft /path/outside/repository/breast-ihc-public-draft \
+  --package-output /path/outside/repository/breast-ihc-upload-package \
+  --expected-cases REPLACE_WITH_SANITIZED_CASE_COUNT \
+  --expected-files REPLACE_WITH_SANITIZED_TIFF_COUNT \
+  --dry-run
+
+# Only after that exact plan passes, create the deterministic local package.
+python3 bin/package_breast_ihc_patch_release.py \
+  --source-draft /path/outside/repository/breast-ihc-public-draft \
+  --package-output /path/outside/repository/breast-ihc-upload-package \
+  --expected-cases REPLACE_WITH_SANITIZED_CASE_COUNT \
+  --expected-files REPLACE_WITH_SANITIZED_TIFF_COUNT
+
+# This cohort creates 51 ZIP64 case archives plus four auxiliary files: 55.
+# ZIP_STORED duplicates retained TIFF bytes; review the dry-run disk estimate.
+# Packaging validates canonical MPP provenance and recomputes decoded-RGB hashes.
+# Exact archive bytes require the same inputs and supported tool/runtime.
+# Source filesystem metadata is ignored; arbitrary Python versions are not promised.
+# The packager cannot upload or publish. The published cohort totals
+# 74,958,557,152 bytes; every new release needs its own quota and independent
+# privacy, governance, rights, metadata, and publication reviews.
+
+# Fully revalidate the exact 55-file package without a token or network request.
+python3 bin/zenodo_breast_ihc_deposit.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --plan
+
+# Create the open-access draft without file uploads while quota is arranged.
+# The token file must be outside the package, mode 0600, with deposit:write only.
+python3 bin/zenodo_breast_ihc_deposit.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --token-file /path/outside/repository/private-release-material/zenodo-token \
+  --create-only
+
+# Resume/upload only after quota is confirmed. Omit --confirmed-quota-bytes when
+# the measured package total does not exceed Zenodo's default 50 GB allocation.
+python3 bin/zenodo_breast_ihc_deposit.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --token-file /path/outside/repository/private-release-material/zenodo-token \
+  --confirmed-quota-bytes REPLACE_WITH_CONFIRMED_TOTAL_QUOTA_BYTES
+
+# The uploader accepts only production or sandbox Zenodo origins, verifies the
+# remote open-access draft metadata and exact roster, and never publishes.
+
+# Plan the separate publication step locally. Copy the exact fingerprint and
+# canonical license from this output into an independently reviewed mode-0600
+# authorization JSON; no credential or network is used by --plan.
+python3 bin/zenodo_breast_ihc_publish.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --deposition-id REPLACE_WITH_EXACT_DEPOSITION_ID \
+  --plan
+
+# Publish only after the exact 55-file draft and independent authorization have
+# been reviewed. Authorization, state, and token must be distinct mode-0600
+# files; the token needs deposit:write and deposit:actions. This sends exactly
+# one non-retried publish action and verifies the anonymous public record/DOI.
+python3 bin/zenodo_breast_ihc_publish.py \
+  --package-dir /path/outside/repository/breast-ihc-upload-package \
+  --metadata /path/outside/repository/zenodo-metadata.json \
+  --state /path/outside/repository/private-release-material/zenodo-state.json \
+  --deposition-id REPLACE_WITH_EXACT_DEPOSITION_ID \
+  --authorization /path/outside/repository/private-release-material/publication-authorization.json \
+  --token-file /path/outside/repository/private-release-material/zenodo-actions-token \
+  --publish

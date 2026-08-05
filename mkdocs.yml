@@ -52,6 +52,7 @@ nav:
   - Other Example Runs:
       - Structural Software Demo: start-here/demo.md
       - Four Public WSIs at 10%: tutorials/four-public-slides.md
+      - Breast IHC TIFF Patches at 100%: tutorials/breast-ihc-patches.md
   - Run and Configure:
       - Workflow, Presets, and Resume: running.md
       - Download Public MDS Files: how-to/download-mds.md
@@ -73,6 +74,7 @@ nav:
       - Source versus Target MPP: explanation/mpp.md
       - Research Limitations: explanation/research-limitations.md
       - Provenance Fields: reference/provenance.md
+      - Version 1 Compatibility: reference/compatibility.md
   - Help and About:
       - Troubleshooting: troubleshooting/index.md
       - Citation and Research Use: citation_research_use.md

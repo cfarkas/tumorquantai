@@ -11,6 +11,7 @@ import csv
 import hashlib
 import html
 import json
+import math
 import os
 import platform
 import re
@@ -28,7 +29,8 @@ from typing import Any, Iterable, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = "0.4.0"
+VERSION = "1.0.0"
+RELEASE_TAG = f"v{VERSION}"
 DATASET_RECORD = "21466410"
 DATASET_DOI = "10.5281/zenodo.21466410"
 DATASET_RELEASE = "v0.4.0"
@@ -536,7 +538,12 @@ def doctor_checks(
     ))
     if online:
         checks.extend((
-            online_check("https://api.github.com/repos/cfarkas/tumorquantai/releases/tags/v0.4.0", "TQA-ONLINE-GITHUB", "GitHub release metadata"),
+            online_check(
+                "https://api.github.com/repos/cfarkas/tumorquantai/releases/tags/"
+                f"{RELEASE_TAG}",
+                "TQA-ONLINE-GITHUB",
+                "GitHub release metadata",
+            ),
             online_check(f"https://zenodo.org/api/records/{DATASET_RECORD}", "TQA-ONLINE-ZENODO", "Zenodo tutorial record"),
             online_check(f"https://huggingface.co/api/models/Owkin-Bioptimus/histoplus/revision/{MODEL_REVISION}", "TQA-ONLINE-MODEL", "Pinned HistoPLUS revision metadata"),
         ))
@@ -570,6 +577,22 @@ def format_doctor(checks: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _positive_tiff_resolution(value: Any) -> float | None:
+    try:
+        if isinstance(value, (tuple, list)):
+            if len(value) != 2:
+                return None
+            numerator, denominator = float(value[0]), float(value[1])
+            if denominator == 0:
+                return None
+            resolution = numerator / denominator
+        else:
+            resolution = float(value)
+    except (TypeError, ValueError, ZeroDivisionError, OverflowError):
+        return None
+    return resolution if math.isfinite(resolution) and resolution > 0 else None
+
+
 def _read_tiff_metadata(path: Path) -> dict[str, Any]:
     result: dict[str, Any] = {"format": "TIFF", "pyramid_levels": None, "dimensions": None, "source_mpp": None, "metadata_reader": "unavailable"}
     try:
@@ -585,20 +608,33 @@ def _read_tiff_metadata(path: Path) -> dict[str, Any]:
             result["dimensions"] = "x".join(str(value) for value in shape[-3:-1] if value) if len(shape) >= 3 else "x".join(map(str, shape))
             page = slide.pages[0]
             x_tag = page.tags.get("XResolution")
+            y_tag = page.tags.get("YResolution")
             unit_tag = page.tags.get("ResolutionUnit")
-            if x_tag is not None and unit_tag is not None:
-                value = x_tag.value
-                pixels_per_unit = float(value[0]) / float(value[1]) if isinstance(value, tuple) else float(value)
-                unit = int(unit_tag.value)
-                measured_mpp = None
-                if pixels_per_unit > 0 and unit == 2:
-                    measured_mpp = 25_400.0 / pixels_per_unit
-                elif pixels_per_unit > 0 and unit == 3:
-                    measured_mpp = 10_000.0 / pixels_per_unit
-                if measured_mpp is not None and 0.05 <= measured_mpp <= 10.0:
-                    result["source_mpp"] = measured_mpp
-                elif measured_mpp is not None:
-                    result["metadata_reader"] = "tifffile; implausible generic resolution ignored"
+            resolution_tags = (x_tag, y_tag, unit_tag)
+            if any(tag is not None for tag in resolution_tags):
+                if not all(tag is not None for tag in resolution_tags):
+                    result["metadata_reader"] = "tifffile; incomplete physical resolution metadata ignored"
+                else:
+                    x_pixels_per_unit = _positive_tiff_resolution(x_tag.value)
+                    y_pixels_per_unit = _positive_tiff_resolution(y_tag.value)
+                    try:
+                        unit = int(unit_tag.value)
+                    except (TypeError, ValueError, OverflowError):
+                        unit = 0
+                    micrometres_per_unit = {2: 25_400.0, 3: 10_000.0}.get(unit)
+                    if x_pixels_per_unit is None or y_pixels_per_unit is None:
+                        result["metadata_reader"] = "tifffile; invalid TIFF resolution ignored"
+                    elif micrometres_per_unit is None:
+                        result["metadata_reader"] = "tifffile; unsupported physical resolution unit ignored"
+                    else:
+                        x_mpp = micrometres_per_unit / x_pixels_per_unit
+                        y_mpp = micrometres_per_unit / y_pixels_per_unit
+                        if not (0.05 <= x_mpp <= 10.0 and 0.05 <= y_mpp <= 10.0):
+                            result["metadata_reader"] = "tifffile; implausible generic resolution ignored"
+                        elif not math.isclose(x_mpp, y_mpp, rel_tol=1e-3, abs_tol=1e-6):
+                            result["metadata_reader"] = "tifffile; anisotropic TIFF resolution ignored"
+                        else:
+                            result["source_mpp"] = (x_mpp + y_mpp) / 2.0
             if result["metadata_reader"] == "unavailable":
                 result["metadata_reader"] = "tifffile"
     except Exception as exc:
@@ -832,9 +868,10 @@ def collect_status(output: Path, *, include_private_paths: bool = False) -> dict
         delegated["run"] = {
             key: manifest.get(key) for key in (
                 "software_version", "software_commit", "preset", "sampling_percent", "seed",
-                "source_mpp", "target_mpp", "execution_profile", "container_identity",
-                "model_revision", "completion_status", "demonstration", "dataset_record",
-                "dataset_doi", "dataset_release",
+                "source_mpp", "source_mpp_values", "source_mpp_provenance", "target_mpp",
+                "execution_profile", "container_identity", "model_revision",
+                "completion_status", "demonstration", "dataset_record", "dataset_doi",
+                "dataset_release",
             ) if key in manifest
         }
         return delegated
@@ -994,9 +1031,10 @@ def collect_status(output: Path, *, include_private_paths: bool = False) -> dict
         "run": {
             key: manifest.get(key) for key in (
                 "software_version", "software_commit", "preset", "sampling_percent", "seed",
-                "source_mpp", "target_mpp", "execution_profile", "container_identity",
-                "model_revision", "completion_status", "demonstration", "dataset_record",
-                "dataset_doi", "dataset_release",
+                "source_mpp", "source_mpp_values", "source_mpp_provenance", "target_mpp",
+                "execution_profile", "container_identity", "model_revision",
+                "completion_status", "demonstration", "dataset_record", "dataset_doi",
+                "dataset_release",
             ) if key in manifest
         },
         "interpretation": "A completed biological zero is a successful sample with zero detected cells. Failed, incomplete, excluded, and pending samples are never numerical zeroes.",
@@ -1004,8 +1042,31 @@ def collect_status(output: Path, *, include_private_paths: bool = False) -> dict
     return result
 
 
+def _source_mpp_display(run: dict[str, Any]) -> tuple[str | None, str | None]:
+    raw_values = run.get("source_mpp_values")
+    if isinstance(raw_values, (list, tuple)) and raw_values:
+        values = list(raw_values)
+    elif run.get("source_mpp") not in (None, ""):
+        values = [run["source_mpp"]]
+    else:
+        return None, None
+
+    rendered = ", ".join(
+        f"{value:.9g}" if isinstance(value, (int, float)) and not isinstance(value, bool)
+        else str(value)
+        for value in values
+    )
+    label = (
+        "Source MPP values (µm/pixel)"
+        if len(values) > 1
+        else "Source MPP (µm/pixel)"
+    )
+    return label, rendered
+
+
 def format_status(summary: dict[str, Any]) -> str:
     counts = summary["counts"]
+    run = summary.get("run", {})
     lines = [
         f"Run status: {summary['overall_status']}",
         f"Output: {summary['output_name']}",
@@ -1017,6 +1078,11 @@ def format_status(summary: dict[str, Any]) -> str:
         f"Completed biological zeroes: {counts['biological_zero']}",
         "Failed or missing samples are not biological zeroes and are not inserted into matrices.",
     ]
+    mpp_label, mpp_value = _source_mpp_display(run)
+    if mpp_label and mpp_value:
+        lines.append(f"{mpp_label}: {mpp_value}")
+    if run.get("source_mpp_provenance") not in (None, ""):
+        lines.append(f"Source MPP provenance: {run['source_mpp_provenance']}")
     for state in ("failed", "incomplete", "excluded", "pending", "biological_zero"):
         if summary["samples"][state]:
             lines.append(f"{state.replace('_', ' ').title()}: {', '.join(summary['samples'][state])}")
@@ -1083,17 +1149,28 @@ def generate_report(output: Path) -> tuple[Path, dict[str, Any]]:
             f'<h2>{html.escape(label)}</h2><p class="count">{value}</p>'
             f'<p class="state">{state}</p></section>'
         )
-    identity_rows = []
-    for key, label in (
-        ("software_version", "Software version"), ("software_commit", "Software commit"),
-        ("container_identity", "Container"), ("model_revision", "Model revision"),
-        ("source_mpp", "Source MPP"), ("target_mpp", "Target MPP"),
-        ("sampling_percent", "Sampling (%)"), ("seed", "Random seed"),
-        ("dataset_record", "Dataset record"), ("dataset_doi", "Dataset DOI"),
-        ("completion_status", "Completion state"),
-    ):
-        if key in run and run[key] not in (None, ""):
-            identity_rows.append(f"<tr><th>{html.escape(label)}</th><td>{html.escape(str(run[key]))}</td></tr>")
+    identity_values = [
+        ("Software version", run.get("software_version")),
+        ("Software commit", run.get("software_commit")),
+        ("Container", run.get("container_identity")),
+        ("Model revision", run.get("model_revision")),
+    ]
+    mpp_label, mpp_value = _source_mpp_display(run)
+    identity_values.extend([
+        (mpp_label, mpp_value),
+        ("Source MPP provenance", run.get("source_mpp_provenance")),
+        ("Target MPP", run.get("target_mpp")),
+        ("Sampling (%)", run.get("sampling_percent")),
+        ("Random seed", run.get("seed")),
+        ("Dataset record", run.get("dataset_record")),
+        ("Dataset DOI", run.get("dataset_doi")),
+        ("Completion state", run.get("completion_status")),
+    ])
+    identity_rows = [
+        f"<tr><th>{html.escape(str(label))}</th><td>{html.escape(str(value))}</td></tr>"
+        for label, value in identity_values
+        if label and value not in (None, "")
+    ]
     link_items = "".join(f'<li><a href="{html.escape(path, quote=True)}">{html.escape(label)}</a></li>' for path, label in links)
     demo_banner = "<p class=\"demo\">STRUCTURAL SOFTWARE DEMO — no HistoPLUS inference, biological prediction, or validation data.</p>" if run.get("demonstration") else ""
     document = f"""<!doctype html>
