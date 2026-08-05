@@ -298,10 +298,15 @@ python3 bin/zenodo_breast_ihc_deposit.py \
 Network modes require a mode-`0600` token file with `deposit:write`, and accept
 only `https://zenodo.org/api` or `https://sandbox.zenodo.org/api`. Use
 `--create-only` to establish the open-access draft without uploading while a
-quota request is pending. A normal run uploads or resumes by size and MD5;
-packages above 50 GB also require the confirmed total allocation through
-`--confirmed-quota-bytes`. The state is mode `0600` and fingerprint-bound.
-There is no publish option. See the
+quota request is pending. For additional storage, open that specific draft in
+Zenodo, use **Manage storage** to allocate the approved quota to the draft, and
+select **Apply**; account-level approval alone is not enough. A normal run
+uploads or resumes by size and MD5. Each bucket upload attempt is one PUT; after
+a failure or ambiguous response, the command reconciles the exact remote
+filename/size/MD5 roster and retries only when the target is confirmed absent.
+Pending or mismatched files stop the run. Packages above 50 GB also require the
+confirmed total allocation through `--confirmed-quota-bytes`. The state is
+mode `0600` and fingerprint-bound. There is no publish option. See the
 [draft upload procedure](../tutorials/breast-ihc-patches.md#10-create-or-resume-the-open-zenodo-draft).
 
 ### Publish-only breast-IHC Zenodo command

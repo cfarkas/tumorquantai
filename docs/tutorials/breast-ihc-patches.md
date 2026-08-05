@@ -428,9 +428,12 @@ python3 bin/zenodo_breast_ihc_deposit.py \
   --create-only
 ```
 
-After Zenodo confirms sufficient quota, run the same command without
-`--create-only` and record the confirmed total quota in bytes when it exceeds
-50 GB:
+An approved account allocation is not sufficient by itself. Open that exact
+draft in Zenodo, choose **Manage storage**, allocate the additional quota to
+that specific draft, and select **Apply**. Confirm that the draft's resulting
+storage allocation covers the complete measured package. Only then run the
+same command without `--create-only` and record the confirmed total quota in
+bytes when it exceeds 50 GB:
 
 ```bash
 python3 bin/zenodo_breast_ihc_deposit.py \
@@ -442,12 +445,19 @@ python3 bin/zenodo_breast_ihc_deposit.py \
 ```
 
 The state is mode `0600` and is bound to the exact metadata and 55 local file
-hashes. Repeating the command resumes by remote size and MD5. Unexpected files
-or mismatches stop the run; `--replace-mismatched` permits reviewed replacement
-only after every local file is rehashed. Production and sandbox are the only
-accepted origins; use `--api-url https://sandbox.zenodo.org/api` for a sandbox
-exercise. The command cannot publish. Inspect the resulting draft in Zenodo
-and retain the separate governance and publication approvals.
+hashes. Repeating the command resumes by remote size and MD5. Each bucket
+upload attempt is exactly one PUT, with no blind transport retry. After a
+failed or ambiguous PUT, the uploader rereads the exact draft and reconciles
+the complete remote roster by filename, size, and MD5. It retries the target
+only when that reconciliation confirms the file is absent; an exact committed
+file is accepted. A pending or mismatched file, an unexpected file, or the
+loss of a previously verified file stops the run rather than triggering
+another PUT, deletion, or replacement. Before an upload attempt,
+`--replace-mismatched` permits an explicitly reviewed replacement only after
+every local file is rehashed. Production and sandbox are the only accepted
+origins; use `--api-url https://sandbox.zenodo.org/api` for a sandbox exercise.
+The command cannot publish. Inspect the resulting draft in Zenodo and retain
+the separate governance and publication approvals.
 
 ## 11. Publish the independently authorized draft
 
