@@ -32,6 +32,8 @@ import requests
 DEFAULT_API_URL = "https://zenodo.org/api"
 DEFAULT_TOKEN_ENV = "ZENODO_TOKEN"
 RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+UPLOAD_CONNECT_WRITE_TIMEOUT_SECONDS = 5 * 60.0
+UPLOAD_RESPONSE_TIMEOUT_SECONDS = 6 * 60 * 60.0
 SAFE_REMOTE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 HEX_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 HEX_MD5_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -762,6 +764,7 @@ class ZenodoClient:
         attempts = self.retries if retries is None else retries
         expected_set = set(expected)
         last_error: Exception | None = None
+        last_status: int | None = None
         for attempt in range(attempts + 1):
             response: requests.Response | None = None
             try:
@@ -776,6 +779,8 @@ class ZenodoClient:
                     timeout=timeout,
                     allow_redirects=False,
                 )
+                last_error = None
+                last_status = response.status_code
                 if response.status_code in expected_set:
                     return response
                 if response.status_code not in RETRYABLE_STATUSES:
@@ -785,6 +790,7 @@ class ZenodoClient:
                     )
             except requests.RequestException as exc:
                 last_error = exc
+                last_status = None
             if response is not None:
                 response.close()
             if attempt == attempts:
@@ -793,11 +799,15 @@ class ZenodoClient:
         if last_error is not None:
             raise DepositError(
                 f"Zenodo API request failed after {attempts + 1} attempts: "
-                f"{method} {urlparse(url).path}"
+                f"{method} {urlparse(url).path}; final transport exception: "
+                f"{type(last_error).__name__}"
             ) from last_error
+        status_diagnostic = (
+            f"; final HTTP status: {last_status}" if last_status is not None else ""
+        )
         raise DepositError(
             f"Zenodo API request failed after {attempts + 1} attempts: "
-            f"{method} {urlparse(url).path}"
+            f"{method} {urlparse(url).path}{status_diagnostic}"
         )
 
     @staticmethod
@@ -852,7 +862,10 @@ class ZenodoClient:
                 url,
                 expected=(200, 201),
                 data=handle,
-                timeout=(15.0, 6 * 60 * 60.0),
+                timeout=(
+                    UPLOAD_CONNECT_WRITE_TIMEOUT_SECONDS,
+                    UPLOAD_RESPONSE_TIMEOUT_SECONDS,
+                ),
             )
         return self.json_response(response, f"Upload of {upload.remote_name}")
 
