@@ -109,9 +109,14 @@ are arranged into categories, name them **computational receptor-profile
 pre-score groups**. Do not present them as diagnoses, histologic or intrinsic
 subtypes, treatment recommendations, or independent pathologist results.
 
-The breast-IHC example data and its Zenodo DOI are pending governance review
-and publication. The existing public lymphoma dataset DOI does not identify
-the breast-IHC patch collection.
+The public raw-only breast-IHC example dataset is available under CC BY 4.0 at
+[Zenodo record 21797920](https://zenodo.org/records/21797920), with dataset DOI
+[`10.5281/zenodo.21797920`](https://doi.org/10.5281/zenodo.21797920). Its 55
+files comprise 51 case archives containing 1,901 TIFF patches plus four
+auxiliary files: one manifest bundle, one packaging report, and two checksum
+rosters (74,958,557,152 bytes total). Paper and QC figures are local workflow
+outputs and are not part of the deposit. This DOI identifies the
+breast-IHC dataset, not the TumorQuantAI software or the lymphoma dataset.
 
 ## Offline sanitized draft outputs
 
@@ -198,7 +203,8 @@ estimate, case/archive counts, total upload-file count, compression choice, and
 verification statement.
 
 The packager has no network, deposit, upload, or publication capability.
-Zenodo's default limits are 50 GB and 100 files per record. This cohort's 55
-files fit the default count limit, but measured size, any quota request,
-independent privacy review, governance approval, and publication remain
-pending.
+Zenodo's default limits are 50 GB and 100 files per record. This published
+cohort's 55 files fit the default count limit and total 74,958,557,152 bytes, so
+additional record storage was required. New releases still require their own
+size and quota checks plus independent privacy, governance, and publication
+review.

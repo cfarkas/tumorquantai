@@ -186,9 +186,14 @@ pre-score groups, not diagnoses, intrinsic subtypes, treatment groups, or
 pathologist sign-out. An equivocal HER2 pre-score remains unresolved and
 requires the appropriate independent clinical work-up.
 
-The planned breast-IHC example dataset and Zenodo DOI are pending governance
-review and publication. No DOI or public download is available from this
-documentation yet. See [the complete patch tutorial](../tutorials/breast-ihc-patches.md).
+The public raw-only breast-IHC example dataset is available under CC BY 4.0 at
+[Zenodo record 21797920](https://zenodo.org/records/21797920), with dataset DOI
+[`10.5281/zenodo.21797920`](https://doi.org/10.5281/zenodo.21797920). Its 55
+files comprise 51 case archives containing 1,901 TIFF patches plus four
+auxiliary files: one manifest bundle, one packaging report, and two checksum
+rosters (74,958,557,152 bytes total). Generated paper and QC figures are not
+part of the deposit. This is a dataset DOI, not a TumorQuantAI
+software DOI. See [the complete patch tutorial](../tutorials/breast-ihc-patches.md).
 
 ### Offline release-draft utility
 
@@ -276,9 +281,11 @@ timestamps and modes irrelevant, but no cross-version guarantee is made for
 arbitrary Python or ZIP implementations.
 
 The packager has no network, deposit, upload, or publication capability.
-Zenodo's default limits are 50 GB and 100 files per record; measured size, any
-quota request, independent privacy review, governance approval, and publication
-remain pending. See the
+Zenodo's default limits are 50 GB and 100 files per record. The published
+cohort's 55 files total 74,958,557,152 bytes and therefore required additional
+record storage while remaining within the file-count limit. New releases still
+require measured-size and quota checks plus independent privacy, governance,
+and publication review. See the
 [local packaging procedure](../tutorials/breast-ihc-patches.md#9-package-the-sanitized-draft-locally).
 
 ### Draft-only breast-IHC Zenodo uploader

@@ -373,6 +373,66 @@ def _metadata_projection_matches(
     )
 
 
+def _published_record_metadata_projection_matches(
+    payload: dict[str, object],
+    metadata: dict[str, object],
+) -> None:
+    """Match the public Records API resource-type representation strictly."""
+    actual = payload.get("metadata")
+    if not isinstance(actual, dict):
+        raise DepositError("Zenodo response has no metadata object")
+    projected_actual = dict(actual)
+    if "upload_type" in actual:
+        if "resource_type" in actual:
+            raise DepositError(
+                "Zenodo public record has ambiguous upload/resource types"
+            )
+    else:
+        resource_type = actual.get("resource_type")
+        if not isinstance(resource_type, dict):
+            raise DepositError("Zenodo public record has no valid resource type")
+        type_values: list[str] = []
+        for field in ("type", "id"):
+            if field not in resource_type:
+                continue
+            value = resource_type[field]
+            if not isinstance(value, str) or not value.strip():
+                raise DepositError("Zenodo public record has no valid resource type")
+            type_values.append(value.strip())
+        if not type_values:
+            raise DepositError("Zenodo public record has no valid resource type")
+        if len({value.casefold() for value in type_values}) != 1:
+            raise DepositError("Zenodo public record has ambiguous resource types")
+        projected_actual.pop("resource_type")
+        projected_actual["upload_type"] = type_values[0]
+    observed_license = actual.get("license")
+    if isinstance(observed_license, dict):
+        license_id = observed_license.get("id")
+        if not isinstance(license_id, str) or not license_id.strip():
+            raise DepositError("Zenodo public record has no valid license ID")
+        projected_actual["license"] = license_id.strip()
+    _metadata_projection_matches(
+        {**payload, "metadata": projected_actual},
+        metadata,
+    )
+
+
+def _published_record_html_url(links: dict[str, object]) -> str:
+    urls: list[str] = []
+    for field in ("self_html", "html"):
+        if field not in links:
+            continue
+        value = links[field]
+        if not isinstance(value, str) or not value.strip():
+            raise DepositError("Zenodo record response has no public record URL")
+        urls.append(value.strip())
+    if not urls:
+        raise DepositError("Zenodo record response has no public record URL")
+    if len(set(urls)) != 1:
+        raise DepositError("Zenodo record response has conflicting public URLs")
+    return urls[0]
+
+
 def exact_remote_files(
     payload: dict[str, object],
     uploads: tuple[base.UploadFile, ...],
@@ -457,14 +517,12 @@ def validate_published_record(
 ) -> PublishedRecord:
     if str(payload.get("id") or "") != record_id:
         raise DepositError("Zenodo record response has the wrong record ID")
-    _metadata_projection_matches(payload, metadata)
+    _published_record_metadata_projection_matches(payload, metadata)
     exact_remote_files(payload, uploads)
     links = payload.get("links") if isinstance(payload.get("links"), dict) else {}
-    record_url = str(links.get("html") or "").strip()
+    record_url = _published_record_html_url(links)
     doi = str(payload.get("doi") or "").strip()
     doi_url = str(links.get("doi") or "").strip()
-    if not record_url:
-        raise DepositError("Zenodo record response has no public record URL")
     if not re.fullmatch(r"10\.[0-9]{4,9}/\S+", doi, re.IGNORECASE):
         raise DepositError("Zenodo record response has no valid DOI")
     parsed = draft.urlparse(record_url)

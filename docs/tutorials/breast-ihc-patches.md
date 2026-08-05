@@ -4,11 +4,16 @@ This example route runs HistoPLUS inference over authorized local raw TIFF
 patches and writes per-input paper and QC figures. It processes the complete
 discovered patch collection rather than a seeded percentage sample.
 
-!!! warning "Example data are not public yet"
-    The breast-IHC example collection, checksums, public manifest, and Zenodo
-    DOI are pending data-governance review and publication. This page does not
-    assign a DOI or public download URL. The published lymphoma tutorial DOI
-    belongs only to the lymphoma WSI collection and must not be reused here.
+!!! info "Public raw patch dataset"
+    The raw-only breast-IHC collection is public under CC BY 4.0 at
+    [Zenodo record 21797920](https://zenodo.org/records/21797920), with dataset
+    DOI [`10.5281/zenodo.21797920`](https://doi.org/10.5281/zenodo.21797920).
+    Its 55 files comprise 51 case archives containing 1,901 TIFF patches plus
+    four auxiliary files: one manifest bundle, one packaging report, and two
+    checksum rosters (74,958,557,152 bytes total). Generated paper and QC
+    figures are not part of the deposit; create them locally with this
+    workflow. This DOI identifies the breast-IHC dataset, not TumorQuantAI
+    software. The separate lymphoma tutorial retains its own dataset DOI.
 
 !!! danger "Research use only"
     TumorQuantAI and HistoPLUS predictions are not diagnoses, pathologist
@@ -365,9 +370,11 @@ the sanitized source roster remains unchanged.
 
 The packager has no network, deposit, upload, or publication capability.
 Zenodo's default planning limits remain 50 GB and 100 files per record. The
-55-file cohort package is within the default file-count limit, but measured
-package size, any quota request, visible-pixel/privacy review, data-governance
-approval, and the publication decision remain pending.
+published cohort package contains exactly 55 files and 74,958,557,152 bytes, so
+it required additional record storage while remaining within the file-count
+limit. A new release still requires its own measured-size check, quota where
+needed, visible-pixel/privacy review, governance approval, and publication
+authorization.
 
 ## 10. Create or resume the open Zenodo draft
 
@@ -524,10 +531,13 @@ and URLs have been verified.
 
 ## Dataset publication status
 
-The future public example must not be documented as downloadable until its
-governance review, privacy review, manifest, checksums, repository metadata, and
-Zenodo record have been completed and verified together. Until then, use only
-authorized local TIFF patches and cite the TumorQuantAI software separately
-from any private dataset.
+The raw-only example is published under CC BY 4.0 at
+[Zenodo record 21797920](https://zenodo.org/records/21797920), dataset DOI
+[`10.5281/zenodo.21797920`](https://doi.org/10.5281/zenodo.21797920). The exact
+deposit contains 55 files: 51 case archives holding 1,901 TIFF patches, one
+manifest bundle, one packaging report, and two checksum rosters, totaling
+74,958,557,152 bytes. It does not contain the locally generated paper or QC
+figures. Cite this DOI only for the breast-IHC
+dataset and cite the TumorQuantAI software separately.
 
 The repository support folder is `examples/breast-ihc-patches/`.

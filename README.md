@@ -120,9 +120,16 @@ tumorquantai --patches /path/to/breast-ihc-tiff-patches \
 
 If the TIFFs do not contain reliable micrometres-per-pixel metadata, provide one
 verified common value with `--source-mpp`. Do not copy an MPP from another
-scanner, objective, or export. The example dataset and its Zenodo DOI are
-pending data-governance review and publication; no breast-IHC DOI is currently
-claimed. See the [breast IHC patch tutorial](https://cfarkas.github.io/tumorquantai/tutorials/breast-ihc-patches/).
+scanner, objective, or export. The public, raw-only example dataset is available
+from [Zenodo record 21797920](https://zenodo.org/records/21797920) under CC BY
+4.0, with dataset DOI
+[`10.5281/zenodo.21797920`](https://doi.org/10.5281/zenodo.21797920). Its 55
+files comprise 51 case archives containing 1,901 TIFF patches plus four
+auxiliary files: one manifest bundle, one packaging report, and two checksum
+rosters (74,958,557,152 bytes total). Generated paper and QC figures are local
+workflow outputs and are not part of the Zenodo deposit. This
+DOI identifies the breast-IHC dataset, not the TumorQuantAI software or the
+separate lymphoma dataset. See the [breast IHC patch tutorial](https://cfarkas.github.io/tumorquantai/tutorials/breast-ihc-patches/).
 
 ## Run your own WSIs
 

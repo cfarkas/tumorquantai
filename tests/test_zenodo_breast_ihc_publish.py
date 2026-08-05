@@ -180,13 +180,20 @@ class FakePublicationServer:
 
     def record(self) -> dict[str, object]:
         doi = f"10.5281/zenodo.{self.record_id}"
+        record_metadata = copy.deepcopy(self.metadata)
+        upload_type = record_metadata.pop("upload_type")
+        record_metadata["resource_type"] = {
+            "type": upload_type,
+            "title": "Dataset",
+        }
+        record_metadata["license"] = {"id": record_metadata["license"]}
         return {
             "id": int(self.record_id),
             "doi": doi,
-            "metadata": copy.deepcopy(self.metadata),
+            "metadata": record_metadata,
             "files": self.files(),
             "links": {
-                "html": f"https://zenodo.org/records/{self.record_id}",
+                "self_html": f"https://zenodo.org/records/{self.record_id}",
                 "doi": f"https://doi.org/{doi}",
             },
         }
@@ -487,6 +494,179 @@ def test_success_posts_once_then_verifies_deposition_and_public_record(
     assert state["publication"]["release_fingerprint_sha256"] == fingerprint
     assert "published_at" in state
     assert stat.S_IMODE(state_path.stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize(
+    ("legacy_upload_type", "legacy_license"),
+    [(True, False), (False, True), (True, True)],
+)
+def test_public_record_accepts_legacy_and_mixed_metadata_representations(
+    publication_release: deposit_helpers.SyntheticRelease,
+    package_data: draft.ValidatedPackage,
+    legacy_upload_type: bool,
+    legacy_license: bool,
+) -> None:
+    metadata = metadata_for(publication_release)
+    server = FakePublicationServer(package_data, metadata, published=True)
+    payload = server.record()
+    record_metadata = payload["metadata"]
+    assert isinstance(record_metadata, dict)
+    if legacy_upload_type:
+        resource_type = record_metadata.pop("resource_type")
+        assert isinstance(resource_type, dict)
+        record_metadata["upload_type"] = resource_type["type"]
+    if legacy_license:
+        observed_license = record_metadata["license"]
+        assert isinstance(observed_license, dict)
+        record_metadata["license"] = observed_license["id"]
+    result = publish.validate_published_record(
+        payload,
+        record_id=server.record_id,
+        api_url=draft.DEFAULT_API_URL,
+        metadata=metadata,
+        uploads=package_data.uploads,
+    )
+    assert result.doi == f"10.5281/zenodo.{server.record_id}"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("missing", "no valid resource type"),
+        ("scalar", "no valid resource type"),
+        ("no-discriminator", "no valid resource type"),
+        ("empty", "no valid resource type"),
+        ("wrong", "requested upload_type"),
+        ("disagreeing", "ambiguous resource types"),
+        ("both-schemas", "ambiguous upload/resource types"),
+    ],
+)
+def test_public_record_rejects_wrong_missing_or_ambiguous_resource_type(
+    publication_release: deposit_helpers.SyntheticRelease,
+    package_data: draft.ValidatedPackage,
+    mutation: str,
+    message: str,
+) -> None:
+    metadata = metadata_for(publication_release)
+    server = FakePublicationServer(package_data, metadata, published=True)
+    payload = server.record()
+    record_metadata = payload["metadata"]
+    assert isinstance(record_metadata, dict)
+    if mutation == "missing":
+        record_metadata.pop("resource_type")
+    elif mutation == "scalar":
+        record_metadata["resource_type"] = "dataset"
+    elif mutation == "no-discriminator":
+        record_metadata["resource_type"] = {"title": "Dataset"}
+    elif mutation == "empty":
+        record_metadata["resource_type"] = {"type": ""}
+    elif mutation == "wrong":
+        record_metadata["resource_type"] = {
+            "type": "software",
+            "title": "Software",
+        }
+    elif mutation == "disagreeing":
+        record_metadata["resource_type"] = {
+            "type": "dataset",
+            "id": "software",
+            "title": "Dataset",
+        }
+    else:
+        record_metadata["upload_type"] = "dataset"
+    with pytest.raises(publish.DepositError, match=message):
+        publish.validate_published_record(
+            payload,
+            record_id=server.record_id,
+            api_url=draft.DEFAULT_API_URL,
+            metadata=metadata,
+            uploads=package_data.uploads,
+        )
+
+
+@pytest.mark.parametrize(
+    ("observed_license", "message"),
+    [
+        ({}, "no valid license ID"),
+        ({"id": None}, "no valid license ID"),
+        ({"id": ""}, "no valid license ID"),
+        ({"id": "cc0-1.0"}, "requested license"),
+    ],
+)
+def test_public_record_rejects_malformed_or_wrong_license_dict(
+    publication_release: deposit_helpers.SyntheticRelease,
+    package_data: draft.ValidatedPackage,
+    observed_license: dict[str, object],
+    message: str,
+) -> None:
+    metadata = metadata_for(publication_release)
+    server = FakePublicationServer(package_data, metadata, published=True)
+    payload = server.record()
+    record_metadata = payload["metadata"]
+    assert isinstance(record_metadata, dict)
+    record_metadata["license"] = observed_license
+    with pytest.raises(publish.DepositError, match=message):
+        publish.validate_published_record(
+            payload,
+            record_id=server.record_id,
+            api_url=draft.DEFAULT_API_URL,
+            metadata=metadata,
+            uploads=package_data.uploads,
+        )
+
+
+def test_public_record_accepts_legacy_html_link(
+    publication_release: deposit_helpers.SyntheticRelease,
+    package_data: draft.ValidatedPackage,
+) -> None:
+    metadata = metadata_for(publication_release)
+    server = FakePublicationServer(package_data, metadata, published=True)
+    payload = server.record()
+    links = payload["links"]
+    assert isinstance(links, dict)
+    links["html"] = links.pop("self_html")
+    result = publish.validate_published_record(
+        payload,
+        record_id=server.record_id,
+        api_url=draft.DEFAULT_API_URL,
+        metadata=metadata,
+        uploads=package_data.uploads,
+    )
+    assert result.record_url == f"https://zenodo.org/records/{server.record_id}"
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("missing", "no public record URL"),
+        ("wrong-type", "no public record URL"),
+        ("conflicting", "conflicting public URLs"),
+    ],
+)
+def test_public_record_rejects_invalid_or_conflicting_html_links(
+    publication_release: deposit_helpers.SyntheticRelease,
+    package_data: draft.ValidatedPackage,
+    mutation: str,
+    message: str,
+) -> None:
+    metadata = metadata_for(publication_release)
+    server = FakePublicationServer(package_data, metadata, published=True)
+    payload = server.record()
+    links = payload["links"]
+    assert isinstance(links, dict)
+    if mutation == "missing":
+        links.pop("self_html")
+    elif mutation == "wrong-type":
+        links["self_html"] = 123
+    else:
+        links["html"] = "https://zenodo.org/records/999999"
+    with pytest.raises(publish.DepositError, match=message):
+        publish.validate_published_record(
+            payload,
+            record_id=server.record_id,
+            api_url=draft.DEFAULT_API_URL,
+            metadata=metadata,
+            uploads=package_data.uploads,
+        )
 
 
 @pytest.mark.parametrize("remote_mutation", ["extra", "mismatch"])
