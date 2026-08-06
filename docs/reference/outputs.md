@@ -33,6 +33,7 @@ OUTPUT/
 │   ├── paper_figures/
 │   │   ├── celltypes_paper_figure.png
 │   │   ├── celltypes_paper_figure.pdf
+│   │   ├── celltypes_paper_figure_legend.txt
 │   │   ├── celltype_counts_barplot.png
 │   │   └── celltype_counts_barplot.pdf
 │   ├── plotting_metadata/
@@ -66,7 +67,19 @@ Sampled counts are not whole-slide estimates.
 
 Optional sampled-patch, QC-patch, pyramidal-input, and JSON exports have their
 own manifests/integrity records. `summary.json` is not published until required
-core and requested optional artifacts pass validation.
+core and requested optional artifacts pass validation. For a completion summary
+that records the current paper-figure layout version, the per-sample
+`celltypes_paper_figure_legend.txt` is required and missing or empty text prevents
+completion/resume reuse. The layout version remains separate from the scientific
+worker processing signature, so direct reuse of the same persistent worker
+output retains the earlier contract for a legacy completed summary without a
+layout version. Nextflow cache reuse is a separate layer: staged worker code and
+configuration also enter the task key, and a software upgrade can invalidate
+`PROCESS_SLIDE` and re-enter HistoPLUS inference. Inspect the top-level
+`--resume --dry-run` plan for Nextflow `-resume` and the original work directory;
+preserve the exact software/work cache or select `--cpu` if reuse is uncertain.
+Use a new output directory or a deliberate rerun to generate the redesigned
+figure from a legacy result.
 
 ## Raw TIFF patch and paper-figure outputs
 
@@ -76,19 +89,37 @@ TIFF patch input has a per-sample directory. Full patch processing means that
 100% of the discovered TIFF patch inputs are scheduled; it does not turn patch
 counts into patient-level, tumor-level, or whole-slide estimates.
 
+The main paper figure preserves its established filename and uses a compact
+full-width layout inspired by the visual grammar of [STTT 2026 Figure
+6](https://www.nature.com/articles/s41392-026-02734-0#Fig6) and [Figure
+7](https://www.nature.com/articles/s41392-026-02734-0#Fig7):
+**a**, all detected HistoPLUS cell-type counts and within-input percentages;
+**b**, the scale-calibrated overview and selected ROI; and **c**, the enlarged
+QC inset with the configured cell-type overlay and its own scale bar. The
+artwork contains no sample title or
+explanatory paragraph. Those details are written to the adjacent text legend.
+Layout inspiration is not evidence of equivalent methods, performance, or
+biological findings.
+
+Use the [Nature Research figure
+specifications](https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/)
+as a separate submission-preparation checklist; the generated files are not a
+guarantee of compliance with a journal's production requirements.
+
 Review these visual exports for every completed patch:
 
 | Path | Purpose |
 | --- | --- |
-| `<sample>/overlays/celltypes_overview_and_zoom.png` | Whole-input overview, connected QC zoom, cell-type overlay, and scale bars |
+| `<sample>/overlays/celltypes_overview_and_zoom.png` | Whole-input overview, connected QC zoom, configured cell-type overlay, and scale bars |
 | `<sample>/overlays/celltypes_overview_and_zoom.pdf` | PDF form of the overview/QC figure |
-| `<sample>/paper_figures/celltypes_paper_figure.png` | Publication-oriented raster figure |
-| `<sample>/paper_figures/celltypes_paper_figure.pdf` | Publication-oriented PDF figure |
-| `<sample>/paper_figures/celltype_counts_barplot.png` | Detected-cell count chart |
+| `<sample>/paper_figures/celltypes_paper_figure.png` | Compact raster figure: cell-type statistics at left, overview/QC stacked at right |
+| `<sample>/paper_figures/celltypes_paper_figure.pdf` | Vector-text PDF form of the same compact layout |
+| `<sample>/paper_figures/celltypes_paper_figure_legend.txt` | Sample ID, panel descriptions, count source/denominator, scale/ROI/model provenance, and caveats |
+| `<sample>/paper_figures/celltype_counts_barplot.png` | Standalone detected-cell count chart |
 | `<sample>/paper_figures/celltype_counts_barplot.pdf` | PDF form of the count chart |
 | `<sample>/plotting_metadata/detected_cell_types.csv` | Figure source values |
 | `<sample>/plotting_metadata/cell_type_palette.json` | Class-to-color provenance |
-| `<sample>/summary/run_metadata.json` | Resolved MPP, model, device, and processing parameters |
+| `<sample>/summary/run_metadata.json` | Resolved MPP/model/device plus paper-layout version and portable figure/legend paths |
 | `<sample>/summary/summary.json` | Validated completion record, written last |
 
 When QC-patch export is enabled, `<sample>/qc_patches/patch_manifest.csv` maps
@@ -102,7 +133,9 @@ per-input scales in `source_mpp_values` and records
 `START_HERE.html`, and the text run summary display those MPP values and their
 `per-input embedded TIFF metadata` provenance.
 
-Paper figures do not establish biological or clinical validity. Review scale,
+Paper figures report HistoPLUS cell-type predictions. They do not score breast
+markers, infer receptor status, or establish co-expression across separate
+stains, and they do not establish biological or clinical validity. Review scale,
 overlay alignment, tissue content, artifacts, class plausibility, completion,
 and the aggregation audit before using any numeric table. If breast IHC cases
 are arranged into categories, name them **computational receptor-profile

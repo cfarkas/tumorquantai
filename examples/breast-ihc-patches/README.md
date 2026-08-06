@@ -33,10 +33,43 @@ tumorquantai --patches /path/to/breast-ihc-tiff-patches \
   --cpu
 ```
 
+## Expected per-input paper outputs
+
+Each completed input retains the established filenames:
+
+```text
+<sample>/paper_figures/
+├── celltypes_paper_figure.png
+├── celltypes_paper_figure.pdf
+├── celltypes_paper_figure_legend.txt
+├── celltype_counts_barplot.png
+└── celltype_counts_barplot.pdf
+```
+
+The compact paper figure places all HistoPLUS cell-type counts and within-input
+percentages at left (panel **a**), with the scale-calibrated overview and QC
+inset using the configured cell-type overlay stacked at right (panels **b** and
+**c**). Its visual references are [STTT 2026 Figure
+6](https://www.nature.com/articles/s41392-026-02734-0#Fig6) and [Figure
+7](https://www.nature.com/articles/s41392-026-02734-0#Fig7); this does not import
+their methods or biological claims. The text legend carries the
+sample ID, panel explanations, source/denominator, scale and ROI, pinned model
+identity, and research-use caveats. The legend is required when the completion
+summary records the current paper-layout version. Direct reuse of the same
+persistent worker output preserves the legacy completion contract when a summary
+has no layout version, but standard Nextflow resume also keys staged code and
+configuration. An upgrade can invalidate `PROCESS_SLIDE` and re-enter inference.
+Inspect `--resume --dry-run` for Nextflow `-resume` and the original work
+directory; preserve the exact software/work cache or use `--cpu` if reuse is
+uncertain. Use a new output directory or a deliberate rerun when redesigned
+figures are wanted for legacy outputs.
+
 Patch mode processes 100% of the discovered TIFF patch inputs. Review the
-completion audit: failed or incomplete inputs are not numerical zero. Any
-breast IHC categories are computational receptor-profile pre-score groups, not
-diagnoses or pathologist sign-out.
+completion audit: failed or incomplete inputs are not numerical zero. These are
+HistoPLUS cell-type outputs, not breast-marker scores or receptor-status calls.
+Any downstream breast IHC categories are computational receptor-profile
+pre-score groups, not diagnoses or pathologist sign-out, and separate stains do
+not establish cell-level co-expression.
 
 For mixed-scale inputs, `tumorquantai status`, status JSON,
 `START_HERE.html`, and the text run summary report the distinct per-input MPP

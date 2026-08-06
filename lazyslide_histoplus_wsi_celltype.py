@@ -207,6 +207,7 @@ HISTOPLUS_TILE_DIVISOR = 14
 DEFAULT_HISTOPLUS_REPO_ID = "Owkin-Bioptimus/histoplus"
 DEFAULT_HISTOPLUS_REVISION = "cde2eee81af9e39b03802fc33d4f284733b5ee5e"
 OVERLAY_PALETTE_VERSION = "high_contrast_outline_centroid_halo_v3_2026_05_10"
+PAPER_FIGURE_LAYOUT_VERSION = "compact_statistics_linked_qc_v2"
 
 HELP_EPILOG = r"""
 Portable examples
@@ -790,6 +791,36 @@ def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
         with os.fdopen(file_descriptor, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, ensure_ascii=False)
             handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, path)
+    except BaseException:
+        try:
+            os.close(file_descriptor)
+        except OSError:
+            pass
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+
+def write_text_atomic(path: Path, text: str) -> None:
+    """Atomically replace a UTF-8 text artifact after a durable file write."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(file_descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            if text and not text.endswith("\n"):
+                handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary_path, path)
@@ -2231,6 +2262,15 @@ def nonempty_file(path: Path) -> bool:
         return False
 
 
+def valid_text_artifact(path: Path) -> bool:
+    if not nonempty_file(path):
+        return False
+    try:
+        return bool(path.read_text(encoding="utf-8").strip())
+    except (OSError, UnicodeError):
+        return False
+
+
 def valid_json_artifact(path: Path) -> bool:
     if not nonempty_file(path):
         return False
@@ -2406,6 +2446,8 @@ def slide_has_required_plot_exports(
     slide_out: Path,
     args: argparse.Namespace | None = None,
     job: SlideJob | None = None,
+    *,
+    require_paper_figure_legend: bool = True,
 ) -> bool:
     coordinate_name = (
         "cell_type_coordinates.csv"
@@ -2430,6 +2472,10 @@ def slide_has_required_plot_exports(
         valid_json_artifact(slide_out / "summary" / "run_metadata.json"),
     ]
     if not all(core_checks):
+        return False
+    if require_paper_figure_legend and not valid_text_artifact(
+        slide_out / "paper_figures" / "celltypes_paper_figure_legend.txt"
+    ):
         return False
     if args is None:
         return True
@@ -2534,20 +2580,28 @@ def sample_wsi_tiles(wsi: Any, args: argparse.Namespace, logger: logging.Logger,
     return summary
 
 
-def get_wsi_thumbnail_rgb(wsi: Any, fallback_slide: Any, max_dim: int) -> np.ndarray:
-    # Try to retrieve the attached LazySlide thumbnail first.
+def get_wsi_thumbnail_rgb(
+    wsi: Any,
+    fallback_slide: Any,
+    max_dim: int,
+    *,
+    prefer_fallback: bool = False,
+) -> np.ndarray:
+    # Try to retrieve the attached LazySlide thumbnail first unless visual
+    # coordinates refer to the original source rather than a processing mosaic.
     candidates: list[Any] = []
-    for key in ["wsi_thumbnail", "thumbnail"]:
-        try:
-            candidates.append(wsi[key])
-        except Exception:
-            pass
-        try:
-            images = getattr(wsi, "images")
-            if key in images:
-                candidates.append(images[key])
-        except Exception:
-            pass
+    if not prefer_fallback:
+        for key in ["wsi_thumbnail", "thumbnail"]:
+            try:
+                candidates.append(wsi[key])
+            except Exception:
+                pass
+            try:
+                images = getattr(wsi, "images")
+                if key in images:
+                    candidates.append(images[key])
+            except Exception:
+                pass
 
     for item in candidates:
         try:
@@ -3285,22 +3339,220 @@ def build_composite_figure(
     plt.close(fig)
 
 
-def add_bar_count_labels(ax: Any, bars: Any, counts: Sequence[Any], fontsize: int = 7) -> None:
+def add_bar_count_labels(
+    ax: Any,
+    bars: Any,
+    counts: Sequence[Any],
+    fontsize: int = 7,
+    fractions: Sequence[Any] | None = None,
+) -> None:
     if not counts:
         return
     max_count = max([float(c) for c in counts] + [1.0])
-    ax.set_xlim(0, max_count * 1.16)
-    for bar, count in zip(bars, counts):
+    ax.set_xlim(0, max_count * (1.48 if fractions is not None else 1.16))
+    for index, (bar, count) in enumerate(zip(bars, counts)):
         value = int(count)
+        label = f"{value:,}"
+        if fractions is not None and index < len(fractions):
+            fraction = float(fractions[index])
+            if math.isfinite(fraction):
+                label += f" ({format_paper_percentage(fraction)})"
         ax.text(
             float(bar.get_width()) + max_count * 0.015,
             float(bar.get_y()) + float(bar.get_height()) / 2.0,
-            f"{value:,}",
+            label,
             va="center",
             ha="left",
             fontsize=fontsize,
             color="black",
         )
+
+
+def format_paper_percentage(fraction: float) -> str:
+    """Format a fraction without rounding a nonzero rare class to visual zero."""
+
+    percentage = 100.0 * float(fraction)
+    if not math.isfinite(percentage):
+        return "NA"
+    if percentage == 0.0:
+        return "0.0%"
+    if 0.0 < percentage < 0.01:
+        return "<0.01%"
+    if percentage < 0.1:
+        return f"{percentage:.2f}%"
+    return f"{percentage:.1f}%"
+
+
+def create_paper_celltype_layout() -> tuple[Any, OrderedDict[str, Any]]:
+    """Create the fixed full-width publication layout used by per-sample figures."""
+
+    fig = plt.figure(figsize=(7.2, 5.2), constrained_layout=False)
+    grid = fig.add_gridspec(
+        2,
+        2,
+        width_ratios=[0.82, 1.48],
+        height_ratios=[1.0, 1.0],
+        left=0.15,
+        right=0.995,
+        bottom=0.10,
+        top=0.94,
+        wspace=0.24,
+        hspace=0.08,
+    )
+    axes: OrderedDict[str, Any] = OrderedDict(
+        [
+            ("statistics", fig.add_subplot(grid[:, 0])),
+            ("overview", fig.add_subplot(grid[0, 1])),
+            ("qc_inset", fig.add_subplot(grid[1, 1])),
+        ]
+    )
+    return fig, axes
+
+
+def add_paper_panel_label(ax: Any, label: str) -> None:
+    ax.text(
+        -0.045,
+        1.025,
+        str(label).lower(),
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        fontsize=10,
+        fontweight="bold",
+        color="black",
+        clip_on=False,
+    )
+
+
+def add_paper_roi_connectors(
+    fig: Any,
+    overview_ax: Any,
+    qc_ax: Any,
+    *,
+    roi: tuple[int, int, int, int] | None,
+    slide_w: int,
+    slide_h: int,
+    overview_width_px: int,
+    overview_height_px: int,
+    qc_width_px: int,
+) -> list[Any]:
+    """Link the source-image ROI to the top edge of the enlarged QC panel."""
+
+    if roi is None or slide_w <= 0 or slide_h <= 0:
+        return []
+    x0, _y0, x1, y1 = [float(value) for value in roi]
+    scale_x = float(overview_width_px) / float(slide_w)
+    scale_y = float(overview_height_px) / float(slide_h)
+    roi_bottom_left = (x0 * scale_x, y1 * scale_y)
+    roi_bottom_right = (x1 * scale_x, y1 * scale_y)
+    connectors = [
+        ConnectionPatch(
+            xyA=roi_bottom_left,
+            coordsA=overview_ax.transData,
+            xyB=(0.0, 0.0),
+            coordsB=qc_ax.transData,
+            color="0.30",
+            linewidth=1.1,
+            clip_on=False,
+            zorder=30,
+        ),
+        ConnectionPatch(
+            xyA=roi_bottom_right,
+            coordsA=overview_ax.transData,
+            xyB=(float(qc_width_px), 0.0),
+            coordsB=qc_ax.transData,
+            color="0.30",
+            linewidth=1.1,
+            clip_on=False,
+            zorder=30,
+        ),
+    ]
+    for connector in connectors:
+        fig.add_artist(connector)
+    return connectors
+
+
+def paper_figure_legend_text(
+    *,
+    slide_id: str,
+    detected_df: pd.DataFrame,
+    mpp: float,
+    overview_mpp: float,
+    roi: tuple[int, int, int, int] | None,
+    counts_scope: str,
+    histoplus_repo_id: str,
+    histoplus_revision: str,
+    histoplus_magnification: str,
+) -> str:
+    """Return the plain-text, sample-specific legend for the paper figure."""
+
+    total_cells = int(detected_df["count"].sum()) if "count" in detected_df else 0
+    class_count = int(len(detected_df))
+    if roi is None:
+        roi_description = "not recorded"
+        overview_description = "b, Overview of the analyzed image."
+        qc_description = (
+            "c, Enlarged QC view with the HistoPLUS-predicted cell-type overlay."
+        )
+    else:
+        x0, y0, x1, y1 = [int(value) for value in roi]
+        roi_description = f"x0={x0}, y0={y0}, x1={x1}, y1={y1}"
+        overview_description = (
+            "b, Overview of the analyzed image; the outlined box marks the "
+            "region displayed in panel c."
+        )
+        qc_description = (
+            "c, Enlarged QC inset with the HistoPLUS-predicted cell-type overlay."
+        )
+    scope = str(counts_scope).strip() or "the analyzed input"
+    return "\n".join(
+        [
+            "Figure legend",
+            f"Slide ID: {slide_id}",
+            "",
+            (
+                "a, Cell-type counts with percentages of all detected cells "
+                f"({total_cells:,} cells across {class_count} detected classes)."
+            ),
+            overview_description,
+            qc_description,
+            "",
+            (
+                "Counts source: cell_types/class_counts.csv. Percentages use all "
+                f"detected cells as the denominator. Counts represent {scope} and "
+                "are not extrapolated to unprocessed tissue or a whole slide."
+            ),
+            (
+                "Scale and ROI: scale bars are calibrated from the source image "
+                f"({float(mpp):.6g} um/pixel; displayed overview calibration "
+                f"{float(overview_mpp):.6g} um/pixel). ROI coordinates in source "
+                f"pixels: {roi_description}. The ROI is shown for visual QC "
+                "and is not an independent quantitative sample."
+            ),
+            (
+                "Model: LazySlide HistoPLUS "
+                f"{histoplus_magnification} ({histoplus_repo_id}, revision "
+                f"{histoplus_revision})."
+            ),
+            (
+                "Research-use caveat: HistoPLUS cell-type labels are model "
+                "predictions, not pathologist-verified diagnoses. This figure is "
+                "for research use only and is not a diagnostic or clinical "
+                "validation result."
+            ),
+            f"Figure-layout provenance: {PAPER_FIGURE_LAYOUT_VERSION}.",
+        ]
+    ) + "\n"
+
+
+def style_cell_count_axis(ax: Any) -> None:
+    ax.grid(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_linewidth(1.0)
+    ax.spines["bottom"].set_linewidth(1.0)
+    ax.tick_params(axis="both", labelsize=7, width=0.9, length=3.0)
+    ax.set_xlabel("Detected cells", fontsize=8)
 
 
 def build_paper_celltype_figures(
@@ -3312,63 +3564,160 @@ def build_paper_celltype_figures(
     dpi: int,
     slide_w: int,
     mpp: float,
+    *,
+    slide_h: int | None = None,
+    roi: tuple[int, int, int, int] | None = None,
+    counts_scope: str = "the analyzed input",
+    histoplus_repo_id: str = DEFAULT_HISTOPLUS_REPO_ID,
+    histoplus_revision: str = DEFAULT_HISTOPLUS_REVISION,
+    histoplus_magnification: str = "20x",
 ) -> dict[str, str]:
     out_dir.mkdir(parents=True, exist_ok=True)
     paper_png = out_dir / "celltypes_paper_figure.png"
     paper_pdf = out_dir / "celltypes_paper_figure.pdf"
     counts_png = out_dir / "celltype_counts_barplot.png"
     counts_pdf = out_dir / "celltype_counts_barplot.pdf"
+    legend_txt = out_dir / "celltypes_paper_figure_legend.txt"
     overview_mpp = float(mpp) * float(slide_w) / float(max(1, overview_rgb.shape[1]))
-    overview_plot = add_scale_bar_to_rgb(overview_rgb, overview_mpp)
-    zoom_plot = add_scale_bar_to_rgb(zoom_rgb, float(mpp))
+    figure_slide_h = (
+        int(slide_h)
+        if slide_h is not None
+        else max(
+            1,
+            int(
+                round(
+                    float(slide_w)
+                    * float(overview_rgb.shape[0])
+                    / float(max(1, overview_rgb.shape[1]))
+                )
+            ),
+        )
+    )
+    figure_df = detected_df.copy()
+    if not figure_df.empty and "fraction" not in figure_df.columns:
+        total = float(figure_df["count"].sum())
+        figure_df["fraction"] = (
+            figure_df["count"].astype(float) / total if total > 0 else 0.0
+        )
 
-    with plt.rc_context({"font.size": 8, "axes.linewidth": 0.8, "pdf.fonttype": 42, "ps.fonttype": 42}):
-        fig = plt.figure(figsize=(7.2, 3.0), constrained_layout=True)
-        gs = fig.add_gridspec(1, 3, width_ratios=[1.0, 1.0, 0.85])
-        ax0 = fig.add_subplot(gs[0, 0])
-        ax1 = fig.add_subplot(gs[0, 1])
-        ax2 = fig.add_subplot(gs[0, 2])
-        ax0.imshow(overview_plot)
-        ax0.set_title("Overview", fontsize=9)
-        ax0.axis("off")
-        ax1.imshow(zoom_plot)
-        ax1.set_title("Cell types", fontsize=9)
-        ax1.axis("off")
-        plot_df = detected_df.sort_values("count", ascending=True).tail(12) if not detected_df.empty else detected_df
+    publication_style = {
+        "font.size": 8,
+        "axes.linewidth": 1.0,
+        "lines.linewidth": 1.2,
+        "patch.linewidth": 0.8,
+        "xtick.major.width": 0.9,
+        "ytick.major.width": 0.9,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+    }
+    with plt.rc_context(publication_style):
+        fig, axes = create_paper_celltype_layout()
+        stats_ax = axes["statistics"]
+        overview_ax = axes["overview"]
+        qc_ax = axes["qc_inset"]
+
+        plot_df = (
+            figure_df.sort_values("count", ascending=True)
+            if not figure_df.empty
+            else figure_df
+        )
         if plot_df.empty:
-            ax2.text(0.5, 0.5, "No cells", ha="center", va="center")
-            ax2.set_axis_off()
+            stats_ax.text(0.5, 0.5, "n = 0", ha="center", va="center", fontsize=8)
+            stats_ax.set_axis_off()
         else:
-            bars = ax2.barh(plot_df["class_name"], plot_df["count"], color=plot_df["color_hex"], edgecolor="black", linewidth=0.3)
-            add_bar_count_labels(ax2, bars, plot_df["count"].tolist(), fontsize=7)
-            ax2.set_xlabel("Cells", fontsize=8)
-            ax2.tick_params(axis="both", labelsize=7)
-            ax2.spines["top"].set_visible(False)
-            ax2.spines["right"].set_visible(False)
-        fig.suptitle(slide_id, fontsize=9)
-        fig.savefig(paper_png, dpi=dpi, bbox_inches="tight")
-        fig.savefig(paper_pdf, dpi=dpi, bbox_inches="tight")
+            bars = stats_ax.barh(
+                plot_df["class_name"],
+                plot_df["count"],
+                color=plot_df["color_hex"],
+                edgecolor="black",
+                linewidth=0.8,
+            )
+            add_bar_count_labels(
+                stats_ax,
+                bars,
+                plot_df["count"].tolist(),
+                fontsize=7,
+                fractions=plot_df["fraction"].tolist(),
+            )
+            style_cell_count_axis(stats_ax)
+
+        overview_ax.imshow(overview_rgb, interpolation="none")
+        add_axis_scale_bar(
+            overview_ax,
+            image_width_px=int(overview_rgb.shape[1]),
+            image_height_px=int(overview_rgb.shape[0]),
+            microns_per_pixel=overview_mpp,
+        )
+        overview_ax.set_axis_off()
+        qc_ax.imshow(zoom_rgb, interpolation="none")
+        add_axis_scale_bar(
+            qc_ax,
+            image_width_px=int(zoom_rgb.shape[1]),
+            image_height_px=int(zoom_rgb.shape[0]),
+            microns_per_pixel=float(mpp),
+        )
+        qc_ax.set_axis_off()
+        add_paper_roi_connectors(
+            fig,
+            overview_ax,
+            qc_ax,
+            roi=roi,
+            slide_w=int(slide_w),
+            slide_h=figure_slide_h,
+            overview_width_px=int(overview_rgb.shape[1]),
+            overview_height_px=int(overview_rgb.shape[0]),
+            qc_width_px=int(zoom_rgb.shape[1]),
+        )
+        for axis, label in zip(axes.values(), ("a", "b", "c")):
+            add_paper_panel_label(axis, label)
+
+        fig.savefig(paper_png, dpi=dpi, facecolor="white")
+        fig.savefig(paper_pdf, dpi=dpi, facecolor="white")
         plt.close(fig)
 
-        fig2, ax = plt.subplots(figsize=(3.6, max(1.8, 0.22 * max(1, len(detected_df)))))
-        plot_df = detected_df.sort_values("count", ascending=True) if not detected_df.empty else detected_df
+        fig2, ax = plt.subplots(
+            figsize=(3.6, max(1.8, 0.22 * max(1, len(figure_df))))
+        )
+        plot_df = (
+            figure_df.sort_values("count", ascending=True)
+            if not figure_df.empty
+            else figure_df
+        )
         if plot_df.empty:
-            ax.text(0.5, 0.5, "No cells", ha="center", va="center")
+            ax.text(0.5, 0.5, "n = 0", ha="center", va="center", fontsize=8)
             ax.set_axis_off()
         else:
-            bars = ax.barh(plot_df["class_name"], plot_df["count"], color=plot_df["color_hex"], edgecolor="black", linewidth=0.3)
+            bars = ax.barh(
+                plot_df["class_name"],
+                plot_df["count"],
+                color=plot_df["color_hex"],
+                edgecolor="black",
+                linewidth=0.8,
+            )
             add_bar_count_labels(ax, bars, plot_df["count"].tolist(), fontsize=7)
-            ax.set_xlabel("Detected cells", fontsize=8)
-            ax.tick_params(axis="both", labelsize=7)
-            ax.spines["top"].set_visible(False)
-            ax.spines["right"].set_visible(False)
-        fig2.savefig(counts_png, dpi=dpi, bbox_inches="tight")
-        fig2.savefig(counts_pdf, dpi=dpi, bbox_inches="tight")
+            style_cell_count_axis(ax)
+        fig2.savefig(counts_png, dpi=dpi, bbox_inches="tight", pad_inches=0.03)
+        fig2.savefig(counts_pdf, dpi=dpi, bbox_inches="tight", pad_inches=0.03)
         plt.close(fig2)
 
+    write_text_atomic(
+        legend_txt,
+        paper_figure_legend_text(
+            slide_id=slide_id,
+            detected_df=figure_df,
+            mpp=float(mpp),
+            overview_mpp=overview_mpp,
+            roi=roi,
+            counts_scope=counts_scope,
+            histoplus_repo_id=histoplus_repo_id,
+            histoplus_revision=histoplus_revision,
+            histoplus_magnification=histoplus_magnification,
+        ),
+    )
     return {
         "paper_figure_png": str(paper_png),
         "paper_figure_pdf": str(paper_pdf),
+        "paper_figure_legend_txt": str(legend_txt),
         "celltype_counts_barplot_png": str(counts_png),
         "celltype_counts_barplot_pdf": str(counts_pdf),
     }
@@ -4167,7 +4516,15 @@ def run_slide(job: SlideJob, args: argparse.Namespace, root_logger: logging.Logg
             signature_matches = (
                 existing_summary.get("processing_signature") == requested_signature
             )
-            outputs_complete = slide_has_required_plot_exports(slide_out, args, job)
+            outputs_complete = slide_has_required_plot_exports(
+                slide_out,
+                args,
+                job,
+                require_paper_figure_legend=(
+                    existing_summary.get("paper_figure_layout_version")
+                    == PAPER_FIGURE_LAYOUT_VERSION
+                ),
+            )
             if signature_matches and outputs_complete:
                 logger.info("Resume mode: using exact matching outputs for %s", job.slide_id)
                 return existing_summary
@@ -4343,7 +4700,12 @@ def run_slide(job: SlideJob, args: argparse.Namespace, root_logger: logging.Logg
     with TiffSlide(str(visual_l0_path)) as slide:
         slide_w, slide_h = [int(v) for v in slide.dimensions]
         logger.info("Slide dimensions: %dx%d", slide_w, slide_h)
-        thumb_rgb = get_wsi_thumbnail_rgb(wsi, slide, int(args.thumbnail_size))
+        thumb_rgb = get_wsi_thumbnail_rgb(
+            wsi,
+            slide,
+            int(args.thumbnail_size),
+            prefer_fallback=bool(patch_records),
+        )
         roi = choose_zoom_box(
             df=export_df,
             slide_w=slide_w,
@@ -4403,6 +4765,12 @@ def run_slide(job: SlideJob, args: argparse.Namespace, root_logger: logging.Logg
             tile_sampling_summary=tile_sampling_summary,
             patch_sampling_summary=patch_sampling_summary,
         )
+        if patch_records:
+            counts_scope = "the selected sampled patches"
+        elif float(args.percent_slide) < 100.0:
+            counts_scope = "the sampled tissue tiles"
+        else:
+            counts_scope = "the analyzed input"
         paper_figure_paths = build_paper_celltype_figures(
             overview_rgb=overview_rgb,
             zoom_rgb=zoom_overlay,
@@ -4411,7 +4779,13 @@ def run_slide(job: SlideJob, args: argparse.Namespace, root_logger: logging.Logg
             out_dir=slide_out / "paper_figures",
             dpi=int(args.figure_dpi),
             slide_w=slide_w,
+            slide_h=slide_h,
             mpp=source_slide_mpp,
+            roi=roi,
+            counts_scope=counts_scope,
+            histoplus_repo_id=str(args.histoplus_repo_id),
+            histoplus_revision=str(args.histoplus_revision),
+            histoplus_magnification=str(args.histoplus_magnification),
         )
 
         patch_rows = export_qc_patches(
@@ -4450,6 +4824,7 @@ def run_slide(job: SlideJob, args: argparse.Namespace, root_logger: logging.Logg
         "slide_id": job.slide_id,
         "processing_signature_schema": PROCESSING_SIGNATURE_SCHEMA,
         "processing_signature": requested_signature,
+        "paper_figure_layout_version": PAPER_FIGURE_LAYOUT_VERSION,
         "input_fingerprint": input_file_fingerprint(job.l0_path),
         "l2_input_fingerprint": requested_signature_payload.get("l2_input"),
         "slide_path": str(job.l0_path),
@@ -4544,6 +4919,13 @@ def run_slide(job: SlideJob, args: argparse.Namespace, root_logger: logging.Logg
             "overlay_draw_order": str(args.overlay_draw_order),
             "cell_marker_radius": int(args.cell_marker_radius),
             "overlay_palette_version": OVERLAY_PALETTE_VERSION,
+            "paper_figure_layout_version": PAPER_FIGURE_LAYOUT_VERSION,
+            "paper_figure_outputs": relativize_output_paths(
+                paper_figure_paths, slide_out
+            ),
+            "paper_figure_legend": relativize_output_paths(
+                paper_figure_paths.get("paper_figure_legend_txt"), slide_out
+            ),
             "qc_patch_count": int(args.qc_patch_count),
             "qc_patch_size": int(args.qc_patch_size),
         },

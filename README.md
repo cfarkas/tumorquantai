@@ -132,6 +132,43 @@ tumorquantai --patches /path/to/breast-ihc-tiff-patches \
   --cpu
 ```
 
+For each completed input, `celltypes_paper_figure.png` and `.pdf` use a
+full-width compact layout inspired by the visual grammar of
+[STTT 2026 Figure 6](https://www.nature.com/articles/s41392-026-02734-0#Fig6)
+and [Figure 7](https://www.nature.com/articles/s41392-026-02734-0#Fig7): panel
+**a** reports every detected HistoPLUS cell type as a count and
+within-input percentage, panel **b** shows the scale-calibrated overview and
+ROI, and panel **c** shows the enlarged QC inset with the configured cell-type
+overlay. The sample ID, panel
+explanations, count source and denominator, scale/ROI/model provenance, and
+research-use caveats are kept outside the artwork in
+`celltypes_paper_figure_legend.txt`.
+
+For outputs whose completion summary records the current paper-layout version,
+the legend is required for completion and resume reuse. The layout version is
+separate from the scientific worker processing signature: direct reuse of the
+same persistent worker output preserves the earlier contract for a legacy
+completed output without a layout version. Standard `tumorquantai` execution is
+orchestrated by Nextflow, however, and its cache also keys staged worker code
+and configuration. A software upgrade can therefore invalidate `PROCESS_SLIDE`
+and re-enter HistoPLUS inference even when the worker signature is unchanged.
+Before resuming, run the intended command with `--dry-run` and verify that its
+expanded engine command uses `-resume` and the original work directory. If
+exact software/work-cache reuse is uncertain, select `--cpu` to avoid NVIDIA
+GPU contention. To obtain redesigned figures for a legacy result, choose a new
+output directory or a deliberate rerun.
+
+This stable patch route reports HistoPLUS cell-type predictions from each TIFF.
+It does not score ER, PR, HER2, or Ki-67 staining; infer receptor status; or
+establish co-expression across separately stained patches. The layout
+inspiration does not import any external biological result or performance
+claim.
+
+Consult the [Nature Research figure
+specifications](https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/)
+when preparing final submission files; TumorQuantAI exports do not by themselves
+guarantee compliance with a particular journal's production requirements.
+
 If the TIFFs do not contain reliable micrometres-per-pixel metadata, provide one
 verified common value with `--source-mpp`. Do not copy an MPP from another
 scanner, objective, or export. The public, raw-only example dataset is available
@@ -178,6 +215,8 @@ Use the physical MPP recorded by the scanner or export software.
 | --- | --- |
 | `START_HERE.html` | Run status and links to outputs that exist |
 | `<sample>/overlays/celltypes_overview_and_zoom.png` | Visual alignment and cell-type overlay QC |
+| `<sample>/paper_figures/celltypes_paper_figure.png` | Compact cell-type statistics, overview, and configured-overlay QC inset |
+| `<sample>/paper_figures/celltypes_paper_figure_legend.txt` | Sample-specific figure legend and interpretation boundaries |
 | `<sample>/summary/summary.json` | Completion, scale, sampling, seed, model, and provenance |
 | `<sample>/cell_types/class_counts.csv` | Detected-cell counts in processed tissue tiles |
 | `aggregated_celltypes/sample_aggregation_audit.csv` | Included, failed, incomplete, and excluded samples |

@@ -2,7 +2,23 @@
 
 ## Unreleased
 
-- No unreleased changes.
+- Redesigned the per-patch HistoPLUS paper figure with a compact layout inspired
+  by [STTT 2026 Figure
+  6](https://www.nature.com/articles/s41392-026-02734-0#Fig6) and [Figure
+  7](https://www.nature.com/articles/s41392-026-02734-0#Fig7), plus an external,
+  layout-versioned text legend.
+  The presentation version remains outside the scientific worker processing
+  signature, preserving the legacy contract when a worker directly reuses its
+  persistent output.
+- Required the legend when a completion summary records the current layout while
+  retaining the worker-level legacy exception for completed outputs without a
+  layout version. This is not a Nextflow cache guarantee: staged worker-code or
+  configuration changes can invalidate `PROCESS_SLIDE` after a software upgrade.
+  Use a new output directory or a deliberate rerun when redesigned legacy figures
+  are required and the original Nextflow cache cannot be reused.
+- Clarified that stable patch mode reports HistoPLUS cell-type predictions; it
+  does not score breast markers, infer receptor status, or measure cell-level
+  co-expression across separately stained images.
 
 ## 1.0.0 — 2026-08-05
 

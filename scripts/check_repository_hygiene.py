@@ -99,6 +99,7 @@ GENERATED_OUTPUT_NAMES = {
     "celltypes_overview_and_zoom.pdf",
     "celltypes_overview_and_zoom.png",
     "celltypes_paper_figure.pdf",
+    "celltypes_paper_figure_legend.txt",
     "celltypes_paper_figure.png",
     "class_counts.csv",
     "clinical_missingness.csv",
