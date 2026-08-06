@@ -73,6 +73,11 @@ def write_core_outputs(output: Path, *, plain_csv: bool = True, counts: bool = T
         path = output / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"%PDF-test")
+    legend_path = output / "paper_figures/celltypes_paper_figure_legend.txt"
+    legend_path.write_text(
+        "Figure legend\nSlide ID: fixture\nCounts source: cell_types/class_counts.csv\n",
+        encoding="utf-8",
+    )
     for relative in [
         "plotting_metadata/detected_cell_types.json",
         "plotting_metadata/cell_type_palette.json",
@@ -107,6 +112,195 @@ class SourceMppTests(unittest.TestCase):
             module.resolve_source_slide_mpp(wsi, args, logging.getLogger(__name__))
 
 
+class ThumbnailSourceTests(unittest.TestCase):
+    def test_original_slide_thumbnail_can_override_processing_mosaic(self) -> None:
+        attached = module.np.full((12, 18, 3), 17, dtype=module.np.uint8)
+        fallback = module.np.full((10, 15, 3), 231, dtype=module.np.uint8)
+
+        class FakeWsi:
+            images = {}
+
+            def __getitem__(self, key):
+                if key == "wsi_thumbnail":
+                    return attached
+                raise KeyError(key)
+
+        class FakeSlide:
+            def get_thumbnail(self, _size):
+                return module.Image.fromarray(fallback)
+
+        normal = module.get_wsi_thumbnail_rgb(FakeWsi(), FakeSlide(), 100)
+        original = module.get_wsi_thumbnail_rgb(
+            FakeWsi(), FakeSlide(), 100, prefer_fallback=True
+        )
+        self.assertEqual(int(normal[0, 0, 0]), 17)
+        self.assertEqual(int(original[0, 0, 0]), 231)
+
+
+class PaperFigureLayoutTests(unittest.TestCase):
+    def test_rare_nonzero_percentages_do_not_render_as_zero(self) -> None:
+        self.assertEqual(module.format_paper_percentage(0.0), "0.0%")
+        self.assertEqual(module.format_paper_percentage(2 / 5118), "0.04%")
+        self.assertEqual(module.format_paper_percentage(1 / 20000), "<0.01%")
+        self.assertEqual(module.format_paper_percentage(0.7), "70.0%")
+
+    def test_legacy_positional_renderer_call_remains_supported(self) -> None:
+        overview = module.np.full((24, 36, 3), 245, dtype=module.np.uint8)
+        qc_inset = module.np.full((20, 28, 3), 225, dtype=module.np.uint8)
+        detected = module.pd.DataFrame(
+            {
+                "class_name": ["Cancer cell"],
+                "count": [1],
+                "fraction": [1.0],
+                "color_hex": ["#005AB5"],
+            }
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            outputs = module.build_paper_celltype_figures(
+                overview,
+                qc_inset,
+                detected,
+                "LEGACY_CALL",
+                Path(temporary),
+                30,
+                360,
+                0.5,
+            )
+            self.assertEqual(len(outputs), 5)
+            legend = Path(outputs["paper_figure_legend_txt"]).read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("ROI coordinates in source pixels: not recorded", legend)
+            self.assertIn("c, Enlarged QC view", legend)
+            self.assertNotIn("outlined box marks", legend)
+
+    def test_layout_places_statistics_left_and_images_stacked_right(self) -> None:
+        fig, axes = module.create_paper_celltype_layout()
+        try:
+            self.assertEqual(
+                list(axes), ["statistics", "overview", "qc_inset"]
+            )
+            statistics = axes["statistics"].get_subplotspec()
+            overview = axes["overview"].get_subplotspec()
+            qc_inset = axes["qc_inset"].get_subplotspec()
+            self.assertEqual((statistics.colspan.start, statistics.colspan.stop), (0, 1))
+            self.assertEqual((statistics.rowspan.start, statistics.rowspan.stop), (0, 2))
+            self.assertEqual((overview.colspan.start, overview.colspan.stop), (1, 2))
+            self.assertEqual((overview.rowspan.start, overview.rowspan.stop), (0, 1))
+            self.assertEqual((qc_inset.colspan.start, qc_inset.colspan.stop), (1, 2))
+            self.assertEqual((qc_inset.rowspan.start, qc_inset.rowspan.stop), (1, 2))
+            self.assertGreater(fig.get_figwidth(), fig.get_figheight())
+        finally:
+            module.plt.close(fig)
+
+    def test_paper_figure_has_publication_panels_and_companion_legend(self) -> None:
+        overview = module.np.full((120, 180, 3), 245, dtype=module.np.uint8)
+        qc_inset = module.np.full((100, 140, 3), 225, dtype=module.np.uint8)
+        detected = module.pd.DataFrame(
+            {
+                "class_id": [1, 2],
+                "class_name": ["Cancer cell", "Lymphocytes"],
+                "count": [7, 3],
+                "fraction": [0.7, 0.3],
+                "color_hex": ["#005AB5", "#228B22"],
+            }
+        )
+        created = []
+        original_layout = module.create_paper_celltype_layout
+
+        def capture_layout():
+            figure, axes = original_layout()
+            created.append((figure, axes))
+            return figure, axes
+
+        with tempfile.TemporaryDirectory() as temporary:
+            with mock.patch.object(
+                module, "create_paper_celltype_layout", side_effect=capture_layout
+            ):
+                outputs = module.build_paper_celltype_figures(
+                    overview_rgb=overview,
+                    zoom_rgb=qc_inset,
+                    detected_df=detected,
+                    slide_id="CASE_001",
+                    out_dir=Path(temporary),
+                    dpi=72,
+                    slide_w=1800,
+                    slide_h=1200,
+                    mpp=0.5,
+                    roi=(100, 200, 500, 600),
+                    counts_scope="the selected public patches",
+                    histoplus_repo_id="example/histoplus",
+                    histoplus_revision="revision-123",
+                    histoplus_magnification="20x",
+                )
+
+            for key in (
+                "paper_figure_png",
+                "paper_figure_pdf",
+                "paper_figure_legend_txt",
+                "celltype_counts_barplot_png",
+                "celltype_counts_barplot_pdf",
+            ):
+                self.assertTrue(Path(outputs[key]).is_file(), key)
+            with module.Image.open(outputs["paper_figure_png"]) as rendered_png:
+                self.assertEqual(rendered_png.size, (518, 374))
+            figure, axes = created[0]
+            self.assertIsNone(figure._suptitle)
+            self.assertTrue(all(axis.get_title() == "" for axis in axes.values()))
+            panel_text = {
+                item.get_text(): item
+                for axis in axes.values()
+                for item in axis.texts
+                if item.get_text() in {"a", "b", "c"}
+            }
+            self.assertEqual(set(panel_text), {"a", "b", "c"})
+            self.assertTrue(
+                all(item.get_fontweight() == "bold" for item in panel_text.values())
+            )
+            self.assertEqual(len(figure.artists), 2)
+            self.assertTrue(
+                all(
+                    isinstance(artist, module.ConnectionPatch)
+                    for artist in figure.artists
+                )
+            )
+            self.assertEqual(len(axes["overview"].patches), 2)
+            self.assertEqual(len(axes["qc_inset"].patches), 2)
+            for axis_name in ("overview", "qc_inset"):
+                self.assertTrue(
+                    any(
+                        item.get_text().endswith((" um", " µm", " mm"))
+                        for item in axes[axis_name].texts
+                    )
+                )
+            statistics_text = {
+                item.get_text() for item in axes["statistics"].texts
+            }
+            self.assertIn("7 (70.0%)", statistics_text)
+            self.assertNotIn("CASE_001", statistics_text)
+
+            legend = Path(outputs["paper_figure_legend_txt"]).read_text(
+                encoding="utf-8"
+            )
+            for expected in (
+                "Slide ID: CASE_001",
+                "a, Cell-type counts",
+                "b, Overview",
+                "c, Enlarged QC inset",
+                "Counts source: cell_types/class_counts.csv",
+                "the selected public patches",
+                "Scale and ROI:",
+                "ROI coordinates in source pixels: x0=100, y0=200, x1=500, y1=600",
+                "Model: LazySlide HistoPLUS 20x",
+                "revision-123",
+                "Research-use caveat:",
+                "for research use only",
+                module.PAPER_FIGURE_LAYOUT_VERSION,
+            ):
+                self.assertIn(expected, legend)
+
+
+
 class ResumeSamplingTests(unittest.TestCase):
     def test_sampling_percent_must_match_exactly(self) -> None:
         self.assertFalse(module.summary_matches_requested_sampling(completed(100), requested(10)))
@@ -128,6 +322,8 @@ class ResumeSamplingTests(unittest.TestCase):
             slide.write_bytes(b"original")
             job = module.SlideJob("sample_1", Path("."), "slide", slide)
             args = requested(10, 7)
+            payload = module.processing_signature_payload(job, args)
+            self.assertNotIn("paper_figure_layout_version", payload)
             summary = {"processing_signature": module.processing_signature(job, args)}
             self.assertTrue(module.summary_matches_requested_run(summary, job, args))
 
@@ -153,6 +349,17 @@ class ResumeSamplingTests(unittest.TestCase):
             write_core_outputs(output, counts=False)
             self.assertFalse(module.slide_has_required_plot_exports(output, args))
             (output / "cell_types/class_counts.csv").write_text("class_name,count\n", encoding="utf-8")
+            self.assertTrue(module.slide_has_required_plot_exports(output, args))
+            legend_path = output / "paper_figures/celltypes_paper_figure_legend.txt"
+            legend_text = legend_path.read_text(encoding="utf-8")
+            legend_path.unlink()
+            self.assertFalse(module.slide_has_required_plot_exports(output, args))
+            self.assertTrue(
+                module.slide_has_required_plot_exports(
+                    output, args, require_paper_figure_legend=False
+                )
+            )
+            legend_path.write_text(legend_text, encoding="utf-8")
             self.assertTrue(module.slide_has_required_plot_exports(output, args))
             (output / "overlays/overview_with_zoom_box.png").write_bytes(b"")
             self.assertFalse(module.slide_has_required_plot_exports(output, args))

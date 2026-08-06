@@ -29,11 +29,15 @@ discovered patch collection rather than a seeded percentage sample.
 | Physical scale | Reliable embedded TIFF MPP, or one verified common `--source-mpp` override |
 | Processing depth | 100% of discovered patch inputs; no 1% or 10% sampling preset |
 | Inference | The same gated, pinned HistoPLUS model used by the maintained workflow |
-| Visual results | Whole-input/zoom QC overlays plus PNG/PDF paper figures |
-| Numeric results | Per-input coordinates and counts plus completion-aware cohort tables |
+| Visual results | Whole-input/zoom QC plus a compact PNG/PDF cell-type paper figure and external text legend |
+| Numeric results | Per-input HistoPLUS cell coordinates, counts, and fractions plus completion-aware cohort tables |
 
 Full patch processing does not make the collection a whole-slide analysis and
-does not make separate marker images measurements of the same cells.
+does not make separate marker images measurements of the same cells. Stable
+patch mode predicts HistoPLUS cell types; a stain token in a filename is input
+provenance, not an ER/PR/HER2/Ki-67 score. This route does not quantify marker
+intensity, infer receptor status, or establish cell-level co-expression across
+separately stained patches.
 
 ## 1. Install TumorQuantAI and configure model access
 
@@ -148,17 +152,57 @@ interpreting scale bars or counts.
 For every completed patch, inspect:
 
 1. `<sample>/overlays/celltypes_overview_and_zoom.png` for tissue, alignment,
-   the connected zoom, contours, and scale bars.
+   the connected zoom, configured cell-type overlay, and scale bars.
 2. `<sample>/paper_figures/celltypes_paper_figure.png` and `.pdf` for the
    publication-oriented composition.
-3. `<sample>/paper_figures/celltype_counts_barplot.png` and `.pdf` for the
-   plotted detected-cell counts.
-4. `<sample>/cell_types/class_counts.csv` and the coordinate table for the
+3. `<sample>/paper_figures/celltypes_paper_figure_legend.txt` for the slide ID,
+   panel descriptions, count source and denominator, scale/ROI/model provenance,
+   and research-use limitations.
+4. `<sample>/paper_figures/celltype_counts_barplot.png` and `.pdf` for the
+   standalone detected-cell count chart.
+5. `<sample>/cell_types/class_counts.csv` and the coordinate table for the
    plotted source values.
-5. `<sample>/summary/summary.json` for completion, resolved MPP, model identity,
-   input fingerprint, device, and provenance.
-6. `aggregated_celltypes/sample_aggregation_audit.csv` before interpreting any
+6. `<sample>/summary/summary.json` for completion, resolved MPP, model identity,
+   input fingerprint, device, figure-layout version, and provenance.
+7. `aggregated_celltypes/sample_aggregation_audit.csv` before interpreting any
    cohort matrix.
+
+The compact paper figure uses a visual grammar inspired by [STTT 2026 Figure
+6](https://www.nature.com/articles/s41392-026-02734-0#Fig6) and [Figure
+7](https://www.nature.com/articles/s41392-026-02734-0#Fig7):
+
+| Panel | Content |
+| --- | --- |
+| **a** | Every detected HistoPLUS cell type, with raw count and percentage of all cells detected in that input |
+| **b** | Scale-calibrated whole-input overview with the selected ROI outlined |
+| **c** | Enlarged QC inset with the configured cell-type overlay and its own scale bar |
+
+The artwork has bold lowercase panel letters and necessary graph labels, but no
+sample title or explanatory prose. Those details belong in the companion text
+legend. The visual reference concerns layout only; it does not transfer methods,
+performance, or biological claims from another study.
+
+Before manuscript submission, separately check the [Nature Research figure
+specifications](https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/).
+The generated PNG/PDF files are not a guarantee of journal-production
+compliance.
+
+For newly rendered outputs, `run_metadata.json` records the portable legend
+path and paper-figure layout version. When the completion summary records the
+current layout version, a missing or empty legend prevents completion/resume
+reuse. Because the layout version is separate from the scientific worker
+processing signature, direct reuse of the same persistent worker output retains
+the legacy completion contract for a summary without a layout version. Standard
+`tumorquantai` execution uses Nextflow, whose cache also keys staged worker code
+and configuration; a software upgrade may invalidate `PROCESS_SLIDE` and
+re-enter HistoPLUS inference. Preview the complete command with
+`--resume --dry-run`, then confirm the expanded engine command uses Nextflow
+`-resume` and the original work directory. Preserve the exact software/work
+cache, or choose `--cpu` when reuse is uncertain. To obtain the redesigned
+figure for a legacy result, choose a new output directory or a deliberate rerun.
+The count denominator is all
+HistoPLUS-detected cells in the analyzed input, not tissue area, all cells in a
+case, or an extrapolated whole-slide total.
 
 See the [output schema](../reference/outputs.md) for the complete path list.
 

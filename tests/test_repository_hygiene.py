@@ -58,6 +58,7 @@ def test_release_metadata_versions_are_aligned() -> None:
         "renamed-run/sample-01/overlays/zoom_overlay_celltypes.png",
         "renamed-run/sample-01/qc_patches/patch_000/overlay.png",
         "renamed-run/sample-01/paper_figures/celltype_counts_barplot.pdf",
+        "copied-results/celltypes_paper_figure_legend.txt",
         "renamed-run/sample-01/plotting_metadata/detected_cell_types.csv",
         "copied-results/celltype_counts_by_sample.csv",
         "copied-results/sample_aggregation_audit.csv",

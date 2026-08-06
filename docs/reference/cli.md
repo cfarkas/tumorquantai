@@ -163,6 +163,30 @@ Patch mode is full processing: it schedules 100% of the discovered patch
 inputs and does not apply the `smoke` or `fast` percentage-sampling presets.
 `--paper-figures` requests the publication-oriented PNG/PDF exports in addition
 to the ordinary per-input coordinates, counts, summary, and visual QC outputs.
+The established `celltypes_paper_figure.png`/`.pdf` filenames now use a compact
+layout inspired by [STTT 2026 Figure
+6](https://www.nature.com/articles/s41392-026-02734-0#Fig6) and [Figure
+7](https://www.nature.com/articles/s41392-026-02734-0#Fig7): all HistoPLUS cell-type counts and
+within-input percentages at left, with the overview and QC inset using the
+configured cell-type overlay stacked at right.
+`celltypes_paper_figure_legend.txt` stores the sample ID, panel details,
+count source/denominator, scale/ROI/model provenance, and research-use caveats.
+For a completion summary recording the current layout version, the legend is
+required for completion/resume reuse. The layout version is outside the
+scientific worker processing signature, so direct reuse of the same persistent
+worker output preserves the legacy completion contract for a summary without a
+layout version. This is not a top-level resume guarantee: Nextflow also keys the
+staged worker code and configuration, so an upgrade may invalidate
+`PROCESS_SLIDE` and re-enter inference. Inspect the intended command with
+`--resume --dry-run`; confirm that the expanded Nextflow command uses `-resume`
+and the original work directory. Preserve the exact software/work cache, or use
+`--cpu` when reuse is uncertain. To obtain redesigned legacy figures, choose a
+new output directory or a deliberate rerun.
+
+This stable route performs HistoPLUS cell typing. It does not quantify breast
+marker staining, infer receptor status, or measure co-expression across
+separately stained images. The layout reference is visual only and imports no
+external method, performance result, or biological claim.
 
 Every patch must have a defensible physical scale. TumorQuantAI uses reliable
 embedded TIFF micrometres-per-pixel metadata when present and fails closed when
@@ -177,9 +201,11 @@ values and the `per-input embedded TIFF metadata` provenance. Review these
 reported values before interpreting scale-dependent outputs.
 
 `--cpu` forces CPU inference. The same gated HistoPLUS authorization and model
-provenance requirements apply as for WSI inference. Repeat the identical
-command to use normal resume behavior; do not reuse one output directory with
-different patch sets or MPP values.
+provenance requirements apply as for WSI inference. Normal resume requires the
+same output and Nextflow work directory, but cache reuse is not guaranteed after
+software or configuration changes. Preview the complete command with
+`--resume --dry-run` before removing `--dry-run`; do not reuse one output
+directory with different patch sets or MPP values.
 
 Breast IHC presentation categories are computational receptor-profile
 pre-score groups, not diagnoses, intrinsic subtypes, treatment groups, or

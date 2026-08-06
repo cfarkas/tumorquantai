@@ -4,7 +4,8 @@
 
 - slide ID, source path identity/fingerprint, dimensions;
 - source `slide_mpp` and target `mpp`/`target_mpp`;
-- processing signature and schema;
+- scientific processing signature and schema;
+- paper-figure layout version, when the current rendering contract is recorded;
 - HistoPLUS weight identity;
 - device;
 - detected-cell/class totals and explicit `zero_detections`;
@@ -20,8 +21,31 @@
 - model repository, immutable revision, magnification, and weight filename;
 - selected device/batches/workers;
 - overlay palette/style;
+- paper-figure layout version and portable relative figure/legend paths;
 - conversion settings; and
 - whether a token was supplied as a Boolean, never its contents.
+
+The paper-figure layout version is deliberately excluded from the scientific
+worker processing signature. This separation means that direct reuse of the
+same persistent worker output preserves the earlier completion contract for a
+legacy summary without a layout version. For outputs whose completion summary
+records the current layout version, external
+`paper_figures/celltypes_paper_figure_legend.txt` is part of the validated
+contract; missing or empty text prevents completion/resume reuse.
+
+Worker-signature reuse is not the same as top-level workflow-cache reuse.
+`PROCESS_SLIDE` stages the worker code, and Nextflow also keys that code and its
+configuration. A software upgrade may therefore invalidate the task and re-enter
+HistoPLUS inference even though the scientific worker signature is unchanged.
+Before a top-level resume, inspect the `--resume --dry-run` plan for Nextflow
+`-resume` and the original work directory. Preserve the exact software revision
+and work cache, or select `--cpu` when reuse is uncertain. To obtain redesigned
+artwork for a legacy result, use a new output directory or choose a deliberate
+rerun.
+
+The legend records only public sample identity and portable scientific
+provenance; it must not contain private cohort identifiers or absolute source
+paths.
 
 Workflow metadata adds:
 

@@ -17,6 +17,12 @@ results/
 │   │   └── cell_type_coordinates.csv
 │   ├── overlays/
 │   │   └── celltypes_overview_and_zoom.png
+│   ├── paper_figures/
+│   │   ├── celltypes_paper_figure.png
+│   │   ├── celltypes_paper_figure.pdf
+│   │   ├── celltypes_paper_figure_legend.txt
+│   │   ├── celltype_counts_barplot.png
+│   │   └── celltype_counts_barplot.pdf
 │   └── summary/
 │       └── summary.json
 └── aggregated_celltypes/
@@ -154,6 +160,45 @@ Fractions do not correct for:
 - scanner or stain variation;
 - failed or excluded samples.
 
+## Patch-mode paper figure and external legend
+
+For `tumorquantai --patches ... --paper-figures`, review both:
+
+```text
+<sample>/paper_figures/celltypes_paper_figure.png
+<sample>/paper_figures/celltypes_paper_figure_legend.txt
+```
+
+The PNG/PDF figure uses a compact layout inspired by
+[STTT 2026 Figure 6](https://www.nature.com/articles/s41392-026-02734-0#Fig6)
+and [Figure 7](https://www.nature.com/articles/s41392-026-02734-0#Fig7): panel
+**a** contains every detected HistoPLUS cell type with its raw count and
+percentage of all detected cells; panel **b** is the scale-calibrated overview
+and selected ROI; panel **c** is the enlarged QC inset with the configured
+cell-type overlay and its own scale bar.
+The sample ID and interpretive prose are deliberately outside the artwork.
+
+The adjacent text legend records panel descriptions, the source count table and
+denominator, physical scale and ROI coordinates, pinned model identity, the
+analyzed scope, and research-use limitations. Its portable path/layout version
+is recorded in per-sample provenance. When the
+completion summary records the current layout version, a missing or empty
+legend prevents completion/resume reuse. At the worker layer, the layout version
+is separate from the scientific processing signature, so direct reuse of the
+same persistent worker output retains the legacy completion contract when its
+summary has no layout version. Top-level `tumorquantai` runs under Nextflow,
+whose task cache also keys staged worker code and configuration. Upgrading the
+software may therefore invalidate `PROCESS_SLIDE` and re-enter HistoPLUS
+inference. Before resuming, inspect a `--dry-run` plan for Nextflow `-resume` and
+the original work directory. Preserve the exact software/work cache, or select
+`--cpu` when cache reuse is uncertain. Use a new output directory or a deliberate
+rerun when the redesigned figure is needed for a legacy result.
+
+These are HistoPLUS cell-type predictions. They are not ER, PR, HER2, or Ki-67
+scores, receptor-status calls, tumor classification, or proof of cell-level
+co-expression across separately stained patches. The layout reference is
+visual only and imports no external scientific or performance claim.
+
 ## Completed zero versus failure
 
 A class count of zero is meaningful only when the slide completed and the class was absent from the processed tiles.
@@ -191,7 +236,7 @@ column -s, -t \
 Keep:
 
 - `START_HERE.html` and `tumorquantai_report.json`;
-- every per-slide summary and overlay;
+- every per-slide summary, overlay, paper figure, and external figure legend;
 - cell coordinates and class counts used in analysis;
 - aggregation audit and cohort matrices;
 - input/sample-sheet provenance;

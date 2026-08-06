@@ -38,6 +38,31 @@ The same seed and configuration reproduce sampled tile selection. Sampled-tile c
 
 Start with `START_HERE.html`, review every overlay, confirm summary provenance, then inspect the aggregation audit before using count or fraction matrices.
 
+## Raw TIFF patch paper figure
+
+```text
+┌───────────────────────────┬────────────────────────────────────┐
+│ a  HistoPLUS counts + %   │ b  scale-calibrated overview      │
+│    (all detected classes) ├────────────────────────────────────┤
+│                           │ c  configured-overlay QC inset    │
+└───────────────────────────┴────────────────────────────────────┘
+```
+
+`celltypes_paper_figure.png` and `.pdf` use this compact, full-width panel
+organization, inspired by the visual grammar of
+[STTT 2026 Figure 6](https://www.nature.com/articles/s41392-026-02734-0#Fig6)
+and [Figure 7](https://www.nature.com/articles/s41392-026-02734-0#Fig7).
+Bold lowercase panel letters remain in the artwork; the sample ID and prose
+move to `celltypes_paper_figure_legend.txt`. The QC inset uses the configured
+cell-type overlay. Counts and percentages are
+HistoPLUS cell-type predictions for the analyzed input, not breast-marker
+scores or receptor-status calls. The layout reference imports no validation or
+biological claim.
+
+For a manuscript submission, separately review the [Nature Research figure
+specifications](https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/);
+these example exports are not a journal-production compliance guarantee.
+
 ## Real output filenames
 
 A completed slide normally provides:
@@ -46,6 +71,9 @@ A completed slide normally provides:
 <sample>/
 ├── overlays/
 │   └── celltypes_overview_and_zoom.png
+├── paper_figures/
+│   ├── celltypes_paper_figure.png
+│   └── celltypes_paper_figure_legend.txt
 ├── summary/
 │   └── summary.json
 └── cell_types/
