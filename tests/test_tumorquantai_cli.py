@@ -85,7 +85,7 @@ def write_patch_tiff(path: Path, *, mpp: float | None = None) -> None:
 
 
 @pytest.mark.parametrize(
-    "command", [None, "doctor", "demo", "inspect", "run", "status", "report", "quickstart"]
+    "command", [None, "doctor", "demo", "inspect", "run", "status", "report", "quickstart", "ihc"]
 )
 def test_every_help_command_is_available(tmp_path: Path, command: str | None) -> None:
     arguments = ["--help"] if command is None else [command, "--help"]

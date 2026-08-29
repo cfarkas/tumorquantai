@@ -1,8 +1,10 @@
-# Other example run: breast IHC raw TIFF patches at 100%
+# Breast IHC: quantify ER, PR, HER2, and Ki-67
 
-This example route runs HistoPLUS inference over authorized local raw TIFF
-patches and writes per-input paper and QC figures. It processes the complete
-discovered patch collection rather than a seeded percentage sample.
+This tutorial turns the public breast-IHC patches into reviewable marker
+measurements, segmentation overlays, and a cohort report with one TumorQuantAI
+command. A second, optional route runs HistoPLUS cell typing; it answers a
+different question and is kept separate below. Most readers need sections
+1–7. Sections 8–11 document dataset release maintenance.
 
 !!! info "Public raw patch dataset"
     The raw-only breast-IHC collection is public under CC BY 4.0 at
@@ -21,41 +23,226 @@ discovered patch collection rather than a seeded percentage sample.
     results. Breast IHC group labels must be reported as **computational
     receptor-profile pre-score groups**.
 
-## What this route does
+## Choose the analysis that matches the question
 
-| Setting | Patch-mode behavior |
-| --- | --- |
-| Input | Local `.tif` or `.tiff` patch images that the research team is authorized to process |
-| Physical scale | Reliable embedded TIFF MPP, or one verified common `--source-mpp` override |
-| Processing depth | 100% of discovered patch inputs; no 1% or 10% sampling preset |
-| Inference | The same gated, pinned HistoPLUS model used by the maintained workflow |
-| Visual results | Whole-input/zoom QC plus a compact PNG/PDF cell-type paper figure and external text legend |
-| Numeric results | Per-input HistoPLUS cell coordinates, counts, and fractions plus completion-aware cohort tables |
+| Question | TumorQuantAI command | Output |
+| --- | --- | --- |
+| How much ER, PR, HER2, or Ki-67 signal is present? | `tumorquantai ihc quantify` | H–DAB measurements, segmentation overlays, case-marker tables, and an HTML report |
+| How well do computational pre-scores agree with a pathologist? | `tumorquantai ihc compare` | Paired pseudonymized values, contingency tables, marker-wise kappa, bootstrap intervals, MAE, and correlation |
+| Which HistoPLUS cell types are predicted in each patch? | `tumorquantai --patches ...` | HistoPLUS coordinates, cell-type counts, overlays, and paper figures |
 
-Full patch processing does not make the collection a whole-slide analysis and
-does not make separate marker images measurements of the same cells. Stable
-patch mode predicts HistoPLUS cell types; a stain token in a filename is input
-provenance, not an ER/PR/HER2/Ki-67 score. This route does not quantify marker
-intensity, infer receptor status, or establish cell-level co-expression across
-separately stained patches.
+The package-native IHC route reads extracted TIFFs or the original case ZIPs,
+verifies each decoded RGB array against the public manifest, uses per-image
+physical scale, and processes every selected IHC patch. It does not need
+HistoPLUS model access. Full patch processing still does not make the
+collection a whole-slide analysis or make separate stains measurements of the
+same cells.
 
-## 1. Install TumorQuantAI and configure model access
+## 1. Install TumorQuantAI
 
 ```bash
-# Clone TumorQuantAI and install the Docker execution route.
+# Clone TumorQuantAI and install the command plus IHC scientific stack.
 git clone https://github.com/cfarkas/tumorquantai.git
 cd tumorquantai
 ./tumorquantai install --docker
 export PATH="$HOME/.local/bin:$PATH"
 
-# Confirm runtime, storage, and authorized model readiness.
-tumorquantai doctor --online
+# Confirm the installed command and IHC subcommands.
+tumorquantai ihc --help
+tumorquantai doctor
 ```
 
-Use the execution method selected for the host. Follow
-[HistoPLUS model access](../how-to/model-access.md) before inference.
+The IHC command runs locally and does not require HistoPLUS weights. Docker is
+still useful for the optional HistoPLUS route in section 7. Configure
+[HistoPLUS model access](../how-to/model-access.md) only when using that route.
 
-## 2. Prepare privacy-safe TIFF patch names
+## 2. Download and verify the public cohort
+
+The record is about 69.8 GiB. Plan space for the 51 case ZIPs, QC overlays,
+cell tables, and reports before starting. Download all 55 files from
+[Zenodo record 21797920](https://zenodo.org/records/21797920) into one
+directory without renaming them:
+
+```text
+breast-ihc-downloads/
+├── TQA_BC_<public-case-alias>.zip          # 51 archives
+├── TQA_BreastIHC_manifest_bundle.zip
+├── packaging_report.json
+├── MD5SUMS
+└── SHA256SUMS
+```
+
+Verify the 51 archives, manifest bundle, and packaging report against the
+published roster, then extract only the small manifest bundle. The IHC command
+can read TIFF members from the case ZIPs, so it does not duplicate roughly
+70 GiB of image payload.
+
+```bash
+cd /path/to/breast-ihc-downloads
+sha256sum --check SHA256SUMS
+
+mkdir -p manifest
+unzip TQA_BreastIHC_manifest_bundle.zip -d manifest
+```
+
+A successful checksum check establishes file integrity, not suitability for a
+clinical purpose. Keep the public aliases and manifest filenames unchanged.
+
+## 3. Quantify all IHC markers
+
+Preview the exact cohort first. This checks the manifest, selection, archive
+availability, settings, and analysis identity without decoding images:
+
+```bash
+tumorquantai ihc quantify /path/to/breast-ihc-downloads \
+  --manifest /path/to/breast-ihc-downloads/manifest/patch_manifest.csv \
+  --output /path/to/breast-ihc-ihc-results \
+  --workers 12 \
+  --save-cells \
+  --dry-run
+```
+
+Run the same plan without <code>--dry-run</code>:
+
+```bash
+tumorquantai ihc quantify /path/to/breast-ihc-downloads \
+  --manifest /path/to/breast-ihc-downloads/manifest/patch_manifest.csv \
+  --output /path/to/breast-ihc-ihc-results \
+  --workers 12 \
+  --save-cells
+```
+
+The run is deterministic for the recorded engine version and settings.
+Completed per-patch records are reused after interruption. TumorQuantAI fails
+closed when a selected archive is missing or a decoded RGB hash differs from
+the public manifest. Use <code>--allow-missing</code> only when an explicitly
+incomplete report is intended; unavailable patches remain unavailable and
+never become zero.
+
+By default, the command writes a PNG QC overlay for every IHC patch.
+<code>--save-cells</code> additionally writes compressed per-cell tables and
+can be omitted when only aggregate values are required. The principal marker
+measurements are:
+
+| Marker | Package-native research measurement |
+| --- | --- |
+| ER and PR | Percentage of accepted segmented nuclei with nuclear DAB, intensity counts, and H-score |
+| Ki-67 | Percentage of accepted segmented nuclei with nuclear DAB, intensity counts, and H-score |
+| HER2 | Expanded-nucleus boundary DAB measurements and a conservative 0/1+/2+/3+ membrane-proxy pre-score |
+
+The implementation uses the optical-density colour-deconvolution framework of
+[Ruifrok and Johnston (2001)](https://pubmed.ncbi.nlm.nih.gov/11531144/).
+Clinical interpretation context comes from the
+[ASCO/CAP ER and PR guideline update](https://ascopubs.org/doi/10.1200/JCO.19.02309),
+the [CAP HER2 testing guideline update](https://www.cap.org/cap-guidelines/her2-testing-in-breast-cancer-2023-guideline-update/),
+and the
+[International Ki67 Working Group recommendations](https://pmc.ncbi.nlm.nih.gov/articles/PMC8487652/).
+These sources do not clinically validate TumorQuantAI's research measurements.
+
+The default thresholds and physical-scale settings are serialized in
+<code>workflow_metadata/ihc_run.json</code> and hashed into the analysis
+signature. Changing a threshold requires a new output directory, making silent
+mixing of settings difficult.
+
+## 4. Review the report and segmentation QC
+
+Open <code>START_HERE.html</code>, then review the audit tables before using a
+case value:
+
+| Output | Review purpose |
+| --- | --- |
+| <code>tables/case_marker_measurements.csv</code> | One aggregate row per public case alias and marker |
+| <code>tables/patch_measurements.csv</code> | Patch-level numerators, denominators, values, hash verification, and QC status |
+| <code>patches/&lt;case&gt;/&lt;patch&gt;/qc_overlay.png</code> | Visual check of accepted objects and DAB classes |
+| <code>patches/&lt;case&gt;/&lt;patch&gt;/cell_measurements.csv.gz</code> | Optional per-cell measurements |
+| <code>workflow_metadata/ihc_run.json</code> | Dataset, settings, engine, counts, timestamps, and completion state |
+
+!!! warning "Mandatory interpretation boundary"
+    The public data contain selected fields, not whole slides, and do not
+    provide a pathologist-verified invasive-tumour ROI or a validated
+    tumour-cell classifier. ER, PR, and Ki-67 denominators therefore include
+    all accepted segmented nuclei. HER2 is a membrane proxy, not a clinical
+    HER2 score. Review overlays for every case; do not treat a technically
+    completed row as clinical validation.
+
+## 5. Create the privacy-minimized pathologist CSV
+
+Agreement requires the private linkage created when the public HMAC aliases
+were generated. The public deposit intentionally does not contain that mapping.
+Never reconstruct it from marker values: doing so is both circular and an
+identity-disclosure risk.
+
+Keep the workbook, linkage, and exported CSV outside the repository and any
+public release directory. Use explicit identifier columns:
+
+```bash
+tumorquantai ihc anonymize-clinical \
+  /private/path/pathologist-review.xlsx \
+  --linkage /private/path/private-linkage.csv \
+  --clinical-id-column "Número de paciente" \
+  --linkage-id-column case_id \
+  --output /private/path/pathologist-markers-pseudonymized.csv
+```
+
+The exporter joins only through the exact linkage and writes these six columns:
+
+```text
+case_alias
+pathologist_er_percent
+pathologist_pr_percent
+pathologist_her2_ihc_score
+pathologist_her2_fish
+pathologist_ki67_percent
+```
+
+Names, national identifiers, biopsy identifiers, dates, age, diagnosis text,
+laterality, specimen type, and grade are excluded. A provenance JSON records
+the source-workbook hash and minimization policy without copying direct
+identifiers.
+
+!!! danger "Pseudonymized is not anonymous"
+    Public aliases combined with marker values remain pseudonymized health
+    data. Protect the CSV, restrict access, and never publish the private
+    linkage. TumorQuantAI deliberately calls the output pseudonymized rather
+    than claiming irreversible anonymization.
+
+## 6. Calculate marker-wise agreement and kappa
+
+Run comparison only after the full IHC table and the exact-linkage clinical
+export are ready:
+
+```bash
+tumorquantai ihc compare /path/to/breast-ihc-ihc-results \
+  --pathologist-csv /private/path/pathologist-markers-pseudonymized.csv \
+  --output /private/path/breast-ihc-agreement
+```
+
+Open <code>AGREEMENT_REPORT.html</code>. The prespecified agreement scales are:
+
+| Marker | Primary kappa scale |
+| --- | --- |
+| ER | Cohen's kappa, negative versus positive at 1% |
+| PR | Cohen's kappa, negative versus positive at 1% |
+| HER2 | Quadratic-weighted kappa on 0, 1+, 2+, and 3+ |
+| Ki-67 | Quadratic-weighted kappa on percentage deciles |
+| Ki-67 sensitivity view | Unweighted kappa below versus at/above 20% |
+
+The report also writes bootstrap 95% intervals, exact agreement, mean absolute
+error, Pearson correlation for continuous values, and every contingency
+matrix. Kappa is prevalence-sensitive and cannot by itself validate the image
+method. Interpret it together with sample count, margins of the contingency
+table, confidence interval, QC exclusions, and continuous paired values.
+The coefficient follows
+[Cohen's original definition](https://doi.org/10.1177/001316446002000104);
+weighted variants use the prespecified ordinal weights recorded in the report.
+
+## 7. Optional: run HistoPLUS cell typing
+
+The remaining analysis steps apply the gated HistoPLUS model to each TIFF.
+They predict cell types; they do not quantify ER, PR, HER2, or Ki-67 stain
+intensity and must not be substituted for sections 3–6.
+
+### Prepare privacy-safe TIFF patch names
 
 Use research IDs and canonical English marker names. Do not place names, medical
 record numbers, dates of birth, or private linkage values in paths or image
@@ -73,7 +260,7 @@ metadata.
 The filename describes the intended stain; it does not prove a result. Keep the
 private case-linkage table outside the repository and publication package.
 
-## 3. Establish source MPP
+### Establish source MPP
 
 Every TIFF patch needs a trustworthy physical pixel size in micrometres per
 pixel. Use embedded metadata only when it is complete and consistent with the
@@ -92,7 +279,7 @@ they may be absent or wrong. Record the audited value and its allowlisted
 provenance in the private source manifest; the sanitizer embeds that value into
 the sanitized TIFF and verifies the resulting resolution tags.
 
-## 4. Run all patches on CPU
+### Run all patches on CPU
 
 When every TIFF contains reliable embedded MPP, use:
 
@@ -126,7 +313,7 @@ is valid only when every selected TIFF shares that verified scale. CPU
 inference can be substantially slower than GPU inference; stopping and
 repeating the identical command preserves normal resume behavior.
 
-## 5. Confirm complete processing
+### Confirm complete processing
 
 ```bash
 # Review completed, failed, incomplete, excluded, and pending patch inputs.
@@ -147,7 +334,7 @@ and the text run summary report the distinct per-input MPP values and identify
 their provenance as per-input embedded TIFF metadata. Review these values before
 interpreting scale bars or counts.
 
-## 6. Review paper and QC outputs
+### Review HistoPLUS paper and QC outputs
 
 For every completed patch, inspect:
 
@@ -206,7 +393,7 @@ case, or an extrapolated whole-slide total.
 
 See the [output schema](../reference/outputs.md) for the complete path list.
 
-## 7. Describe breast IHC groups conservatively
+### Describe HistoPLUS-derived groups conservatively
 
 If a downstream presentation arranges marker-specific patch results by ER, PR,
 HER2, or Ki-67 patterns, call the categories **computational receptor-profile

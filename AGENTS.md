@@ -9,6 +9,8 @@ not clinically validated.
 
 - Main command-line interface: `./tumorquantai doctor|demo|inspect|run|status|report`
 - Full raw-TIFF patch route: `./tumorquantai --patches PATH --paper-figures --output DIR`
+- Breast-IHC marker route: `./tumorquantai ihc quantify|anonymize-clinical|compare`
+- IHC scientific implementation: `tumorquantai_cli/ihc.py`
 - Public one-slide path: `./tumorquantai quickstart --output MOUNTED_PATH`
 - Compatible expert interfaces: `./run.sh` and `nextflow run .`
 - Scientific worker: `lazyslide_histoplus_wsi_celltype.py`
@@ -33,6 +35,16 @@ silently change the biological/image-analysis engine.
 - Keep output names and schemas backward compatible unless a migration and
   regression tests accompany a change.
 - Preserve `run.sh`, direct Nextflow, worker overrides, and existing automation.
+- Verify public breast-IHC TIFFs through the manifest's domain-separated decoded
+  RGB hash and preserve per-image physical scale.
+- Treat ER/PR/Ki-67 nuclear measurements and the HER2 membrane proxy as research
+  pre-scores, never clinical assay results. The public patches have no verified
+  invasive-tumour ROI or validated tumour-cell classifier.
+- Join clinical values only through the exact private alias linkage. Never infer
+  identity from marker values, and never commit the linkage, workbook, or
+  pseudonymized patient rows.
+- Keep kappa scales, thresholds, contingency tables, and paired denominators
+  explicit; a failed or unavailable marker is not a negative result.
 
 ## Security, privacy, and storage
 

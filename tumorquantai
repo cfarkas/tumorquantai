@@ -75,6 +75,7 @@ ROOT = _resolve_repository_root()
 sys.path.insert(0, str(ROOT / "bin"))
 
 import tumorquantai_core as core  # noqa: E402
+from tumorquantai_cli import ihc as ihc_cli  # noqa: E402
 
 SCHEMA = json.loads((ROOT / "nextflow_schema.json").read_text(encoding="utf-8"))
 SCHEMA_PROPERTIES: dict[str, dict[str, Any]] = SCHEMA["properties"]
@@ -197,7 +198,7 @@ PATCH_COMPATIBILITY_PATTERNS = ("*.tif", "*.tiff", "*.TIF", "*.TIFF")
 PATCH_COMPATIBILITY_SUFFIXES = (".ome.tiff", ".ome.tif", ".tiff", ".tif")
 PATCH_COMPATIBILITY_COMMANDS = frozenset({
     "install", "doctor", "demo", "inspect", "convert", "run", "status",
-    "report", "quickstart",
+    "report", "quickstart", "ihc",
 })
 
 
@@ -1381,6 +1382,7 @@ def build_parser() -> argparse.ArgumentParser:
     quickstart.add_argument("--seed", type=int, default=core.DEFAULT_SEED)
     quickstart.add_argument("--token-file", type=Path, help=argparse.SUPPRESS)
     quickstart.add_argument("--local-weight", type=Path, help="authorized local HistoPLUS weight file")
+    ihc_cli.add_cli_parser(subparsers)
     return parser
 
 
@@ -2363,6 +2365,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_report(args)
         if args.command == "quickstart":
             return cmd_quickstart(args)
+        if args.command == "ihc":
+            try:
+                return ihc_cli.dispatch_cli(args)
+            except ihc_cli.IHCError as exc:
+                raise core.TumorQuantAIError(
+                    str(exc), core.EXIT_DATA
+                ) from exc
     except core.TumorQuantAIError as exc:
         print(f"ERROR: {core.redact_text(str(exc), paths=True)}", file=sys.stderr)
         return exc.exit_code

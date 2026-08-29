@@ -1,0 +1,338 @@
+from __future__ import annotations
+
+import csv
+import io
+import json
+import math
+import stat
+import zipfile
+from pathlib import Path
+
+import numpy as np
+import openpyxl
+import pytest
+import tifffile
+
+from tumorquantai_cli import ihc
+
+
+def write_csv(
+    path: Path, fields: list[str] | tuple[str, ...], rows: list[dict[str, object]]
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def test_cohen_kappa_handles_perfect_opposite_and_quadratic_scales() -> None:
+    perfect, perfect_table = ihc.cohen_kappa([0, 0, 1, 1], [0, 0, 1, 1], [0, 1])
+    opposite, opposite_table = ihc.cohen_kappa([0, 0, 1, 1], [1, 1, 0, 0], [0, 1])
+    weighted, weighted_table = ihc.cohen_kappa(
+        [0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3], weights="quadratic"
+    )
+
+    assert perfect == pytest.approx(1.0)
+    assert opposite == pytest.approx(-1.0)
+    assert weighted == pytest.approx(1.0)
+    assert perfect_table.tolist() == [[2, 0], [0, 2]]
+    assert opposite_table.tolist() == [[0, 2], [2, 0]]
+    assert weighted_table.trace() == 4
+
+
+def test_direct_case_archive_loading_verifies_domain_separated_pixels(
+    tmp_path: Path,
+) -> None:
+    case_alias = "TQA_BC_AAAAAAAAAAAAAAAAAAAA"
+    patch_alias = "TQA_PATCH_BBBBBBBBBBBBBBBBBBBB"
+    public_path = f"patches/{case_alias}/{patch_alias}_ER.tif"
+    rgb = np.full((12, 18, 3), 245, dtype=np.uint8)
+    rgb[3:9, 5:13] = (91, 55, 30)
+    payload = io.BytesIO()
+    tifffile.imwrite(payload, rgb, photometric="rgb")
+
+    archive = tmp_path / f"{case_alias}.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as handle:
+        handle.writestr(public_path, payload.getvalue())
+
+    manifest = tmp_path / "patch_manifest.csv"
+    write_csv(
+        manifest,
+        [
+            "case_alias",
+            "patch_alias",
+            "marker",
+            "public_path",
+            "microns_per_pixel",
+            "width",
+            "height",
+            "decoded_rgb_sha256",
+        ],
+        [
+            {
+                "case_alias": case_alias,
+                "patch_alias": patch_alias,
+                "marker": "ER",
+                "public_path": public_path,
+                "microns_per_pixel": 0.5,
+                "width": 18,
+                "height": 12,
+                "decoded_rgb_sha256": ihc.decoded_rgb_sha256(rgb),
+            }
+        ],
+    )
+
+    records, unavailable = ihc.load_patch_manifest(manifest, tmp_path)
+    assert unavailable == []
+    assert len(records) == 1
+    decoded = ihc.load_patch_rgb(records[0])
+    assert np.array_equal(decoded, rgb)
+    assert ihc.decoded_rgb_sha256(decoded) == records[0].expected_decoded_rgb_sha256
+
+
+def test_qc_overlay_accepts_vector_cell_classes(tmp_path: Path) -> None:
+    labels = np.zeros((64, 80), dtype=np.int32)
+    labels[8:23, 8:23] = 1
+    labels[31:51, 45:66] = 2
+    nuclei = ihc.SegmentedNuclei(
+        labels=labels,
+        label_ids=np.asarray([1, 2], dtype=np.int32),
+        centroid_y=np.asarray([15.0, 40.5]),
+        centroid_x=np.asarray([15.0, 55.0]),
+        area_um2=np.asarray([56.25, 105.0]),
+        mean_hematoxylin_od=np.asarray([0.4, 0.5]),
+        mean_dab_od=np.asarray([0.1, 0.7]),
+        nuclear_threshold_od=0.2,
+    )
+    rgb = np.full((64, 80, 3), 235, dtype=np.uint8)
+    output = tmp_path / "qc_overlay.png"
+
+    ihc.write_qc_overlay(
+        output,
+        rgb,
+        nuclei,
+        np.asarray([0, 3], dtype=np.uint8),
+        "ER",
+        "synthetic regression fixture",
+    )
+
+    assert output.is_file()
+    assert output.stat().st_size > 100
+    from PIL import Image
+
+    with Image.open(output) as image:
+        assert image.mode == "RGB"
+        assert image.size == (80, 64)
+
+
+def test_pathologist_export_keeps_only_public_alias_and_marker_values(
+    tmp_path: Path,
+) -> None:
+    workbook = tmp_path / "private_clinical.xlsx"
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.title = "Biopsias finales incluidas"
+    headers = [
+        "Número de paciente",
+        "Biopsia",
+        "Nombre de Paciente",
+        "RUT Paciente",
+        *ihc.DEFAULT_CLINICAL_COLUMNS.values(),
+    ]
+    sheet.append(headers)
+    sheet.append(
+        [1, "PRIVATE_BIOPSY_1", "SYNTHETIC_NAME_1", "SYNTHETIC_ID_1", 0, 10, 1, 0, 15]
+    )
+    sheet.append(
+        [2, "PRIVATE_BIOPSY_2", "SYNTHETIC_NAME_2", "SYNTHETIC_ID_2", 95, 80, 3, 2, 70]
+    )
+    book.save(workbook)
+
+    linkage = tmp_path / "private_linkage.csv"
+    aliases = [
+        "TQA_BC_CCCCCCCCCCCCCCCCCCCC",
+        "TQA_BC_DDDDDDDDDDDDDDDDDDDD",
+    ]
+    write_csv(
+        linkage,
+        ["case_alias", "case_id"],
+        [
+            {"case_alias": aliases[0], "case_id": 1},
+            {"case_alias": aliases[1], "case_id": 2},
+        ],
+    )
+    output = tmp_path / "pathologist_markers_pseudonymized.csv"
+
+    result = ihc.export_pathologist_csv(
+        workbook,
+        linkage,
+        output,
+        clinical_id_column="Número de paciente",
+        linkage_id_column="case_id",
+    )
+
+    with output.open(encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        assert tuple(reader.fieldnames or ()) == ihc.PATHOLOGIST_FIELDS
+    serialized = output.read_text(encoding="utf-8")
+    assert stat.S_IMODE(output.stat().st_mode) == 0o600
+    assert [row["case_alias"] for row in rows] == aliases
+    assert "SYNTHETIC_NAME" not in serialized
+    assert "SYNTHETIC_ID" not in serialized
+    assert "PRIVATE_BIOPSY" not in serialized
+    assert result["privacy_status"] == "pseudonymized_minimum_marker_table"
+    provenance = json.loads(
+        output.with_suffix(".csv.provenance.json").read_text(encoding="utf-8")
+    )
+    assert (
+        stat.S_IMODE(output.with_suffix(".csv.provenance.json").stat().st_mode) == 0o600
+    )
+    assert provenance["rows"] == 2
+    assert "names" in provenance["excluded_data"]
+
+
+def test_agreement_report_writes_marker_wise_kappa_and_contingencies(
+    tmp_path: Path,
+) -> None:
+    results = tmp_path / "results"
+    aliases = [
+        "TQA_BC_EEEEEEEEEEEEEEEEEEEE",
+        "TQA_BC_FFFFFFFFFFFFFFFFFFFF",
+        "TQA_BC_GGGGGGGGGGGGGGGGGGGG",
+        "TQA_BC_HHHHHHHHHHHHHHHHHHHH",
+    ]
+    algorithm_rows: list[dict[str, object]] = []
+    predicted = {
+        "ER": [0, 75, 0, 90],
+        "PR": [0, 20, 0, 80],
+        "HER2": [0, 1, 2, 3],
+        "Ki-67": [5, 25, 55, 95],
+    }
+    for marker, values in predicted.items():
+        for alias, value in zip(aliases, values):
+            algorithm_rows.append(
+                {"case_alias": alias, "marker": marker, "marker_pre_score": value}
+            )
+    write_csv(
+        results / "tables/case_marker_measurements.csv",
+        ["case_alias", "marker", "marker_pre_score"],
+        algorithm_rows,
+    )
+    pathologist = tmp_path / "pathologist.csv"
+    write_csv(
+        pathologist,
+        ihc.PATHOLOGIST_FIELDS,
+        [
+            {
+                "case_alias": alias,
+                "pathologist_er_percent": predicted["ER"][index],
+                "pathologist_pr_percent": predicted["PR"][index],
+                "pathologist_her2_ihc_score": predicted["HER2"][index],
+                "pathologist_her2_fish": 0,
+                "pathologist_ki67_percent": predicted["Ki-67"][index],
+            }
+            for index, alias in enumerate(aliases)
+        ],
+    )
+
+    result = ihc.compare_pathologist_agreement(
+        results,
+        pathologist,
+        results / "agreement",
+        bootstrap_iterations=0,
+    )
+
+    summary = {
+        (row["marker"], row["primary_scale"]): row for row in result["summaries"]
+    }
+    assert summary[("ER", "binary-at-1-percent")]["kappa"] == pytest.approx(1.0)
+    assert summary[("PR", "binary-at-1-percent")]["kappa"] == pytest.approx(1.0)
+    assert summary[("HER2", "ordinal-0-to-3")]["kappa"] == pytest.approx(1.0)
+    assert summary[("Ki-67", "percentage-deciles")]["kappa"] == pytest.approx(1.0)
+    assert summary[("Ki-67", "secondary-binary-at-20-percent")][
+        "kappa"
+    ] == pytest.approx(1.0)
+    assert (results / "agreement/AGREEMENT_REPORT.html").is_file()
+    contingency = json.loads(
+        (results / "agreement/contingency_tables.json").read_text(encoding="utf-8")
+    )
+    assert contingency["HER2"]["matrix_rows_pathologist_columns_tumorquantai"] == [
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1],
+    ]
+
+
+def test_kappa_rejects_values_outside_prespecified_scale() -> None:
+    with pytest.raises(ihc.IHCError, match="outside"):
+        ihc.cohen_kappa([0, 2], [0, 1], [0, 1])
+
+    missing, table = ihc.cohen_kappa([], [], [0, 1])
+    assert math.isnan(missing)
+    assert table.tolist() == [[0, 0], [0, 0]]
+
+
+def test_private_linkage_rejects_non_public_aliases(tmp_path: Path) -> None:
+    linkage = tmp_path / "private_linkage.csv"
+    write_csv(
+        linkage,
+        ["case_alias", "case_id"],
+        [{"case_alias": "PRIVATE_PATIENT_001", "case_id": 1}],
+    )
+
+    with pytest.raises(ihc.IHCError, match="non-public"):
+        ihc._load_linkage_rows(linkage)
+
+
+def test_cohort_report_links_to_case_qc_gallery(tmp_path: Path) -> None:
+    alias = "TQA_BC_JJJJJJJJJJJJJJJJJJJJ"
+    patch_alias = "TQA_PATCH_KKKKKKKKKKKKKKKKKKKK"
+    artifact = tmp_path / "patches" / alias / patch_alias
+    artifact.mkdir(parents=True)
+    from PIL import Image
+
+    Image.new("RGB", (12, 8), (240, 240, 240)).save(artifact / "qc_overlay.png")
+    patch_rows = [
+        {
+            "completion_status": "completed",
+            "case_alias": alias,
+            "patch_alias": patch_alias,
+            "marker": "ER",
+            "dab_positive_percent": 25,
+            "cell_count": 100,
+            "qc_status": "pass",
+            "qc_overlay": "qc_overlay.png",
+        }
+    ]
+    case_rows = [
+        {
+            "case_alias": alias,
+            "marker": "ER",
+            "dab_positive_percent": 25,
+            "marker_pre_score": 25,
+            "cell_count": 100,
+            "qc_status": "pass",
+        }
+    ]
+
+    report = ihc.write_ihc_report(
+        tmp_path,
+        patch_rows,
+        case_rows,
+        {
+            "engine_version": ihc.IHC_ENGINE_VERSION,
+            "analysis_signature": "synthetic-signature",
+        },
+    )
+
+    cohort_html = report.read_text(encoding="utf-8")
+    case_report = tmp_path / "case_reports" / f"{alias}.html"
+    case_html = case_report.read_text(encoding="utf-8")
+    assert f"case_reports/{alias}.html" in cohort_html
+    assert "Cohort overview" in cohort_html
+    assert "median 25.0% DAB+" in cohort_html
+    assert f"../patches/{alias}/{patch_alias}/qc_overlay.png" in case_html
+    assert "research use only" in case_html
