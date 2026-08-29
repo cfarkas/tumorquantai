@@ -33,7 +33,10 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
-import numpy as np
+try:
+    import numpy as np
+except ModuleNotFoundError:  # Install must work before dependencies exist.
+    np = None  # type: ignore[assignment]
 
 
 IHC_SCHEMA_VERSION = "tumorquantai_ihc_v1"
@@ -58,13 +61,17 @@ MANIFEST_REQUIRED_COLUMNS = frozenset(
 # Ruifrok-Johnston HED separation matrix.  Multiplication is performed on
 # natural-log optical density, so the resulting H and DAB concentrations use
 # optical-density-like units rather than scikit-image's normalized units.
-HED_FROM_RGB = np.asarray(
-    [
-        [1.87798274, -1.00767869, -0.55611582],
-        [-0.06590806, 1.13473037, -0.13552180],
-        [-0.60190736, -0.48041419, 1.57358807],
-    ],
-    dtype=np.float32,
+HED_FROM_RGB = (
+    np.asarray(
+        [
+            [1.87798274, -1.00767869, -0.55611582],
+            [-0.06590806, 1.13473037, -0.13552180],
+            [-0.60190736, -0.48041419, 1.57358807],
+        ],
+        dtype=np.float32,
+    )
+    if np is not None
+    else None
 )
 
 
@@ -2382,6 +2389,10 @@ def add_cli_parser(subparsers: Any) -> None:
 
 
 def dispatch_cli(args: Any) -> int:
+    if np is None:
+        raise IHCError(
+            "NumPy is required for IHC commands; run tumorquantai install first"
+        )
     if args.ihc_command == "quantify":
         config = IHCConfig(
             weak_dab_od=args.weak_dab_od,
