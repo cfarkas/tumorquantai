@@ -28,7 +28,7 @@ terms.
 
 ```text
 H&E WSI -> validated scale -> tissue tiles -> HistoPLUS -> overlays + coordinates + cohort tables
-IHC TIFFs -> decoded-RGB verification -> H–DAB + segmentation -> marker tables + QC + agreement
+IHC TIFFs -> decoded-RGB verification -> color-checked H–DAB + segmentation -> marker tables + QC + agreement
 ```
 
 ## Install the `tumorquantai` command
@@ -139,8 +139,10 @@ tumorquantai ihc quantify /path/to/breast-ihc-downloads \
 
 Open <code>START_HERE.html</code> to review the cohort table and segmentation
 overlays. The clear wide result is
-<code>tables/tumorquantai_marker_values.csv</code>. An exact private alias
-linkage can then drive the privacy-minimized pathologist CSV and marker-wise
+<code>tables/tumorquantai_marker_values.csv</code>; v2 reports color-checked
+values and keeps unconstrained HED percentages as explicit audit columns. An
+exact private alias linkage can then drive the privacy-minimized pathologist
+CSV and marker-wise
 kappa workflow through <code>tumorquantai ihc anonymize-clinical</code> and
 <code>tumorquantai ihc compare</code>. The comparison writes a visual report,
 <code>concordance_metrics.csv</code> with the complete aggregate metrics, and

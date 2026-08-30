@@ -172,9 +172,17 @@ breast-IHC dataset, not the TumorQuantAI software or the lymphoma dataset.
 ```
 
 `tumorquantai_marker_values.csv` is the clearest case-level export: one row per
-public alias with ER, PR, and Ki-67 percentages, applicable H-scores, the HER2
-membrane-proxy pre-score, segmented-object counts, and QC status. A missing
-marker is blank with `unavailable` QC status, not zero.
+public alias with color-checked ER, PR, and Ki-67 percentages, applicable
+H-scores, the HER2 membrane-proxy pre-score, segmented-object counts, and QC
+status. Each nuclear marker also has an
+`unconstrained_dab_percent` audit column that exposes what the inverse HED
+matrix would have reported before the expected-brown color check. It is not a
+second prediction. A missing marker is blank with `unavailable` QC status, not
+zero.
+
+IHC schema v2 adds `dab_color_model`, unconstrained DAB counts/percentages and
+H-score, and `unconstrained_mean_dab_od` in optional cell tables. See the
+[IHC v1-to-v2 migration note](ihc-v2-migration.md).
 
 `tumorquantai ihc compare` adds a controlled agreement directory:
 
@@ -182,6 +190,7 @@ marker is blank with `unavailable` QC status, not zero.
 <agreement>/
 ├── AGREEMENT_REPORT.html
 ├── concordance_metrics.csv
+├── dab_color_check_impact.csv
 ├── kappa_summary.csv
 ├── contingency_tables.json
 ├── case_concordance_values_pseudonymized.csv
@@ -196,6 +205,13 @@ CCC, and both category margins. The two case-level comparison CSVs remain
 pseudonymized health data even though their direct identifiers were removed;
 keep the whole agreement directory under controlled access unless a reviewed
 aggregate-only file is copied out.
+
+When v2 unconstrained audit columns are present,
+`dab_color_check_impact.csv` adds aggregate ER/PR checked-versus-unconstrained
+kappa and intervals, confusion counts, sensitivity, specificity, predictive
+values, balanced accuracy, ROC AUC, MAE/RMSE, and rank/concordance correlations.
+It contains no case aliases. It is a method sensitivity analysis, not an
+independent validation.
 
 ## Offline sanitized draft outputs
 

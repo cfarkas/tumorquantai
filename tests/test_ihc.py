@@ -126,6 +126,42 @@ def test_qc_overlay_accepts_vector_cell_classes(tmp_path: Path) -> None:
         assert image.size == (80, 64)
 
 
+def test_color_checked_dab_rejects_magenta_and_gray_but_retains_brown() -> None:
+    rgb = np.asarray(
+        [
+            [
+                [130, 75, 35],  # brown DAB-like color
+                [210, 135, 165],  # magenta/pink
+                [150, 150, 150],  # neutral gray
+            ]
+        ],
+        dtype=np.uint8,
+    )
+
+    hematoxylin, unconstrained, color_checked = (
+        ihc.separate_hematoxylin_dab_color_checked(
+            rgb,
+            minimum_color_margin_od=0.02,
+            minimum_color_ratio=0.15,
+        )
+    )
+
+    assert hematoxylin.shape == (1, 3)
+    assert np.all(unconstrained[0] > 0.2)
+    assert color_checked[0, 0] > 0.2
+    assert color_checked[0, 1] == 0
+    assert color_checked[0, 2] == 0
+
+
+def test_dab_color_check_is_versioned_and_can_be_disabled() -> None:
+    checked = ihc.IHCConfig()
+    legacy = ihc.IHCConfig(constrain_dab_to_expected_color=False)
+
+    assert checked.signature() != legacy.signature()
+    assert ihc.IHC_SCHEMA_VERSION == "tumorquantai_ihc_v2"
+    assert "color-checked" in ihc.IHC_ENGINE_VERSION
+
+
 def test_pathologist_export_keeps_only_public_alias_and_marker_values(
     tmp_path: Path,
 ) -> None:
@@ -256,11 +292,21 @@ def test_agreement_report_writes_marker_wise_kappa_and_contingencies(
     for marker, values in predicted.items():
         for alias, value in zip(aliases, values):
             algorithm_rows.append(
-                {"case_alias": alias, "marker": marker, "marker_pre_score": value}
+                {
+                    "case_alias": alias,
+                    "marker": marker,
+                    "marker_pre_score": value,
+                    "unconstrained_dab_positive_percent": value,
+                }
             )
     write_csv(
         results / "tables/case_marker_measurements.csv",
-        ["case_alias", "marker", "marker_pre_score"],
+        [
+            "case_alias",
+            "marker",
+            "marker_pre_score",
+            "unconstrained_dab_positive_percent",
+        ],
         algorithm_rows,
     )
     pathologist = tmp_path / "pathologist.csv"
@@ -315,6 +361,16 @@ def test_agreement_report_writes_marker_wise_kappa_and_contingencies(
     assert "Agreement at a glance" in report_html
     assert "Contingency matrices" in report_html
     assert "Full concordance metrics CSV" in report_html
+    assert "Analysis identity" in report_html
+    impact_path = results / "agreement/dab_color_check_impact.csv"
+    with impact_path.open(encoding="utf-8", newline="") as handle:
+        impact_rows = list(csv.DictReader(handle))
+    assert [row["marker"] for row in impact_rows] == ["ER", "PR"]
+    assert all(row["color_checked_kappa"] == "1.0" for row in impact_rows)
+    assert all(row["color_checked_roc_auc"] == "1.0" for row in impact_rows)
+    assert all(row["color_checked_balanced_accuracy"] == "1.0" for row in impact_rows)
+    assert "DAB color-check impact" in report_html
+    assert "Balanced accuracy checked" in report_html
     metrics_path = results / "agreement/concordance_metrics.csv"
     with metrics_path.open(encoding="utf-8", newline="") as handle:
         metrics_reader = csv.DictReader(handle)
@@ -367,6 +423,7 @@ def test_wide_tumorquantai_values_make_missing_markers_explicit() -> None:
                 "marker": "ER",
                 "marker_pre_score": 42.5,
                 "h_score": 88.0,
+                "unconstrained_dab_positive_percent": 97.5,
                 "cell_count": 1234,
                 "qc_status": "pass",
             }
@@ -376,6 +433,7 @@ def test_wide_tumorquantai_values_make_missing_markers_explicit() -> None:
     assert len(rows) == 1
     assert tuple(rows[0]) == ihc.TUMORQUANTAI_WIDE_FIELDS
     assert rows[0]["tumorquantai_er_percent"] == 42.5
+    assert rows[0]["tumorquantai_er_unconstrained_dab_percent"] == 97.5
     assert rows[0]["tumorquantai_er_segmented_objects"] == 1234
     assert rows[0]["tumorquantai_her2_membrane_proxy_pre_score"] == ""
     assert rows[0]["tumorquantai_her2_qc_status"] == "unavailable"
@@ -469,6 +527,6 @@ def test_cohort_report_links_to_case_qc_gallery(tmp_path: Path) -> None:
     case_html = case_report.read_text(encoding="utf-8")
     assert f"case_reports/{alias}.html" in cohort_html
     assert "Cohort overview" in cohort_html
-    assert "median 25.0% DAB+" in cohort_html
+    assert "median 25.0% color-checked DAB+" in cohort_html
     assert f"../patches/{alias}/{patch_alias}/qc_overlay.png" in case_html
     assert "research use only" in case_html

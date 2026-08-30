@@ -40,8 +40,8 @@ except ModuleNotFoundError:  # Install must work before dependencies exist.
     np = None  # type: ignore[assignment]
 
 
-IHC_SCHEMA_VERSION = "tumorquantai_ihc_v1"
-IHC_ENGINE_VERSION = "hdab-watershed-membrane-proxy-v1"
+IHC_SCHEMA_VERSION = "tumorquantai_ihc_v2"
+IHC_ENGINE_VERSION = "hdab-color-checked-watershed-membrane-proxy-v2"
 PUBLIC_DATASET_RECORD = "21797920"
 PUBLIC_DATASET_DOI = "10.5281/zenodo.21797920"
 IHC_MARKERS = ("ER", "PR", "HER2", "Ki-67")
@@ -187,6 +187,9 @@ class IHCConfig:
     weak_dab_od: float = 0.20
     moderate_dab_od: float = 0.40
     strong_dab_od: float = 0.60
+    constrain_dab_to_expected_color: bool = True
+    minimum_dab_color_margin_od: float = 0.02
+    minimum_dab_color_ratio: float = 0.15
     minimum_nucleus_area_um2: float = 12.0
     maximum_nucleus_area_um2: float = 420.0
     maximum_nucleus_eccentricity: float = 0.985
@@ -210,6 +213,13 @@ class IHCConfig:
                 raise IHCError(f"Invalid non-finite IHC setting: {key}")
         if not 0 < self.weak_dab_od < self.moderate_dab_od < self.strong_dab_od:
             raise IHCError("DAB thresholds must be strictly increasing and positive")
+        if not 0 <= self.minimum_dab_color_margin_od < self.weak_dab_od:
+            raise IHCError(
+                "Minimum DAB color margin must be non-negative and below the "
+                "weak-DAB threshold"
+            )
+        if not 0 <= self.minimum_dab_color_ratio < 1:
+            raise IHCError("Minimum DAB color ratio must be in [0, 1)")
         if not 0 < self.minimum_nucleus_area_um2 < self.maximum_nucleus_area_um2:
             raise IHCError("Nucleus-area bounds are invalid")
         if not 0 < self.maximum_nucleus_eccentricity <= 1:
@@ -448,8 +458,7 @@ def load_patch_rgb(record: PatchRecord) -> np.ndarray:
     return rgb
 
 
-def separate_hematoxylin_dab(rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Separate H and DAB concentrations using natural-log optical density."""
+def _optical_density(rgb: np.ndarray) -> np.ndarray:
     if rgb.dtype != np.uint8 or rgb.ndim != 3 or rgb.shape[-1] != 3:
         raise IHCError("Stain separation requires an 8-bit RGB image")
     optical = rgb.astype(np.float32)
@@ -457,6 +466,12 @@ def separate_hematoxylin_dab(rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     optical *= 1.0 / 256.0
     np.log(optical, out=optical)
     optical *= -1.0
+    return optical
+
+
+def _hematoxylin_dab_from_optical(
+    optical: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
     hematoxylin = (
         optical[..., 0] * HED_FROM_RGB[0, 0]
         + optical[..., 1] * HED_FROM_RGB[1, 0]
@@ -472,6 +487,52 @@ def separate_hematoxylin_dab(rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return hematoxylin.astype(np.float32, copy=False), dab.astype(
         np.float32, copy=False
     )
+
+
+def separate_hematoxylin_dab(rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Separate H and unconstrained DAB using natural-log optical density."""
+    return _hematoxylin_dab_from_optical(_optical_density(rgb))
+
+
+def separate_hematoxylin_dab_color_checked(
+    rgb: np.ndarray,
+    minimum_color_margin_od: float = 0.02,
+    minimum_color_ratio: float = 0.15,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return H, unconstrained DAB, and expected-brown DAB concentrations.
+
+    A fixed HED inverse can assign positive DAB concentration to magenta,
+    neutral-gray, and other non-DAB colors. The color-checked channel retains a
+    pixel only when its RGB optical densities follow the ordering of the
+    standard DAB vector (OD blue > OD green > OD red), with an explicit margin.
+    The unconstrained channel is returned for within-run auditing. Use the
+    explicit unconstrained mode when an earlier-method reproduction is needed.
+    """
+    if not math.isfinite(float(minimum_color_margin_od)) or (
+        minimum_color_margin_od < 0
+    ):
+        raise IHCError("Minimum DAB color margin must be finite and non-negative")
+    if (
+        not math.isfinite(float(minimum_color_ratio))
+        or not 0 <= minimum_color_ratio < 1
+    ):
+        raise IHCError("Minimum DAB color ratio must be in [0, 1)")
+    optical = _optical_density(rgb)
+    hematoxylin, unconstrained_dab = _hematoxylin_dab_from_optical(optical)
+    # The standard DAB vector has adjacent OD contrasts of about 0.21 and
+    # 0.30 per unit DAB. A 0.15 relative requirement tolerates stain/scanner
+    # variation while rejecting nearly neutral dark pixels whose absolute OD
+    # is misleading.
+    required_margin = np.maximum(
+        minimum_color_margin_od,
+        minimum_color_ratio * unconstrained_dab,
+    )
+    expected_brown = (optical[..., 2] - optical[..., 1] >= required_margin) & (
+        optical[..., 1] - optical[..., 0] >= required_margin
+    )
+    color_checked_dab = unconstrained_dab.copy()
+    color_checked_dab[~expected_brown] = 0.0
+    return hematoxylin, unconstrained_dab, color_checked_dab
 
 
 def tissue_mask(rgb: np.ndarray, mpp: float) -> np.ndarray:
@@ -497,6 +558,26 @@ class SegmentedNuclei:
     mean_hematoxylin_od: np.ndarray
     mean_dab_od: np.ndarray
     nuclear_threshold_od: float
+
+
+def mean_signal_by_nucleus(nuclei: SegmentedNuclei, signal: np.ndarray) -> np.ndarray:
+    """Measure a two-dimensional signal over the retained nucleus labels."""
+    if signal.shape != nuclei.labels.shape:
+        raise IHCError("Nuclear signal and label geometry differ")
+    count = len(nuclei.label_ids)
+    if count == 0:
+        return np.empty(0, dtype=np.float64)
+    flattened = nuclei.labels.ravel()
+    denominator = np.maximum(
+        np.bincount(flattened, minlength=count + 1)[1:].astype(np.float64),
+        1.0,
+    )
+    sums = np.bincount(
+        flattened,
+        weights=signal.ravel(),
+        minlength=count + 1,
+    )[1:]
+    return sums / denominator
 
 
 def segment_nuclei(
@@ -713,6 +794,7 @@ PATCH_RESULT_FIELDS = (
     "nuclear_threshold_od",
     "cell_count",
     "cell_density_per_mm2",
+    "dab_color_model",
     "dab_negative_cells",
     "dab_weak_cells",
     "dab_moderate_cells",
@@ -720,6 +802,13 @@ PATCH_RESULT_FIELDS = (
     "dab_positive_cells",
     "dab_positive_percent",
     "h_score",
+    "unconstrained_dab_negative_cells",
+    "unconstrained_dab_weak_cells",
+    "unconstrained_dab_moderate_cells",
+    "unconstrained_dab_strong_cells",
+    "unconstrained_dab_positive_cells",
+    "unconstrained_dab_positive_percent",
+    "unconstrained_h_score",
     "complete_membrane_cells",
     "complete_membrane_percent",
     "strong_complete_membrane_cells",
@@ -742,6 +831,7 @@ CELL_FIELDS = (
     "area_um2",
     "mean_hematoxylin_od",
     "mean_dab_od",
+    "unconstrained_mean_dab_od",
     "dab_intensity_class",
     "dab_positive",
     "mean_membrane_dab_od",
@@ -761,6 +851,7 @@ CASE_RESULT_FIELDS = (
     "tissue_area_mm2",
     "cell_count",
     "cell_density_per_mm2",
+    "dab_color_model",
     "dab_negative_cells",
     "dab_weak_cells",
     "dab_moderate_cells",
@@ -768,6 +859,13 @@ CASE_RESULT_FIELDS = (
     "dab_positive_cells",
     "dab_positive_percent",
     "h_score",
+    "unconstrained_dab_negative_cells",
+    "unconstrained_dab_weak_cells",
+    "unconstrained_dab_moderate_cells",
+    "unconstrained_dab_strong_cells",
+    "unconstrained_dab_positive_cells",
+    "unconstrained_dab_positive_percent",
+    "unconstrained_h_score",
     "complete_membrane_cells",
     "complete_membrane_percent",
     "strong_complete_membrane_cells",
@@ -784,10 +882,12 @@ TUMORQUANTAI_WIDE_FIELDS = (
     "case_alias",
     "tumorquantai_er_percent",
     "tumorquantai_er_h_score",
+    "tumorquantai_er_unconstrained_dab_percent",
     "tumorquantai_er_segmented_objects",
     "tumorquantai_er_qc_status",
     "tumorquantai_pr_percent",
     "tumorquantai_pr_h_score",
+    "tumorquantai_pr_unconstrained_dab_percent",
     "tumorquantai_pr_segmented_objects",
     "tumorquantai_pr_qc_status",
     "tumorquantai_her2_membrane_proxy_pre_score",
@@ -795,6 +895,7 @@ TUMORQUANTAI_WIDE_FIELDS = (
     "tumorquantai_her2_qc_status",
     "tumorquantai_ki67_percent",
     "tumorquantai_ki67_h_score",
+    "tumorquantai_ki67_unconstrained_dab_percent",
     "tumorquantai_ki67_segmented_objects",
     "tumorquantai_ki67_qc_status",
 )
@@ -821,7 +922,9 @@ def _number(value: Any, *, integer: bool = False) -> float | int | None:
 
 
 def _cell_rows_nuclear(
-    nuclei: SegmentedNuclei, intensity: np.ndarray
+    nuclei: SegmentedNuclei,
+    intensity: np.ndarray,
+    unconstrained_mean_dab_od: np.ndarray,
 ) -> Iterable[dict[str, Any]]:
     for index in range(len(nuclei.label_ids)):
         yield {
@@ -831,6 +934,7 @@ def _cell_rows_nuclear(
             "area_um2": f"{nuclei.area_um2[index]:.4f}",
             "mean_hematoxylin_od": f"{nuclei.mean_hematoxylin_od[index]:.6f}",
             "mean_dab_od": f"{nuclei.mean_dab_od[index]:.6f}",
+            "unconstrained_mean_dab_od": (f"{unconstrained_mean_dab_od[index]:.6f}"),
             "dab_intensity_class": int(intensity[index]),
             "dab_positive": int(intensity[index] > 0),
             "mean_membrane_dab_od": "",
@@ -840,7 +944,9 @@ def _cell_rows_nuclear(
 
 
 def _cell_rows_her2(
-    nuclei: SegmentedNuclei, membrane: Mapping[str, np.ndarray]
+    nuclei: SegmentedNuclei,
+    membrane: Mapping[str, np.ndarray],
+    unconstrained_mean_dab_od: np.ndarray,
 ) -> Iterable[dict[str, Any]]:
     intensity = membrane["intensity_class"]
     for index in range(len(nuclei.label_ids)):
@@ -851,6 +957,7 @@ def _cell_rows_her2(
             "area_um2": f"{nuclei.area_um2[index]:.4f}",
             "mean_hematoxylin_od": f"{nuclei.mean_hematoxylin_od[index]:.6f}",
             "mean_dab_od": f"{nuclei.mean_dab_od[index]:.6f}",
+            "unconstrained_mean_dab_od": (f"{unconstrained_mean_dab_od[index]:.6f}"),
             "dab_intensity_class": int(intensity[index]),
             "dab_positive": int(intensity[index] > 0),
             "mean_membrane_dab_od": (f"{membrane['mean_membrane_dab_od'][index]:.6f}"),
@@ -991,7 +1098,17 @@ def quantify_patch(
         raise IHCError(
             f"Decoded RGB verification failed for {record.case_alias}/{record.patch_alias}"
         )
-    hematoxylin, dab = separate_hematoxylin_dab(rgb)
+    if config.constrain_dab_to_expected_color:
+        hematoxylin, unconstrained_dab, dab = separate_hematoxylin_dab_color_checked(
+            rgb,
+            config.minimum_dab_color_margin_od,
+            config.minimum_dab_color_ratio,
+        )
+        dab_color_model = "expected-brown-od-cone-v1"
+    else:
+        hematoxylin, unconstrained_dab = separate_hematoxylin_dab(rgb)
+        dab = unconstrained_dab
+        dab_color_model = "unconstrained-hed-v1-compatible"
     tissue = tissue_mask(rgb, record.microns_per_pixel)
     nuclei = segment_nuclei(
         hematoxylin, dab, tissue, record.marker, record.microns_per_pixel, config
@@ -1001,6 +1118,7 @@ def quantify_patch(
         float(np.count_nonzero(tissue)) * record.microns_per_pixel**2 / 1_000_000.0
     )
     cell_count = int(len(nuclei.label_ids))
+    unconstrained_mean_dab_od = mean_signal_by_nucleus(nuclei, unconstrained_dab)
     cell_density = cell_count / tissue_area_mm2 if tissue_area_mm2 > 0 else math.nan
     qc_flags: list[str] = []
     if tissue_fraction < config.minimum_tissue_fraction:
@@ -1028,6 +1146,7 @@ def quantify_patch(
             "nuclear_threshold_od": nuclei.nuclear_threshold_od,
             "cell_count": cell_count,
             "cell_density_per_mm2": cell_density,
+            "dab_color_model": dab_color_model,
             "qc_status": "review" if qc_flags else "pass",
             "qc_flags": ";".join(qc_flags),
             "cell_table": "cell_measurements.csv.gz" if save_cells else "",
@@ -1039,8 +1158,11 @@ def quantify_patch(
 
     if record.marker in NUCLEAR_MARKERS:
         intensity = _intensity_classes(nuclei.mean_dab_od, config)
+        unconstrained_intensity = _intensity_classes(unconstrained_mean_dab_od, config)
         counts = np.bincount(intensity, minlength=4)
+        unconstrained_counts = np.bincount(unconstrained_intensity, minlength=4)
         positive = int(np.count_nonzero(intensity > 0))
+        unconstrained_positive = int(np.count_nonzero(unconstrained_intensity > 0))
         result.update(
             {
                 "dab_negative_cells": int(counts[0]),
@@ -1056,17 +1178,34 @@ def quantify_patch(
                     if cell_count
                     else math.nan
                 ),
+                "unconstrained_dab_negative_cells": int(unconstrained_counts[0]),
+                "unconstrained_dab_weak_cells": int(unconstrained_counts[1]),
+                "unconstrained_dab_moderate_cells": int(unconstrained_counts[2]),
+                "unconstrained_dab_strong_cells": int(unconstrained_counts[3]),
+                "unconstrained_dab_positive_cells": unconstrained_positive,
+                "unconstrained_dab_positive_percent": (
+                    100.0 * unconstrained_positive / cell_count
+                    if cell_count
+                    else math.nan
+                ),
+                "unconstrained_h_score": (
+                    100.0 * float(np.sum(unconstrained_intensity)) / cell_count
+                    if cell_count
+                    else math.nan
+                ),
             }
         )
         if save_cells:
             _write_cell_table(
                 patch_dir / "cell_measurements.csv.gz",
-                _cell_rows_nuclear(nuclei, intensity),
+                _cell_rows_nuclear(nuclei, intensity, unconstrained_mean_dab_od),
             )
         if save_qc:
             percent = _number(result["dab_positive_percent"])
             label = (
-                f"DAB+ {percent:.1f}%" if percent is not None else "DAB+ unavailable"
+                f"color-checked DAB+ {percent:.1f}%"
+                if percent is not None
+                else "color-checked DAB+ unavailable"
             )
             write_qc_overlay(
                 patch_dir / "qc_overlay.png",
@@ -1119,7 +1258,7 @@ def quantify_patch(
         if save_cells:
             _write_cell_table(
                 patch_dir / "cell_measurements.csv.gz",
-                _cell_rows_her2(nuclei, membrane),
+                _cell_rows_her2(nuclei, membrane, unconstrained_mean_dab_od),
             )
         if save_qc:
             label = (
@@ -1230,6 +1369,11 @@ def aggregate_case_results(
                 "patches_scheduled": len(rows),
                 "patches_completed": len(completed),
                 "patches_failed": len(failed),
+                "dab_color_model": (
+                    "expected-brown-od-cone-v1"
+                    if config.constrain_dab_to_expected_color
+                    else "unconstrained-hed-v1-compatible"
+                ),
             }
         )
         if not completed:
@@ -1245,6 +1389,11 @@ def aggregate_case_results(
             "dab_moderate_cells",
             "dab_strong_cells",
             "dab_positive_cells",
+            "unconstrained_dab_negative_cells",
+            "unconstrained_dab_weak_cells",
+            "unconstrained_dab_moderate_cells",
+            "unconstrained_dab_strong_cells",
+            "unconstrained_dab_positive_cells",
             "complete_membrane_cells",
             "strong_complete_membrane_cells",
             "incomplete_positive_membrane_cells",
@@ -1286,6 +1435,35 @@ def aggregate_case_results(
                 + 3 * sums["dab_strong_cells"]
             )
             result["h_score"] = 100.0 * weighted / cells if cells else ""
+            unconstrained_weighted = (
+                sums["unconstrained_dab_weak_cells"]
+                + 2 * sums["unconstrained_dab_moderate_cells"]
+                + 3 * sums["unconstrained_dab_strong_cells"]
+            )
+            unconstrained_positive = int(sums["unconstrained_dab_positive_cells"])
+            result.update(
+                {
+                    "unconstrained_dab_negative_cells": int(
+                        sums["unconstrained_dab_negative_cells"]
+                    ),
+                    "unconstrained_dab_weak_cells": int(
+                        sums["unconstrained_dab_weak_cells"]
+                    ),
+                    "unconstrained_dab_moderate_cells": int(
+                        sums["unconstrained_dab_moderate_cells"]
+                    ),
+                    "unconstrained_dab_strong_cells": int(
+                        sums["unconstrained_dab_strong_cells"]
+                    ),
+                    "unconstrained_dab_positive_cells": (unconstrained_positive),
+                    "unconstrained_dab_positive_percent": (
+                        100.0 * unconstrained_positive / cells if cells else ""
+                    ),
+                    "unconstrained_h_score": (
+                        100.0 * unconstrained_weighted / cells if cells else ""
+                    ),
+                }
+            )
             percent = _number(result["dab_positive_percent"])
             if percent is not None:
                 result["marker_pre_score"] = percent
@@ -1354,6 +1532,9 @@ def wide_tumorquantai_case_values(
                     "marker_pre_score", ""
                 )
                 row[f"tumorquantai_{prefix}_h_score"] = source.get("h_score", "")
+                row[f"tumorquantai_{prefix}_unconstrained_dab_percent"] = source.get(
+                    "unconstrained_dab_positive_percent", ""
+                )
                 row[f"tumorquantai_{prefix}_segmented_objects"] = source.get(
                     "cell_count", ""
                 )
@@ -1380,7 +1561,13 @@ def _marker_measurement_label(row: Mapping[str, Any]) -> str:
         score = row.get("marker_pre_score", "")
         return f"{score}+ membrane-proxy pre-score" if score != "" else "unavailable"
     percent = _number(row.get("dab_positive_percent"))
-    return f"{percent:.1f}% DAB+" if percent is not None else "unavailable"
+    if percent is None:
+        return "unavailable"
+    label = f"{percent:.1f}% color-checked DAB+"
+    unconstrained = _number(row.get("unconstrained_dab_positive_percent"))
+    if unconstrained is not None:
+        label += f" · {unconstrained:.1f}% unconstrained HED"
+    return label
 
 
 def write_case_ihc_reports(
@@ -1426,6 +1613,9 @@ def write_case_ihc_reports(
                     "marker": marker,
                     "marker_pre_score": row.get("her2_membrane_proxy_pre_score", ""),
                     "dab_positive_percent": row.get("dab_positive_percent", ""),
+                    "unconstrained_dab_positive_percent": row.get(
+                        "unconstrained_dab_positive_percent", ""
+                    ),
                 }
             )
             artifact_root = output_root / "patches" / case_alias / patch_alias
@@ -1514,7 +1704,9 @@ def write_ihc_report(
             ]
             if values:
                 cutoff = 20.0 if marker == "Ki-67" else 1.0
-                headline = f"median {float(np.median(values)):.1f}% DAB+"
+                headline = (
+                    f"median {float(np.median(values)):.1f}% " "color-checked DAB+"
+                )
                 detail = (
                     f"range {min(values):.1f}–{max(values):.1f}% · "
                     f"≥{cutoff:g}%: {sum(value >= cutoff for value in values)}/{len(values)}"
@@ -1538,7 +1730,7 @@ def write_ihc_report(
                 else "unavailable"
             )
         else:
-            value = _format_number(row.get("dab_positive_percent")) + "% DAB+"
+            value = _marker_measurement_label(row)
         marker_rows.append(
             "<tr>"
             f"<td><a href='{html.escape(case_report_links[case_alias])}'>"
@@ -1568,9 +1760,9 @@ table{{border-collapse:collapse;width:100%;font-size:14px}} th,td{{border-bottom
 .scroll{{max-height:620px;overflow:auto;border:1px solid var(--line);border-radius:10px}}
 .status{{padding:3px 8px;border-radius:999px;background:#e9f5ee;color:#25633b}} .status.review{{background:#fff2d8;color:#7d5100}} .status.failed{{background:#fde9e9;color:var(--danger)}} code{{font-size:12px}}
 </style></head><body>
-<header><h1>TumorQuantAI IHC quantification</h1><p>Deterministic H–DAB stain separation, physical-scale-aware nuclear segmentation, marker measurements, and reviewable QC. Research use only.</p></header>
+<header><h1>TumorQuantAI IHC quantification</h1><p>Deterministic color-checked H–DAB stain separation, physical-scale-aware nuclear segmentation, marker measurements, and reviewable QC. Research use only.</p></header>
 <main><section class="cards"><div class="card"><b>{len(cases)}</b><span>cases</span></div><div class="card"><b>{completed:,}</b><span>completed patches</span></div><div class="card"><b>{failed:,}</b><span>failed patches</span></div><div class="card"><b>{total_cells:,}</b><span>segmented measurement proxies</span></div></section>
-<section class="panel warning"><h2>Interpretation boundary</h2><p>These selected fields are not whole-slide measurements. No pathologist-verified invasive-tumour ROI or independently validated tumour-cell classifier is supplied. ER/PR/Ki-67 values include every accepted segmented nucleus; HER2 is an expanded-nucleus boundary proxy, not a clinical membrane score. Separate stains are not registered and do not measure same-cell co-expression. Review every overlay and do not use these outputs for patient care.</p></section>
+<section class="panel warning"><h2>Interpretation boundary</h2><p>These selected fields are not whole-slide measurements. No pathologist-verified invasive-tumour ROI or independently validated tumour-cell classifier is supplied. ER/PR/Ki-67 values include every accepted segmented nucleus; HER2 is an expanded-nucleus boundary proxy, not a clinical membrane score. The v2 expected-brown color check removes known magenta/gray HED artifacts but does not supply tumour classification, assay controls, or clinical validation. Separate stains are not registered and do not measure same-cell co-expression. Review every overlay and do not use these outputs for patient care.</p></section>
 <section class="panel"><h2>Open the audit tables first</h2><p><a href="tables/tumorquantai_marker_values.csv">Wide TumorQuantAI marker values</a> · <a href="tables/case_marker_measurements.csv">Long case-marker measurements</a> · <a href="tables/patch_measurements.csv">Patch measurements</a> · <a href="workflow_metadata/ihc_run.json">Run provenance</a></p></section>
 <section class="panel"><h2>Cohort overview</h2><p>Descriptive research summaries across available case-level measurements.</p><div class="marker-grid">{''.join(cohort_cards)}</div></section>
 <section class="panel"><h2>Case-marker summary</h2><div class="scroll"><table><thead><tr><th>Public case alias</th><th>Marker</th><th>Measurement</th><th>Cells</th><th>QC</th></tr></thead><tbody>{''.join(marker_rows)}</tbody></table></div></section>
@@ -2391,6 +2583,156 @@ def _agreement_interpretation_notes(
     return notes
 
 
+def _dab_color_check_impact(
+    clinical_by_alias: Mapping[str, Mapping[str, Any]],
+    algorithm_by_key: Mapping[tuple[str, str], Mapping[str, Any]],
+    *,
+    bootstrap_iterations: int,
+    bootstrap_seed: int,
+) -> list[dict[str, Any]]:
+    """Compare v2 scoring with its unconstrained HED audit channel."""
+    output: list[dict[str, Any]] = []
+    for marker, clinical_field in (
+        ("ER", "pathologist_er_percent"),
+        ("PR", "pathologist_pr_percent"),
+    ):
+        reference_values: list[float] = []
+        checked_values: list[float] = []
+        unconstrained_values: list[float] = []
+        for alias, clinical in sorted(clinical_by_alias.items()):
+            algorithm = algorithm_by_key.get((alias, marker))
+            if not algorithm:
+                continue
+            reference = _number(clinical.get(clinical_field))
+            checked = _number(algorithm.get("marker_pre_score"))
+            unconstrained = _number(algorithm.get("unconstrained_dab_positive_percent"))
+            if reference is None or checked is None or unconstrained is None:
+                continue
+            reference_values.append(float(reference))
+            checked_values.append(float(checked))
+            unconstrained_values.append(float(unconstrained))
+        if not reference_values:
+            continue
+        truth = [int(value >= 1.0) for value in reference_values]
+        checked_categories = [int(value >= 1.0) for value in checked_values]
+        unconstrained_categories = [int(value >= 1.0) for value in unconstrained_values]
+        checked_kappa, checked_confusion = cohen_kappa(
+            truth, checked_categories, [0, 1]
+        )
+        unconstrained_kappa, unconstrained_confusion = cohen_kappa(
+            truth, unconstrained_categories, [0, 1]
+        )
+        checked_low, checked_high = bootstrap_kappa_interval(
+            truth,
+            checked_categories,
+            [0, 1],
+            weights="none",
+            iterations=bootstrap_iterations,
+            seed=bootstrap_seed + IHC_MARKERS.index(marker),
+        )
+        unconstrained_low, unconstrained_high = bootstrap_kappa_interval(
+            truth,
+            unconstrained_categories,
+            [0, 1],
+            weights="none",
+            iterations=bootstrap_iterations,
+            seed=bootstrap_seed + 100 + IHC_MARKERS.index(marker),
+        )
+        checked_continuous = _continuous_agreement_metrics(
+            reference_values, checked_values
+        )
+        unconstrained_continuous = _continuous_agreement_metrics(
+            reference_values, unconstrained_values
+        )
+
+        def diagnostic_counts(confusion: np.ndarray) -> dict[str, int]:
+            return {
+                "true_negative": int(confusion[0, 0]),
+                "false_positive": int(confusion[0, 1]),
+                "false_negative": int(confusion[1, 0]),
+                "true_positive": int(confusion[1, 1]),
+            }
+
+        def ratio(numerator: int, denominator: int) -> Any:
+            return numerator / denominator if denominator else ""
+
+        def roc_auc(scores: Sequence[float]) -> Any:
+            labels = np.asarray(truth, dtype=np.int64)
+            positive_count = int(np.count_nonzero(labels == 1))
+            negative_count = int(np.count_nonzero(labels == 0))
+            if not positive_count or not negative_count:
+                return ""
+            ranks = _average_ranks(scores)
+            positive_rank_sum = float(np.sum(ranks[labels == 1]))
+            return (positive_rank_sum - positive_count * (positive_count + 1) / 2.0) / (
+                positive_count * negative_count
+            )
+
+        checked_counts = diagnostic_counts(checked_confusion)
+        unconstrained_counts = diagnostic_counts(unconstrained_confusion)
+        row: dict[str, Any] = {
+            "marker": marker,
+            "scale": "binary-at-1-percent",
+            "n": len(truth),
+            "color_checked_kappa": checked_kappa,
+            "color_checked_bootstrap_ci_95_low": checked_low,
+            "color_checked_bootstrap_ci_95_high": checked_high,
+            "unconstrained_kappa": unconstrained_kappa,
+            "unconstrained_bootstrap_ci_95_low": unconstrained_low,
+            "unconstrained_bootstrap_ci_95_high": unconstrained_high,
+            "color_checked_exact_agreement": float(
+                np.mean(np.asarray(truth) == np.asarray(checked_categories))
+            ),
+            "unconstrained_exact_agreement": float(
+                np.mean(np.asarray(truth) == np.asarray(unconstrained_categories))
+            ),
+            "color_checked_negative_predictions": checked_categories.count(0),
+            "color_checked_positive_predictions": checked_categories.count(1),
+            "unconstrained_negative_predictions": (unconstrained_categories.count(0)),
+            "unconstrained_positive_predictions": (unconstrained_categories.count(1)),
+            "color_checked_roc_auc": roc_auc(checked_values),
+            "unconstrained_roc_auc": roc_auc(unconstrained_values),
+        }
+        for prefix, counts in (
+            ("color_checked", checked_counts),
+            ("unconstrained", unconstrained_counts),
+        ):
+            row.update({f"{prefix}_{name}": value for name, value in counts.items()})
+            row[f"{prefix}_sensitivity"] = ratio(
+                counts["true_positive"],
+                counts["true_positive"] + counts["false_negative"],
+            )
+            row[f"{prefix}_specificity"] = ratio(
+                counts["true_negative"],
+                counts["true_negative"] + counts["false_positive"],
+            )
+            sensitivity = row[f"{prefix}_sensitivity"]
+            specificity = row[f"{prefix}_specificity"]
+            row[f"{prefix}_balanced_accuracy"] = (
+                0.5 * (float(sensitivity) + float(specificity))
+                if sensitivity != "" and specificity != ""
+                else ""
+            )
+            row[f"{prefix}_positive_predictive_value"] = ratio(
+                counts["true_positive"],
+                counts["true_positive"] + counts["false_positive"],
+            )
+            row[f"{prefix}_negative_predictive_value"] = ratio(
+                counts["true_negative"],
+                counts["true_negative"] + counts["false_negative"],
+            )
+        for name in (
+            "mean_absolute_error",
+            "root_mean_squared_error",
+            "spearman_correlation",
+            "lin_concordance_correlation",
+        ):
+            row[f"color_checked_{name}"] = checked_continuous[name]
+            row[f"unconstrained_{name}"] = unconstrained_continuous[name]
+        output.append({key: _finite_or_blank(value) for key, value in row.items()})
+    return output
+
+
 def _agreement_report_html(
     metadata: Mapping[str, Any],
     summaries: Sequence[Mapping[str, Any]],
@@ -2462,6 +2804,61 @@ def _agreement_report_html(
     limitations = "".join(
         f"<li>{html.escape(str(item))}</li>" for item in metadata["limitations"]
     )
+    impact_rows = metadata.get("dab_color_check_impact", [])
+    impact_html = ""
+    impact_download = ""
+    if impact_rows:
+
+        def percentage(row: Mapping[str, Any], field: str) -> str:
+            raw = row.get(field, "")
+            return "—" if raw == "" else f"{value(100 * float(raw), 1)}%"
+
+        body = "".join(
+            "<tr>"
+            f"<th scope='row'>{html.escape(str(row['marker']))}</th>"
+            f"<td>{value(row['color_checked_kappa'])} "
+            f"[{value(row['color_checked_bootstrap_ci_95_low'])}–"
+            f"{value(row['color_checked_bootstrap_ci_95_high'])}]</td>"
+            f"<td>{value(row['unconstrained_kappa'])} "
+            f"[{value(row['unconstrained_bootstrap_ci_95_low'])}–"
+            f"{value(row['unconstrained_bootstrap_ci_95_high'])}]</td>"
+            f"<td>{percentage(row, 'color_checked_sensitivity')} / "
+            f"{percentage(row, 'color_checked_specificity')}</td>"
+            f"<td>{percentage(row, 'unconstrained_sensitivity')} / "
+            f"{percentage(row, 'unconstrained_specificity')}</td>"
+            f"<td>{percentage(row, 'color_checked_balanced_accuracy')}</td>"
+            f"<td>{percentage(row, 'unconstrained_balanced_accuracy')}</td>"
+            f"<td>{value(row['color_checked_roc_auc'])}</td>"
+            f"<td>{value(row['unconstrained_roc_auc'])}</td>"
+            f"<td>{value(100 * float(row['color_checked_exact_agreement']), 1)}%</td>"
+            f"<td>{value(100 * float(row['unconstrained_exact_agreement']), 1)}%</td>"
+            f"<td>{int(row['color_checked_negative_predictions'])} / "
+            f"{int(row['color_checked_positive_predictions'])}</td>"
+            f"<td>{int(row['unconstrained_negative_predictions'])} / "
+            f"{int(row['unconstrained_positive_predictions'])}</td>"
+            "</tr>"
+            for row in impact_rows
+        )
+        impact_html = (
+            "<section><h2>DAB color-check impact</h2>"
+            "<p class='footnote'>Aggregate sensitivity analysis at the same "
+            "1% category threshold. The unconstrained channel is an audit "
+            "comparator, not a second clinical prediction.</p>"
+            "<div class='table-scroll'><table><thead><tr><th>Marker</th>"
+            "<th>κ checked [95% CI]</th><th>κ unconstrained [95% CI]</th>"
+            "<th>Sensitivity / specificity checked</th>"
+            "<th>Sensitivity / specificity unconstrained</th>"
+            "<th>Balanced accuracy checked</th>"
+            "<th>Balanced accuracy unconstrained</th>"
+            "<th>AUC checked</th><th>AUC unconstrained</th>"
+            "<th>Exact checked</th><th>Exact unconstrained</th>"
+            "<th>Checked calls N / P</th><th>Unconstrained calls N / P</th>"
+            f"</tr></thead><tbody>{body}</tbody></table></div></section>"
+        )
+        impact_download = (
+            '<a class="button secondary" href="dab_color_check_impact.csv">'
+            "DAB color-check impact CSV</a>"
+        )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2491,9 +2888,10 @@ main{{padding:30px 24px 64px}}section{{margin:30px 0}}h2{{font-size:1.55rem;marg
 <div class="stats"><div class="stat"><strong>{int(metadata['overlap_case_count'])}</strong><span>overlapping cases</span></div><div class="stat"><strong>{int(metadata['paired_marker_rows'])}</strong><span>paired case-marker rows</span></div><div class="stat"><strong>{int(metadata['bootstrap_iterations']):,}</strong><span>case-resampled bootstrap iterations</span></div></div>
 <section><h2>Agreement at a glance</h2><div class="table-scroll"><table><thead><tr><th>Marker</th><th>Scale</th><th>Weighting</th><th>n</th><th>κ</th><th>Bootstrap 95% CI</th><th>Exact</th><th>MAE</th><th>RMSE</th><th>Pearson r</th><th>Spearman ρ</th><th>Lin's CCC</th></tr></thead><tbody>{summary_rows}</tbody></table></div><p class="footnote">Continuous metrics use the underlying percentages for ER, PR, and Ki-67 and the 0–3 ordinal pre-score for HER2. The full CSV also reports expected agreement, median error, bias, 95% limits of agreement, positive/negative specific agreement, and category margins. A dash marks a metric that was not prespecified or could not be estimated.</p></section>
 {notes_html}
+{impact_html}
 <section><h2>Contingency matrices</h2><div class="matrix-grid">{''.join(matrix_sections)}</div></section>
-<section><h2>Files</h2><div class="downloads"><a class="button" href="concordance_metrics.csv">Full concordance metrics CSV</a><a class="button secondary" href="kappa_summary.csv">Compact kappa CSV</a><a class="button secondary" href="contingency_tables.json">Contingency JSON</a><a class="button secondary" href="agreement_summary.json">Run metadata</a><a class="button secondary" href="case_concordance_values_pseudonymized.csv">Wide paired values CSV</a><a class="button secondary" href="case_comparison_pseudonymized.csv">Long paired values CSV</a></div><p class="footnote">The paired CSV files contain public case aliases plus marker values and remain pseudonymized health data. Keep this entire directory under controlled access.</p></section>
-<section><h2>Methods and interpretation</h2><div class="methods"><article><h3>Prespecified scales</h3><p>ER and PR use unweighted κ at 1%. HER2 uses quadratic-weighted κ over 0, 1+, 2+, and 3+. Ki-67 uses quadratic-weighted percentage deciles, with a secondary unweighted view at 20%.</p></article><article><h3>Uncertainty</h3><p>The percentile 95% interval resamples paired cases with replacement using seed <code>{int(metadata['bootstrap_seed'])}</code>. Kappa is prevalence-sensitive; exact agreement and margins remain visible.</p></article></div></section>
+<section><h2>Files</h2><div class="downloads"><a class="button" href="concordance_metrics.csv">Full concordance metrics CSV</a>{impact_download}<a class="button secondary" href="kappa_summary.csv">Compact kappa CSV</a><a class="button secondary" href="contingency_tables.json">Contingency JSON</a><a class="button secondary" href="agreement_summary.json">Run metadata</a><a class="button secondary" href="case_concordance_values_pseudonymized.csv">Wide paired values CSV</a><a class="button secondary" href="case_comparison_pseudonymized.csv">Long paired values CSV</a></div><p class="footnote">The paired CSV files contain public case aliases plus marker values and remain pseudonymized health data. Keep this entire directory under controlled access.</p></section>
+<section><h2>Methods and interpretation</h2><div class="methods"><article><h3>Prespecified scales</h3><p>ER and PR use unweighted κ at 1%. HER2 uses quadratic-weighted κ over 0, 1+, 2+, and 3+. Ki-67 uses quadratic-weighted percentage deciles, with a secondary unweighted view at 20%.</p></article><article><h3>Uncertainty</h3><p>The percentile 95% interval resamples paired cases with replacement using seed <code>{int(metadata['bootstrap_seed'])}</code>. Kappa is prevalence-sensitive; exact agreement and margins remain visible.</p></article><article><h3>Analysis identity</h3><p>Schema <code>{html.escape(str(metadata.get('analysis_schema_version') or 'not recorded'))}</code><br>Engine <code>{html.escape(str(metadata.get('analysis_engine_version') or 'not recorded'))}</code><br>Signature <code>{html.escape(str(metadata.get('analysis_signature') or 'not recorded'))}</code></p></article></div></section>
 <section><h2>Limitations</h2><ul>{limitations}</ul></section>
 <footer>Generated {html.escape(str(metadata['generated_at_utc']))}. Method reference: <a href="https://doi.org/10.1177/001316446002000104">Cohen (1960)</a>. Clinical context: <a href="https://ascopubs.org/doi/10.1200/JCO.19.02309">ER/PR</a>, <a href="https://www.cap.org/cap-guidelines/her2-testing-in-breast-cancer-2023-guideline-update/">HER2</a>, and <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC8487652/">Ki-67</a>.</footer></main></body></html>"""
 
@@ -2518,6 +2916,18 @@ def compare_pathologist_agreement(
                 "Case-marker measurements do not use the required IHC schema"
             )
         algorithm_rows = list(reader)
+    analysis_identity: dict[str, str] = {}
+    for field in ("schema_version", "engine_version", "analysis_signature"):
+        values = sorted(
+            {
+                str(row.get(field, "")).strip()
+                for row in algorithm_rows
+                if str(row.get(field, "")).strip()
+            }
+        )
+        if len(values) > 1:
+            raise IHCError(f"Case-marker measurements mix multiple {field} values")
+        analysis_identity[field] = values[0] if values else ""
     with pathologist_csv.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         if set(PATHOLOGIST_FIELDS) - set(reader.fieldnames or []):
@@ -2786,6 +3196,63 @@ def compare_pathologist_agreement(
     )
     _write_csv(output_dir / "kappa_summary.csv", summaries, summary_fields)
     _write_csv(output_dir / "concordance_metrics.csv", summaries, concordance_fields)
+    color_impact = _dab_color_check_impact(
+        clinical_by_alias,
+        algorithm_by_key,
+        bootstrap_iterations=bootstrap_iterations,
+        bootstrap_seed=bootstrap_seed,
+    )
+    color_impact_fields = (
+        "marker",
+        "scale",
+        "n",
+        "color_checked_kappa",
+        "color_checked_bootstrap_ci_95_low",
+        "color_checked_bootstrap_ci_95_high",
+        "unconstrained_kappa",
+        "unconstrained_bootstrap_ci_95_low",
+        "unconstrained_bootstrap_ci_95_high",
+        "color_checked_exact_agreement",
+        "unconstrained_exact_agreement",
+        "color_checked_negative_predictions",
+        "color_checked_positive_predictions",
+        "unconstrained_negative_predictions",
+        "unconstrained_positive_predictions",
+        "color_checked_roc_auc",
+        "unconstrained_roc_auc",
+        "color_checked_true_negative",
+        "color_checked_false_positive",
+        "color_checked_false_negative",
+        "color_checked_true_positive",
+        "unconstrained_true_negative",
+        "unconstrained_false_positive",
+        "unconstrained_false_negative",
+        "unconstrained_true_positive",
+        "color_checked_sensitivity",
+        "color_checked_specificity",
+        "color_checked_balanced_accuracy",
+        "color_checked_positive_predictive_value",
+        "color_checked_negative_predictive_value",
+        "unconstrained_sensitivity",
+        "unconstrained_specificity",
+        "unconstrained_balanced_accuracy",
+        "unconstrained_positive_predictive_value",
+        "unconstrained_negative_predictive_value",
+        "color_checked_mean_absolute_error",
+        "unconstrained_mean_absolute_error",
+        "color_checked_root_mean_squared_error",
+        "unconstrained_root_mean_squared_error",
+        "color_checked_spearman_correlation",
+        "unconstrained_spearman_correlation",
+        "color_checked_lin_concordance_correlation",
+        "unconstrained_lin_concordance_correlation",
+    )
+    if color_impact:
+        _write_csv(
+            output_dir / "dab_color_check_impact.csv",
+            color_impact,
+            color_impact_fields,
+        )
     _write_csv(
         output_dir / "case_comparison_pseudonymized.csv",
         comparison_rows,
@@ -2808,6 +3275,9 @@ def compare_pathologist_agreement(
         "analysis_case_table_sha256": hashlib.sha256(
             case_path.read_bytes()
         ).hexdigest(),
+        "analysis_schema_version": analysis_identity["schema_version"],
+        "analysis_engine_version": analysis_identity["engine_version"],
+        "analysis_signature": analysis_identity["analysis_signature"],
         "case_rows": len(wide_comparison_rows),
         "paired_marker_rows": len(comparison_rows),
         "pathologist_case_count": len(clinical_by_alias),
@@ -2818,6 +3288,9 @@ def compare_pathologist_agreement(
         "privacy_status": "pseudonymized_marker_comparison",
         "outputs": {
             "full_concordance_metrics": "concordance_metrics.csv",
+            "dab_color_check_impact": (
+                "dab_color_check_impact.csv" if color_impact else ""
+            ),
             "kappa_summary": "kappa_summary.csv",
             "wide_case_values": "case_concordance_values_pseudonymized.csv",
             "long_case_values": "case_comparison_pseudonymized.csv",
@@ -2826,12 +3299,14 @@ def compare_pathologist_agreement(
         "limitations": [
             "No pathologist-verified invasive-tumour ROI/classifier was supplied.",
             "Selected fields are not whole-slide measurements.",
+            "The expected-brown color cone is a research correction, not an independently validated clinical assay.",
             "HER2 is a membrane-proxy pre-score, not clinical HER2 status.",
             "Ki-67 20% is a secondary research threshold, not a universal cut point.",
         ],
         "interpretation_notes": _agreement_interpretation_notes(
             summaries, contingency_tables
         ),
+        "dab_color_check_impact": color_impact,
         "summaries": summaries,
     }
     _atomic_json(output_dir / "agreement_summary.json", metadata)
@@ -2899,6 +3374,32 @@ def add_cli_parser(subparsers: Any) -> None:
     quantify.add_argument("--weak-dab-od", type=float, default=0.20)
     quantify.add_argument("--moderate-dab-od", type=float, default=0.40)
     quantify.add_argument("--strong-dab-od", type=float, default=0.60)
+    quantify.add_argument(
+        "--minimum-dab-color-margin-od",
+        type=float,
+        default=0.02,
+        help=(
+            "minimum adjacent-channel optical-density margin required for "
+            "the expected brown DAB color (default: 0.02)"
+        ),
+    )
+    quantify.add_argument(
+        "--minimum-dab-color-ratio",
+        type=float,
+        default=0.15,
+        help=(
+            "minimum adjacent-channel contrast as a fraction of DAB optical "
+            "density (default: 0.15)"
+        ),
+    )
+    quantify.add_argument(
+        "--unconstrained-dab-color",
+        action="store_true",
+        help=(
+            "disable the v2 expected-brown color check for a legacy-compatible "
+            "unconstrained HED measurement"
+        ),
+    )
     quantify.add_argument("--minimum-cells-for-score", type=int, default=100)
 
     clinical = commands.add_parser(
@@ -2946,6 +3447,9 @@ def dispatch_cli(args: Any) -> int:
             weak_dab_od=args.weak_dab_od,
             moderate_dab_od=args.moderate_dab_od,
             strong_dab_od=args.strong_dab_od,
+            constrain_dab_to_expected_color=not args.unconstrained_dab_color,
+            minimum_dab_color_margin_od=args.minimum_dab_color_margin_od,
+            minimum_dab_color_ratio=args.minimum_dab_color_ratio,
             minimum_cells_for_score=args.minimum_cells_for_score,
         )
         records, unavailable = load_patch_manifest(

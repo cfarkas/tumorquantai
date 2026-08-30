@@ -162,7 +162,15 @@ tumorquantai ihc quantify /path/to/breast-ihc-downloads \
 `tables/tumorquantai_marker_values.csv` is the concise 51-row wide export.
 `tables/case_marker_measurements.csv` is the long case-marker audit table.
 Missing markers are empty and explicitly marked `unavailable`; they are never
-converted to zero.
+converted to zero. The default v2 engine requires the expected brown-DAB
+optical-density ordering and exports the unconstrained HED value separately.
+For an explicit earlier-method reproduction, use
+`--unconstrained-dab-color` with a new output directory. Expert color-cone
+controls are `--minimum-dab-color-margin-od` (default `0.02`) and
+`--minimum-dab-color-ratio` (default `0.15`).
+
+See [IHC v1-to-v2 migration](ihc-v2-migration.md) before comparing old and new
+result directories.
 
 The optional private agreement route first creates an English, six-column
 minimum marker table and then calculates marker-wise concordance:

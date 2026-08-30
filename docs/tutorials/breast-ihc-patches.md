@@ -35,9 +35,9 @@ values.
   <div class="tqa-summary-card" markdown>
   ### Marker signal
 
-  `tumorquantai ihc quantify` measures nuclear H–DAB signal for ER, PR, and
-  Ki-67 and a membrane-proxy signal for HER2. It writes overlays, cell tables,
-  case summaries, and a portable HTML report.
+  `tumorquantai ihc quantify` measures color-checked nuclear H–DAB signal for
+  ER, PR, and Ki-67 and a color-checked membrane-proxy signal for HER2. It
+  writes overlays, cell tables, case summaries, and a portable HTML report.
   </div>
   <div class="tqa-summary-card" markdown>
   ### Pathologist agreement
@@ -161,14 +161,45 @@ work. TumorQuantAI fails closed when an archive is missing or decoded pixels
 do not match the manifest. `--allow-missing` is reserved for an intentionally
 incomplete audit; unavailable markers never become numerical zero.
 
+### Why the v2 DAB color check matters
+
+A conventional inverse HED matrix can assign a positive numerical DAB
+concentration to magenta or almost neutral gray pixels even though they are
+not brown chromogen. In the original reference run this failure was most
+visible for ER: all 51 cases crossed 1%, including visibly magenta/gray
+pathologist-negative fields.
+
+The v2 engine retains a pixel in the scoring DAB channel only when its optical
+densities follow the expected brown-DAB cone:
+
+```text
+ODblue - ODgreen ≥ max(0.02, 0.15 × unconstrained DAB OD)
+ODgreen - ODred  ≥ max(0.02, 0.15 × unconstrained DAB OD)
+```
+
+The rule uses image color and the published DAB stain vector only. It does not
+read pathologist values. The unconstrained HED measurement remains beside the
+color-checked value in every audit table, so the change is visible rather than
+silently rewriting the old result.
+
+The public cohort exposed the failure and was also used to audit this
+correction. Although pathologist values are never inputs to image scoring, the
+before-and-after concordance on these same cases is method development, not
+independent validation.
+
+Use `--unconstrained-dab-color` only to reproduce the earlier unconstrained
+behavior in a new output directory. `--minimum-dab-color-margin-od` and
+`--minimum-dab-color-ratio` are expert sensitivity-analysis controls; changing
+either creates a different analysis signature.
+
 ### What is measured
 
 | Marker | Research measurement | Case pre-score |
 | --- | --- | --- |
-| ER | Accepted nuclei with nuclear DAB, intensity classes, and H-score | DAB-positive percentage |
-| PR | Accepted nuclei with nuclear DAB, intensity classes, and H-score | DAB-positive percentage |
-| Ki-67 | Accepted nuclei with nuclear DAB, intensity classes, and H-score | DAB-positive percentage |
-| HER2 | DAB along an expanded-nucleus boundary proxy | Conservative 0 / 1+ / 2+ / 3+ membrane-proxy category |
+| ER | Accepted nuclei with color-checked nuclear DAB, intensity classes, and H-score | Color-checked DAB-positive percentage |
+| PR | Accepted nuclei with color-checked nuclear DAB, intensity classes, and H-score | Color-checked DAB-positive percentage |
+| Ki-67 | Accepted nuclei with color-checked nuclear DAB, intensity classes, and H-score | Color-checked DAB-positive percentage |
+| HER2 | Color-checked DAB along an expanded-nucleus boundary proxy | Conservative 0 / 1+ / 2+ / 3+ membrane-proxy category |
 
 The implementation uses the optical-density colour-deconvolution framework of
 [Ruifrok and Johnston](https://pubmed.ncbi.nlm.nih.gov/11531144/). Clinical
@@ -218,7 +249,9 @@ breast-ihc-results/
     ER, PR, and Ki-67 denominators include all accepted segmented nuclei, not
     verified invasive tumour cells. HER2 is an expanded-boundary proxy, not a
     clinical membrane-scoring algorithm. Separate stains are unregistered and
-    cannot establish cell-level co-expression.
+    cannot establish cell-level co-expression. The color check removes known
+    non-brown optical-density artifacts; it does not supply tumour-cell
+    classification, laboratory controls, or clinical validation.
 
 ## Compare with pathologist values
 
@@ -304,14 +337,16 @@ Open `AGREEMENT_REPORT.html`. It includes:
 - Pearson correlation, Spearman correlation, and Lin's concordance correlation
   coefficient;
 - both raters' category margins and every contingency matrix;
+- a checked-versus-unconstrained DAB impact analysis for ER and PR;
 - automatic warnings when a rater uses only one category.
 
 The clearest machine-readable outputs are:
 
 | CSV | Rows | Contents | Access |
 | --- | ---: | --- | --- |
-| `$TQA_RESULTS/tables/tumorquantai_marker_values.csv` | 51 | One row per public case with TumorQuantAI ER, PR, HER2-proxy, and Ki-67 values, segmented-object denominators, H-scores where applicable, and QC status | Local result |
+| `$TQA_RESULTS/tables/tumorquantai_marker_values.csv` | 51 | One row per public case with color-checked TumorQuantAI ER, PR, HER2-proxy, and Ki-67 values, unconstrained HED audit percentages for nuclear markers, segmented-object denominators, H-scores, and QC status | Local result |
 | `report/concordance_metrics.csv` | 5 | One aggregate row per prespecified marker scale with the full kappa and concordance report | Safe to share when it contains no case rows |
+| `report/dab_color_check_impact.csv` | 2 | Aggregate ER/PR comparison of color-checked and unconstrained HED kappa, intervals, confusion counts, sensitivity, specificity, balanced accuracy, predictive values, ROC AUC, errors, and concordance | Safe to share when it contains no case rows |
 | `report/case_concordance_values_pseudonymized.csv` | 51 | Wide side-by-side pathologist and TumorQuantAI values and derived categories | Controlled access only |
 | `report/case_comparison_pseudonymized.csv` | 203 | The same paired values in long case-marker form | Controlled access only |
 
@@ -325,13 +360,13 @@ without the contingency matrix and raw agreement.
 ## Reference run
 
 The complete public cohort was processed with the default
-`hdab-watershed-membrane-proxy-v1` engine, all decoded-pixel checks enabled,
-12 workers, and compressed cell output.
+`hdab-color-checked-watershed-membrane-proxy-v2` engine, all decoded-pixel
+checks enabled, 12 workers, and compressed cell output.
 
 <div class="tqa-run-strip">
   <span><strong>1,516</strong> IHC patches completed</span>
   <span><strong>0</strong> failed or unavailable</span>
-  <span><strong>8,119,901</strong> segmented measurement proxies</span>
+  <span><strong>8,129,992</strong> segmented measurement proxies</span>
   <span><strong>203</strong> case-marker rows</span>
 </div>
 
@@ -339,10 +374,10 @@ The complete public cohort was processed with the default
 
 | Marker | Cases | Median pre-score | Additional view |
 | --- | ---: | ---: | --- |
-| ER | 51 | 64.5% DAB-positive | 51 / 51 at or above 1% |
-| PR | 51 | 26.4% DAB-positive | 50 / 51 at or above 1% |
-| Ki-67 | 51 | 26.8% DAB-positive | 30 / 51 at or above 20% |
-| HER2 | 50 | — | 0+: 7 · 1+: 5 · 2+: 29 · 3+: 9 |
+| ER | 51 | 0.44% color-checked DAB-positive | 23 / 51 at or above 1% |
+| PR | 51 | 0.14% color-checked DAB-positive | 12 / 51 at or above 1% |
+| Ki-67 | 51 | 0.63% color-checked DAB-positive | 3 / 51 at or above 20% |
+| HER2 | 50 | — | 0+: 37 · 1+: 0 · 2+: 12 · 3+: 1 |
 
 One public case has no HER2 patch in the manifest, so HER2 has 50 rather than
 51 case-level values.
@@ -351,22 +386,44 @@ One public case has no HER2 patch in the manifest, so HER2 has 50 rather than
 
 | Marker | Prespecified scale | n | κ | Bootstrap 95% CI | Exact | MAE | RMSE | Lin's CCC |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ER | Unweighted, 1% binary | 51 | 0.000 | 0.000–0.000 | 86.3% | 42.4 | 52.1 | -0.028 |
-| PR | Unweighted, 1% binary | 51 | 0.100 | 0.000–0.314 | 74.5% | 36.3 | 46.9 | 0.165 |
-| HER2 | Quadratic, 0 / 1+ / 2+ / 3+ | 50 | 0.392 | 0.225–0.542 | 38.0% | 1.08 | 1.41 | 0.392 |
-| Ki-67 | Quadratic, percentage deciles | 51 | 0.232 | 0.055–0.428 | 23.5% | 31.1 | 44.4 | 0.217 |
-| Ki-67 | Unweighted, 20% binary | 51 | 0.287 | 0.049–0.521 | 62.7% | — | — | — |
+| ER | Unweighted, 1% binary | 51 | 0.231 | 0.088–0.412 | 58.8% | 66.0 | 74.4 | 0.063 |
+| PR | Unweighted, 1% binary | 51 | 0.145 | 0.005–0.301 | 47.1% | 35.6 | 48.7 | 0.101 |
+| HER2 | Quadratic, 0 / 1+ / 2+ / 3+ | 50 | 0.573 | 0.293–0.770 | 64.0% | 0.54 | 0.97 | 0.573 |
+| Ki-67 | Quadratic, percentage deciles | 51 | 0.155 | 0.000–0.384 | 35.3% | 15.2 | 24.1 | 0.199 |
+| Ki-67 | Unweighted, 20% binary | 51 | 0.190 | 0.000–0.414 | 68.6% | — | — | — |
 
 [Download the complete aggregate concordance CSV](../assets/reference/breast_ihc_reference_concordance_metrics.csv).
+[Download the aggregate DAB color-check impact CSV](../assets/reference/breast_ihc_reference_dab_color_check_impact.csv).
 For ER, PR, and Ki-67, errors are percentage points; for HER2 they are
 0–3 pre-score units. The downloadable file also contains expected agreement,
 specific agreement, median error, bias and limits of agreement, Pearson and
 Spearman correlations, and category margins.
 
-ER illustrates why raw agreement alone is insufficient: TumorQuantAI assigned
-all 51 paired cases to the positive category. The 86.3% exact agreement
-therefore coexists with κ = 0 and no binary discrimination of the seven
-pathologist-negative cases.
+### ER failure audit
+
+The expected-brown check fixes the all-positive ER collapse. The within-run
+unconstrained HED audit still calls all 51 cases positive, while v2 produces
+both categories and correctly separates every pathologist-negative case in
+this cohort:
+
+| ER metric at 1% | Unconstrained HED audit | Color-checked v2 |
+| --- | ---: | ---: |
+| Calls, negative / positive | 0 / 51 | 28 / 23 |
+| TN / FP / FN / TP | 0 / 7 / 0 / 44 | 7 / 0 / 21 / 23 |
+| Cohen's κ (bootstrap 95% CI) | 0.000 (0.000–0.000) | 0.231 (0.088–0.412) |
+| Exact agreement | 86.3% | 58.8% |
+| Balanced accuracy | 50.0% | 76.1% |
+| Sensitivity / specificity vs pathologist | 100.0% / 0.0% | 52.3% / 100.0% |
+| ROC AUC from the continuous score | 0.349 | 0.807 |
+| MAE / RMSE, percentage points | 42.9 / 52.1 | 66.0 / 74.4 |
+
+The lower exact agreement is more informative than the old 86.3% because the
+algorithm no longer earns agreement merely by matching the positive
+prevalence. Kappa, balanced accuracy, specificity, and rank discrimination
+improve, but sensitivity is only 52.3% and continuous calibration becomes
+worse. This is a bounded artifact correction, not a clinically validated ER
+solution. A validated invasive-tumour ROI or tumour-cell classifier and
+independent data are still required.
 
 !!! warning "This is a reproducibility result, not a performance claim"
     The reference comparison uses selected fields, an all-accepted-nuclei
