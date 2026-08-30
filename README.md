@@ -221,13 +221,14 @@ TumorQuantAI can read Motic MDS pixel pyramids directly and quantify registered
 CD3/CD8 serial sections in CK20-guided epithelial and stromal proxy
 compartments:
 
-~~~bash
+```bash
+# Quantify a private CD3/CD8/CK20 serial-section collection.
 tumorquantai --inmunoscore /private/extracted/inmunoscore \
   --output /controlled/results/tumorquantai_immunoscore \
   --alias-secret-file /controlled/private_release/alias_secret.bin \
   --private-linkage /controlled/private_release/case_slide_linkage.csv \
   --workers 3
-~~~
+```
 
 The command writes one clear case-value CSV, an explicit pass-only/all-numeric
 cohort summary, a long counts/areas/densities CSV, registration metrics,
