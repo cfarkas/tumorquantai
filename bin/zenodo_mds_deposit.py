@@ -105,7 +105,9 @@ class ProgressReader:
 
 
 class ProgressZenodoClient(base.ZenodoClient):
-    def upload_file(self, bucket_url: str, upload: base.UploadFile) -> dict[str, object]:
+    def upload_file(
+        self, bucket_url: str, upload: base.UploadFile
+    ) -> dict[str, object]:
         url = f"{bucket_url.rstrip('/')}/{base.quote(upload.remote_name, safe='')}"
         with upload.local_path.open("rb") as handle:
             progress = ProgressReader(handle, upload.remote_name, upload.size_bytes)
@@ -157,9 +159,7 @@ def collect_mds_uploads(
     except MdsManifestError as exc:
         raise base.DepositError(str(exc)) from exc
     private_path = base.secure_file(private_mapping, "MDS private mapping")
-    private_rows = read_rows(
-        private_path, MDS_PRIVATE_COLUMNS, "MDS private mapping"
-    )
+    private_rows = read_rows(private_path, MDS_PRIVATE_COLUMNS, "MDS private mapping")
     private_by_alias: dict[str, dict[str, str]] = {}
     for private in private_rows:
         alias = str(private.get("alias", "")).strip()
@@ -189,28 +189,18 @@ def collect_mds_uploads(
         if not truthy(str(private.get("source_markers_absent", ""))):
             raise base.DepositError(f"MDS privacy validation is incomplete: {alias}")
         if not str(private.get("validation_status", "")).startswith("validated-"):
-            raise base.DepositError(
-                f"MDS structural validation is incomplete: {alias}"
-            )
+            raise base.DepositError(f"MDS structural validation is incomplete: {alias}")
         candidate = (
-            Path(str(private.get("staged_path", "")).strip())
-            .expanduser()
-            .absolute()
+            Path(str(private.get("staged_path", "")).strip()).expanduser().absolute()
         )
         if candidate.is_symlink() or not candidate.is_file():
             raise base.DepositError(f"Staged MDS is not a regular file: {alias}")
         path = candidate.resolve()
         expected_sha = row.sha256
         expected_md5 = row.md5
-        if (
-            str(private.get("sanitized_sha256", "")).strip().casefold()
-            != expected_sha
-        ):
+        if str(private.get("sanitized_sha256", "")).strip().casefold() != expected_sha:
             raise base.DepositError(f"Public/private SHA-256 mismatch: {alias}")
-        if (
-            str(private.get("sanitized_md5", "")).strip().casefold()
-            != expected_md5
-        ):
+        if str(private.get("sanitized_md5", "")).strip().casefold() != expected_md5:
             raise base.DepositError(f"Public/private MD5 mismatch: {alias}")
         try:
             private_stream_count = int(
@@ -241,9 +231,7 @@ def collect_mds_uploads(
         size, sha256, md5 = base.digest_file(path)
         if (size, sha256, md5) != (row.size_bytes, expected_sha, expected_md5):
             raise base.DepositError(f"Staged MDS differs from manifests: {alias}")
-        uploads.append(
-            base.UploadFile(path, name, size, sha256, md5, "sanitized-mds")
-        )
+        uploads.append(base.UploadFile(path, name, size, sha256, md5, "sanitized-mds"))
         seen_aliases.add(alias)
         seen_names.add(name)
 
@@ -257,9 +245,7 @@ def collect_mds_uploads(
             f"Expected {expected_bytes} MDS bytes, found {mds_bytes}"
         )
     if set(private_by_alias) != seen_aliases:
-        raise base.DepositError(
-            "MDS private mapping contains unreviewed extra aliases"
-        )
+        raise base.DepositError("MDS private mapping contains unreviewed extra aliases")
 
     manifest_candidate = public_manifest.expanduser().absolute()
     if manifest_candidate.is_symlink() or not manifest_candidate.is_file():
@@ -273,9 +259,7 @@ def collect_mds_uploads(
     )
     for value in extra_files or []:
         path, remote_name = base.parse_extra_file(value)
-        uploads.append(
-            base.make_small_upload(path, remote_name, "extra-public-file")
-        )
+        uploads.append(base.make_small_upload(path, remote_name, "extra-public-file"))
     names = [item.remote_name for item in uploads]
     if len(names) != len(set(names)):
         raise base.DepositError("Zenodo upload names are not unique")
@@ -317,14 +301,11 @@ def restricted_metadata_from_file(path: Path) -> dict[str, object]:
         not isinstance(creators, list)
         or not creators
         or any(
-            not isinstance(item, dict)
-            or not str(item.get("name", "")).strip()
+            not isinstance(item, dict) or not str(item.get("name", "")).strip()
             for item in creators
         )
     ):
-        raise base.DepositError(
-            "Restricted Zenodo metadata requires named creators"
-        )
+        raise base.DepositError("Restricted Zenodo metadata requires named creators")
     license_id = str(metadata.get("license", "")).strip()
     if license_id:
         metadata["license"] = license_id
@@ -408,24 +389,90 @@ def validate_draft_metadata(
         )
 
     actual_conditions = actual.get("access_conditions")
-    conditions_missing = (
-        "access_conditions" not in actual or actual_conditions is None
-    )
+    conditions_missing = "access_conditions" not in actual or actual_conditions is None
     if conditions_missing:
         if draft_state != "unsubmitted":
-            raise base.DepositError(
-                "Zenodo draft lacks restricted access conditions"
-            )
+            raise base.DepositError("Zenodo draft lacks restricted access conditions")
     elif not isinstance(actual_conditions, str) or not actual_conditions.strip():
-        raise base.DepositError(
-            "Zenodo draft lacks restricted access conditions"
-        )
-    elif not _semantic_text_equal(
-        actual_conditions, expected.get("access_conditions")
-    ):
+        raise base.DepositError("Zenodo draft lacks restricted access conditions")
+    elif not _semantic_text_equal(actual_conditions, expected.get("access_conditions")):
         raise base.DepositError(
             "Zenodo draft metadata does not match requested access_conditions"
         )
+
+
+def validate_expanded_release_adoption(
+    draft: dict[str, object],
+    state: dict[str, object],
+    uploads: list[base.UploadFile],
+) -> None:
+    """Validate a public-artifact expansion without weakening MDS identity."""
+    actual_metadata = draft.get("metadata")
+    if not isinstance(actual_metadata, dict):
+        raise base.DepositError("Zenodo draft response has no metadata object")
+    validate_draft_metadata(draft, actual_metadata)
+
+    expected = {upload.remote_name: upload for upload in uploads}
+    remote = base.parse_remote_files(draft)
+    unexpected = sorted(set(remote) - set(expected))
+    if unexpected:
+        raise base.DepositError(
+            "Expanded-release adoption found files outside the new reviewed roster"
+        )
+
+    uploaded = state.get("uploaded")
+    if not isinstance(uploaded, dict):
+        raise base.DepositError("Expanded-release adoption requires upload checkpoints")
+    removed = sorted(set(uploaded) - set(expected))
+    if removed:
+        raise base.DepositError(
+            "Expanded-release adoption may not remove a checkpointed file"
+        )
+    for name, checkpoint in uploaded.items():
+        if not isinstance(checkpoint, dict):
+            raise base.DepositError(
+                "Expanded-release adoption found an invalid upload checkpoint"
+            )
+        candidate = remote.get(name)
+        try:
+            checkpoint_size = int(checkpoint["size_bytes"])
+            checkpoint_md5 = str(checkpoint["md5"]).strip().casefold()
+        except (KeyError, TypeError, ValueError) as exc:
+            raise base.DepositError(
+                "Expanded-release adoption found an invalid upload checkpoint"
+            ) from exc
+        if (
+            candidate is None
+            or candidate.size_bytes != checkpoint_size
+            or candidate.md5 != checkpoint_md5
+        ):
+            raise base.DepositError(
+                f"Zenodo draft no longer matches its checkpoint: {name}"
+            )
+
+    manifests = [upload for upload in uploads if upload.kind == "public-manifest"]
+    if len(manifests) != 1:
+        raise base.DepositError(
+            "Expanded-release adoption requires one authoritative MDS manifest"
+        )
+    manifest = manifests[0]
+    remote_manifest = remote.get(manifest.remote_name)
+    if (
+        manifest.remote_name not in uploaded
+        or remote_manifest is None
+        or not base.file_matches(remote_manifest, manifest)
+    ):
+        raise base.DepositError(
+            "Expanded-release adoption requires the unchanged checkpointed "
+            "MDS manifest"
+        )
+
+    for name, candidate in remote.items():
+        upload = expected[name]
+        if upload.kind == "sanitized-mds" and not base.file_matches(candidate, upload):
+            raise base.DepositError(
+                f"Expanded-release adoption refuses changed MDS content: {name}"
+            )
 
 
 def deposit_mds(
@@ -440,6 +487,7 @@ def deposit_mds(
     retries: int = 5,
     workers: int = 1,
     replace_mismatched: bool = False,
+    adopt_expanded_release: bool = False,
     plan: bool = False,
     session=None,
     alias_re: re.Pattern[str] = base.ALIAS_RE,
@@ -451,12 +499,14 @@ def deposit_mds(
 ) -> dict[str, object]:
     api_url = validated_api_url(api_url)
     if workers < 1 or workers > MAX_UPLOAD_WORKERS:
-        raise base.DepositError(
-            f"--workers must be between 1 and {MAX_UPLOAD_WORKERS}"
-        )
+        raise base.DepositError(f"--workers must be between 1 and {MAX_UPLOAD_WORKERS}")
     if workers > 1 and session is not None:
         raise base.DepositError(
             "Parallel uploads cannot share an injected HTTP session"
+        )
+    if adopt_expanded_release and not replace_mismatched:
+        raise base.DepositError(
+            "--adopt-expanded-release requires --replace-mismatched"
         )
     metadata = restricted_metadata_from_file(metadata_file)
     if str(metadata.get("access_right", "")).strip().casefold() != "restricted":
@@ -502,9 +552,7 @@ def deposit_mds(
         return {"plan": True, **plan_result}
 
     token = base.resolve_token(token_env, token_file)
-    client = ProgressZenodoClient(
-        token, api_url, retries=retries, session=session
-    )
+    client = ProgressZenodoClient(token, api_url, retries=retries, session=session)
     state_path = state_file.expanduser().absolute()
     state = base.load_state(state_path)
     if state is not None:
@@ -514,17 +562,25 @@ def deposit_mds(
             state.get("schema_version") != 1
             or state.get("dataset_format") != dataset_format
             or state.get("status") != "draft"
-            or state.get("release_fingerprint_sha256") != fingerprint
             or not isinstance(state.get("uploaded"), dict)
         ):
             raise base.DepositError(
-                "Deposit state schema, format, status, or fingerprint is invalid"
+                "Deposit state schema, format, or status is invalid"
+            )
+        fingerprint_changed = state.get("release_fingerprint_sha256") != fingerprint
+        if fingerprint_changed and not adopt_expanded_release:
+            raise base.DepositError(
+                "Deposit state release fingerprint is invalid; use the explicit "
+                "expanded-release adoption workflow only after review"
             )
         deposition_id = str(state.get("deposition_id", "")).strip()
         if not deposition_id.isdigit():
             raise base.DepositError("Deposit state has no numeric deposition ID")
         draft = client.get_draft(deposition_id)
+        if fingerprint_changed:
+            validate_expanded_release_adoption(draft, state, uploads)
     else:
+        fingerprint_changed = False
         draft = client.create_draft()
         deposition_id = base.deposition_id_from_payload(draft)
         state = {
@@ -538,14 +594,11 @@ def deposit_mds(
         }
         base.atomic_json(state_path, state)
 
-    state["release_fingerprint_sha256"] = fingerprint
     expected_remote_names = {item.remote_name for item in uploads}
     initial_remote = base.parse_remote_files(draft)
     unexpected = sorted(set(initial_remote) - expected_remote_names)
     if unexpected:
-        raise base.DepositError(
-            "Draft contains unreviewed extra files before upload"
-        )
+        raise base.DepositError("Draft contains unreviewed extra files before upload")
     bucket_url = base.bucket_from_payload(draft)
     updated = client.update_metadata(deposition_id, metadata)
     validate_draft_metadata(updated, metadata)
@@ -554,31 +607,24 @@ def deposit_mds(
     remote_files = base.parse_remote_files(refreshed)
     unexpected = sorted(set(remote_files) - expected_remote_names)
     if unexpected:
-        raise base.DepositError(
-            "Draft contains unreviewed extra files before upload"
-        )
+        raise base.DepositError("Draft contains unreviewed extra files before upload")
     uploaded_state = state.get("uploaded")
     if not isinstance(uploaded_state, dict):
         uploaded_state = {}
         state["uploaded"] = uploaded_state
 
     pending: list[tuple[base.UploadFile, base.RemoteFile | None]] = []
+    matched: list[base.UploadFile] = []
     for upload in uploads:
         existing = remote_files.get(upload.remote_name)
         if existing is not None and base.file_matches(existing, upload):
-            uploaded_state[upload.remote_name] = {
-                "size_bytes": upload.size_bytes,
-                "md5": upload.md5,
-                "status": "verified-existing",
-            }
-            base.atomic_json(state_path, state)
-            print(
-                f"verified-existing: {upload.remote_name}",
-                file=sys.stderr,
-                flush=True,
-            )
+            matched.append(upload)
         else:
             if existing is not None:
+                if upload.kind == "sanitized-mds":
+                    raise base.DepositError(
+                        f"Refusing to replace mismatched MDS content: {upload.remote_name}"
+                    )
                 if not replace_mismatched:
                     raise base.DepositError(
                         f"Draft file differs: {upload.remote_name}; "
@@ -588,6 +634,33 @@ def deposit_mds(
                     raise base.DepositError("Zenodo omitted a deletion URL")
             base.verify_local(upload)
             pending.append((upload, existing))
+
+    if fingerprint_changed:
+        previous = str(state.get("release_fingerprint_sha256", ""))
+        adoptions = state.setdefault("release_adoptions", [])
+        if not isinstance(adoptions, list):
+            raise base.DepositError("Deposit state release-adoption audit is invalid")
+        adoptions.append(
+            {
+                "from_release_fingerprint_sha256": previous,
+                "to_release_fingerprint_sha256": fingerprint,
+                "mode": "expanded-public-artifacts-mds-immutable",
+            }
+        )
+    state["release_fingerprint_sha256"] = fingerprint
+    base.atomic_json(state_path, state)
+    for upload in matched:
+        uploaded_state[upload.remote_name] = {
+            "size_bytes": upload.size_bytes,
+            "md5": upload.md5,
+            "status": "verified-existing",
+        }
+        base.atomic_json(state_path, state)
+        print(
+            f"verified-existing: {upload.remote_name}",
+            file=sys.stderr,
+            flush=True,
+        )
 
     if workers == 1:
         for upload, existing in pending:
@@ -607,13 +680,12 @@ def deposit_mds(
                 flush=True,
             )
     else:
+
         def upload_one(
             upload: base.UploadFile,
             existing: base.RemoteFile | None,
         ) -> base.UploadFile:
-            worker_client = ProgressZenodoClient(
-                token, api_url, retries=retries
-            )
+            worker_client = ProgressZenodoClient(token, api_url, retries=retries)
             try:
                 if existing is not None:
                     worker_client.delete_file(existing.delete_url)
@@ -663,9 +735,7 @@ def deposit_mds(
     for upload in uploads:
         candidate = remote.get(upload.remote_name)
         if candidate is None or not base.file_matches(candidate, upload):
-            raise base.DepositError(
-                f"Final verification failed: {upload.remote_name}"
-            )
+            raise base.DepositError(f"Final verification failed: {upload.remote_name}")
     unexpected = sorted(set(remote) - {item.remote_name for item in uploads})
     if unexpected:
         raise base.DepositError("Draft contains unreviewed extra files")
@@ -696,6 +766,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--replace-mismatched", action="store_true")
     parser.add_argument(
+        "--adopt-expanded-release",
+        action="store_true",
+        help=(
+            "adopt a reviewed public-artifact expansion of this exact draft; "
+            "requires --replace-mismatched and never replaces MDS files"
+        ),
+    )
+    parser.add_argument(
         "--extra-file",
         action="append",
         default=[],
@@ -720,6 +798,7 @@ def main(argv: list[str] | None = None) -> int:
             retries=args.retries,
             workers=args.workers,
             replace_mismatched=args.replace_mismatched,
+            adopt_expanded_release=args.adopt_expanded_release,
             plan=args.plan,
             extra_files=args.extra_file,
         )

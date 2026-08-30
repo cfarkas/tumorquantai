@@ -25,6 +25,7 @@ def test_exact_colon_release_contract_and_no_publish_option() -> None:
     options = {action.dest for action in module.build_parser()._actions}
     assert "publish" not in options
     assert "public_dir" in options
+    assert "adopt_expanded_release" in options
 
 
 def test_public_directory_accepts_checksums_and_rejects_private_names(
@@ -36,10 +37,12 @@ def test_public_directory_accepts_checksums_and_rejects_private_names(
     manifest.write_text("manifest", encoding="utf-8")
     (public / "README.md").write_text("reviewed", encoding="utf-8")
     (public / "SHA256SUMS").write_text("checksums", encoding="utf-8")
+    (public / "paper_figures.zip").write_bytes(b"reviewed archive")
     values = module.public_directory_files(public, manifest, [])
     assert {Path(value).name for value in values} == {
         "README.md",
         "SHA256SUMS",
+        "paper_figures.zip",
     }
     (public / "private_linkage.csv").write_text("unsafe", encoding="utf-8")
     with pytest.raises(module.base.DepositError, match="private-looking"):
@@ -54,9 +57,12 @@ def test_wrapper_forwards_fixed_contract(monkeypatch: pytest.MonkeyPatch) -> Non
         return {"status": "draft"}
 
     monkeypatch.setattr(module.mds, "deposit_mds", fake_deposit)
-    result = module.deposit_immunoscore(public_manifest=Path("manifest"))
+    result = module.deposit_immunoscore(
+        public_manifest=Path("manifest"), adopt_expanded_release=True
+    )
     assert result == {"status": "draft"}
     assert captured["alias_re"] is module.ALIAS_RE
     assert captured["expected_count"] == 30
     assert captured["expected_bytes"] == 40_580_793_856
     assert captured["dataset_format"] == module.DATASET_FORMAT
+    assert captured["adopt_expanded_release"] is True

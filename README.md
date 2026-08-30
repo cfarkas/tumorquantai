@@ -231,11 +231,13 @@ tumorquantai --inmunoscore /private/extracted/inmunoscore \
 
 The command writes one clear case-value CSV, an explicit pass-only/all-numeric
 cohort summary, a long counts/areas/densities CSV, registration metrics,
-composite QC images, and unavailable-case records. It is a CK20-guided
-research proxy, not the consensus clinical
-Immunoscore: no official score is emitted without pathologist-validated tumour
-core/invasive-margin regions and the validated external reference
-distribution. See the [colon IHC whole-slide
+composite QC images, 300-dpi case/slide review sheets, a provisional pI0-pI4
+within-cohort analogue, and an offline pathologist accept/flag/exclude dashboard.
+The pI label is a CK20-guided research proxy, not the consensus clinical
+Immunoscore: the official field remains blank without pathologist-validated
+tumour-core/invasive-margin regions and the validated external reference
+distribution. Reviewer decisions are additive and never overwrite the
+algorithm values or automatic QC. See the [colon IHC whole-slide
 tutorial](https://cfarkas.github.io/tumorquantai/tutorials/colon-ihc-wsi-immunoscore/).
 
 ## Run your own WSIs

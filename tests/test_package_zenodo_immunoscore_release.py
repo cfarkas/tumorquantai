@@ -4,6 +4,7 @@ import csv
 import importlib.util
 import json
 import sys
+import zipfile
 from pathlib import Path
 
 from PIL import Image
@@ -141,6 +142,59 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
         immunoscore.UNAVAILABLE_FIELDS,
         [],
     )
+    review_rows = immunoscore._pathologist_review_rows(values)
+    _write_csv(
+        analysis / "tables/pathologist_review_template.csv",
+        immunoscore.PATHOLOGIST_REVIEW_FIELDS,
+        review_rows,
+    )
+    _write_csv(
+        analysis / "tables/pathologist_review_codebook.csv",
+        immunoscore.PATHOLOGIST_REVIEW_CODEBOOK_FIELDS,
+        immunoscore._pathologist_review_codebook_rows(),
+    )
+    (analysis / "PATHOLOGIST_REVIEW.html").write_text(
+        "<html><body>anonymous accept flag exclude review</body></html>",
+        encoding="utf-8",
+    )
+    slides_by_case = {}
+    for row in inventory_rows:
+        slides_by_case.setdefault(row["case_alias"], []).append(row)
+    paper_rows = []
+    for case_alias in case_aliases[:9]:
+        figure_dir = analysis / "cases" / case_alias / "paper_figures"
+        figure_dir.mkdir(parents=True, exist_ok=True)
+        definitions = [("", "CK20+CD3+CD8", "case_summary")]
+        definitions.extend(
+            (row["slide_alias"], row["marker"], "slide_review")
+            for row in slides_by_case[case_alias]
+        )
+        for index, (slide_alias, marker, scope) in enumerate(definitions):
+            stem = "case_summary" if not slide_alias else f"{slide_alias}_{marker}"
+            png = figure_dir / f"{stem}.png"
+            pdf = figure_dir / f"{stem}.pdf"
+            legend = figure_dir / f"{stem}_legend.txt"
+            Image.new("RGB", (20, 20), (index * 20, 100, 120)).save(png)
+            Image.new("RGB", (20, 20), "white").save(pdf, format="PDF")
+            legend.write_text("Anonymous research figure; not consensus Immunoscore.\n")
+            paper_rows.append(
+                {
+                    "case_alias": case_alias,
+                    "slide_alias": slide_alias,
+                    "marker": marker,
+                    "figure_scope": scope,
+                    "png_path": str(png.relative_to(analysis)),
+                    "pdf_path": str(pdf.relative_to(analysis)),
+                    "legend_path": str(legend.relative_to(analysis)),
+                    "dpi": 300,
+                    "layout_version": immunoscore.PAPER_FIGURE_LAYOUT_VERSION,
+                }
+            )
+    _write_csv(
+        analysis / "tables/paper_figure_manifest.csv",
+        immunoscore.PAPER_FIGURE_FIELDS,
+        paper_rows,
+    )
     metadata = analysis / "workflow_metadata/immunoscore_run.json"
     metadata.parent.mkdir(parents=True)
     metadata.write_text(
@@ -166,9 +220,15 @@ def test_packages_exact_anonymous_release_artifacts(tmp_path: Path) -> None:
     )
     assert result["mds_file_count"] == 30
     assert result["registration_qc_image_count"] == 9
+    assert result["paper_figure_count"] == 36
     assert (output / "README.md").is_file()
     assert (output / "REPORT.html").is_file()
     assert (output / "cohort_density_summary.csv").is_file()
+    assert (output / "PATHOLOGIST_REVIEW.html").is_file()
+    figure_zip = output / "tumorquantai_immunoscore_paper_figures.zip"
+    assert figure_zip.is_file()
+    with zipfile.ZipFile(figure_zip) as archive:
+        assert len(archive.namelist()) == 108
     assert (output / "SHA256SUMS").read_text(encoding="utf-8").count(".mds") == 30
     with (output / "tumorquantai_colon_immunoscore_slide_catalog.csv").open(
         encoding="utf-8", newline=""
@@ -177,7 +237,7 @@ def test_packages_exact_anonymous_release_artifacts(tmp_path: Path) -> None:
     combined = "\n".join(
         path.read_text(encoding="utf-8", errors="ignore")
         for path in output.iterdir()
-        if path.suffix.casefold() != ".png"
+        if path.suffix.casefold() not in {".png", ".pdf", ".zip"}
     )
     assert "/private/" not in combined
     assert "source_case_id" not in combined

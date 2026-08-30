@@ -85,17 +85,40 @@ anonymous case:
 | --- | --- |
 | Identity | `case_alias` |
 | TumorQuantAI densities | CD3 epithelium, CD3 stroma, CD8 epithelium, CD8 stroma, all in positive cells/mm² |
-| Internal ranks | One mid-rank percentile per density, four-value mean, and internal low/intermediate/high group |
+| Internal ranks | One percentile per density against the automatic-QC-pass reference, four-value mean, and internal low/intermediate/high group |
+| Provisional analogue | `ck20_guided_provisional_immunoscore` (`pI0`–`pI4`), explicit status, and internal reference `n` |
 | Consensus boundary | Blank `consensus_immunoscore` and an explicit unavailable status |
 | QC | `qc_status` and semicolon-separated `qc_flags` |
 
-The percentile for a value among the passing cases is:
+The percentile for any numerically available case against the passing-case
+reference is:
 
 ~~~text
 100 × (number below + 0.5 × number tied) / number of passing cases
 ~~~
 
-Review, failed, and incomplete cases do not enter the percentile reference.
+Review cases receive provisional percentiles against that reference so a
+pathologist can accept or flag them, but they never enter the reference.
+Failed and incomplete cases are unscored.
+
+## Provisional pI0-pI4 analogue
+
+TumorQuantAI averages the four internal percentiles and applies these published
+five-category percentile bands:
+
+| Output | Mean internal percentile |
+| --- | ---: |
+| `pI0` | 0–10 |
+| `pI1` | >10–25 |
+| `pI2` | >25–70 |
+| `pI3` | >70–95 |
+| `pI4` | >95–100 |
+
+The mandatory `p` prefix means **provisional**. The calculation substitutes
+CK20 epithelial/stromal proxies for CT/IM and this run's automatic-QC-pass
+cases for the validated external reference. It is useful for prioritizing
+expert review, not for prognosis, diagnosis, or treatment. The separate
+`consensus_immunoscore` field remains blank.
 
 ## Cohort density summary CSV
 
@@ -166,10 +189,45 @@ analysed area. A CK20 result with an empty epithelial or stromal compartment is
 also forced to review as `degenerate_ck20_compartment`. The QC policy version
 is recorded in case and run metadata.
 
+## Paper figures and pathologist adjudication
+
+Every complete case produces four 300-dpi review sheets:
+
+```text
+cases/<case_alias>/paper_figures/
+├── case_summary_paper_figure.png
+├── case_summary_paper_figure.pdf
+├── case_summary_paper_figure_legend.txt
+└── <slide_alias>_<marker>_paper_figure.{png,pdf}
+```
+
+The case sheet shows the CK20 reference, compartment overlay, CD3/CD8
+registration blends, physical scale bars, exact densities, provisional-score
+gauge, and algorithm QC. Marker sheets provide one review image per input WSI.
+They are overview-scale registration/compartment figures—not cell-outline
+overlays—and therefore do not replace cellular review in a slide viewer.
+`tables/paper_figure_manifest.csv` records every PNG, PDF, external legend,
+layout version, and DPI.
+
+Open `PATHOLOGIST_REVIEW.html` locally to review each case and export
+`pathologist_review_completed.csv`. Allowed decisions are:
+
+| Decision | Meaning |
+| --- | --- |
+| `accept` | Technical representation accepted after visual review |
+| `flag` | Correction or adjudication required; original values remain unchanged |
+| `exclude` | Exclude from the reviewed analysis population |
+
+The blank `tables/pathologist_review_template.csv` and
+`tables/pathologist_review_codebook.csv` make the same contract available to
+Excel/R workflows. Reviewer decisions are additive fields: they never replace
+the TumorQuantAI prediction or automatic QC.
+
 ## Clinical boundary
 
 The package does not create tumour-core or invasive-margin masks, import the
-validated 700-case reference distribution, or emit an official score.
+validated 700-case reference distribution, or emit an official score. It may
+emit the explicitly provisional pI analogue described above.
 `consensus_immunoscore_status` is always:
 
 ```text

@@ -14,6 +14,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import zipfile
 from collections import Counter
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -157,6 +158,60 @@ def _digest(path: Path) -> tuple[int, str, str]:
     return size, sha256.hexdigest(), md5.hexdigest()
 
 
+def _atomic_figure_zip(
+    destination: Path,
+    analysis_root: Path,
+    figure_rows: Sequence[Mapping[str, str]],
+) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.", dir=destination.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        members: list[tuple[str, Path]] = []
+        for row in figure_rows:
+            for field in ("png_path", "pdf_path", "legend_path"):
+                relative = Path(row[field])
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise PackageError("Paper-figure manifest contains an unsafe path")
+                candidate = analysis_root / relative
+                if candidate.is_symlink():
+                    raise PackageError(f"Paper-figure member is a symlink: {relative}")
+                source = candidate.resolve()
+                try:
+                    source.relative_to(analysis_root)
+                except ValueError as exc:
+                    raise PackageError(
+                        "Paper-figure path escapes the analysis root"
+                    ) from exc
+                if source.is_symlink() or not source.is_file():
+                    raise PackageError(f"Missing paper-figure member: {relative}")
+                if field == "legend_path":
+                    _assert_public_text(source.name, source.read_text(encoding="utf-8"))
+                members.append((relative.as_posix(), source))
+        names = [name for name, _source in members]
+        if len(names) != len(set(names)):
+            raise PackageError("Paper-figure archive member names are duplicated")
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_STORED) as archive:
+            for name, source in sorted(members):
+                info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                info.compress_type = zipfile.ZIP_STORED
+                info.external_attr = 0o100644 << 16
+                with source.open("rb") as source_handle, archive.open(
+                    info, "w"
+                ) as archive_handle:
+                    shutil.copyfileobj(
+                        source_handle, archive_handle, length=8 * 1024 * 1024
+                    )
+        os.replace(temporary, destination)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def _readme(
     case_count: int,
     complete_count: int,
@@ -179,6 +234,10 @@ retained for completeness but lack at least one marker
 - cohort_density_summary.csv: QC-population-specific descriptive statistics.
 - case_compartment_densities.csv: long counts, areas, densities, MPP, and QC.
 - registration_qc.csv and registration_qc_*.png: numeric and visual registration QC.
+- paper_figure_manifest.csv and tumorquantai_immunoscore_paper_figures.zip:
+  300-dpi case/slide review sheets, PDF forms, and external legends.
+- PATHOLOGIST_REVIEW.html, pathologist_review_template.csv, and
+  pathologist_review_codebook.csv: offline accept/flag/exclude adjudication.
 - unavailable_cases.csv: incomplete/failed audit; missing is never numerical zero.
 - tumorquantai_immunoscore_run.json: versioned analysis settings and limitations.
 - REPORT.html: portable summary of the computational values.
@@ -209,7 +268,12 @@ measurements.
 This is not the consensus clinical Immunoscore. No pathologist-validated tumour
 core or invasive margin and no validated external 700-case reference
 distribution were supplied. The consensus score is therefore blank and
-explicitly unavailable. CK20 expression is differentiation-linked and
+explicitly unavailable. A separately named pI0-pI4 provisional analogue applies
+the published five percentile bands to the mean of the four CK20-proxy density
+percentiles, using only automatic-QC-pass cases in this run as the internal
+reference. It is an exploratory within-cohort rank, not a validated score.
+Pathologist accept/flag/exclude decisions are additive and never overwrite the
+original algorithm values or QC. CK20 expression is differentiation-linked and
 spatially variable, so it cannot define the entire invasive boundary. Every
 registration and compartment mask
 requires expert visual review. These data and outputs must not guide patient
@@ -264,11 +328,15 @@ def _report_html(
 </head><body><h1>CK20-guided CD3/CD8 WSI quantification</h1>
 <p class="warning"><strong>Research proxy—not clinical Immunoscore.</strong>
 The official score is unavailable because reviewed CT/IM regions and the
-validated external reference distribution were not supplied.</p>
+validated external reference distribution were not supplied. The separately
+named pI0-pI4 value is a provisional within-cohort CK20-proxy rank only.</p>
 <p>Open <a href="{MANIFEST_NAME}">the MDS manifest</a>,
 <a href="tumorquantai_colon_immunoscore_slide_catalog.csv">the anonymous slide
 catalog</a>, and <a href="case_compartment_densities.csv">the long density
-table</a>. Review every registration image before interpreting values.</p>
+table</a>. Use the offline <a href="PATHOLOGIST_REVIEW.html">pathologist review
+dashboard</a> to export accept/flag/exclude decisions, and download the
+<a href="tumorquantai_immunoscore_paper_figures.zip">paper-figure bundle</a>.
+Review every registration image before interpreting values.</p>
 <h2>Cohort density summary</h2>
 <p><code>automatic_qc_pass</code> excludes review-status cases;
 <code>all_numerically_available</code> includes them. Both exclude failed and
@@ -284,6 +352,8 @@ incomplete cases. Standard deviation is the sample SD.</p>
 <h2>Boundaries</h2><ul><li>Serial sections are not cell-for-cell identical.</li>
 <li>CK20 is a differentiation-linked epithelial proxy, not a complete invasive-boundary marker.</li>
 <li>Internal percentiles describe only automatic-QC-pass cases in this cohort.</li>
+<li>pI0-pI4 is provisional and must never be reported as consensus Immunoscore.</li>
+<li>Pathologist decisions do not overwrite algorithm values or automatic QC.</li>
 <li>Outputs must not guide diagnosis or treatment.</li></ul></body></html>
 """
 
@@ -338,6 +408,21 @@ def package_release(
         immunoscore.COHORT_DENSITY_SUMMARY_FIELDS,
         "TumorQuantAI cohort density summary",
     )
+    review_template = _read_csv(
+        analysis_root / "tables/pathologist_review_template.csv",
+        immunoscore.PATHOLOGIST_REVIEW_FIELDS,
+        "Pathologist review template",
+    )
+    review_codebook = _read_csv(
+        analysis_root / "tables/pathologist_review_codebook.csv",
+        immunoscore.PATHOLOGIST_REVIEW_CODEBOOK_FIELDS,
+        "Pathologist review codebook",
+    )
+    paper_figures = _read_csv(
+        analysis_root / "tables/paper_figure_manifest.csv",
+        immunoscore.PAPER_FIGURE_FIELDS,
+        "Paper-figure manifest",
+    )
     case_aliases = {row["case_alias"] for row in inventory}
     if (
         len(values) != len(case_aliases)
@@ -347,6 +432,60 @@ def package_release(
         )
     ):
         raise PackageError("Case values do not exactly cover the anonymous cohort")
+    if (
+        len(review_template) != len(values)
+        or {row["case_alias"] for row in review_template} != case_aliases
+        or any(
+            row["pathologist_decision"]
+            or row["pathologist_flag_reasons"]
+            or row["pathologist_notes"]
+            or row["reviewer_code"]
+            or row["reviewed_at_iso8601"]
+            for row in review_template
+        )
+    ):
+        raise PackageError(
+            "Public pathologist review template is populated or incomplete"
+        )
+    if {
+        row["allowed_value"]
+        for row in review_codebook
+        if row["field"] == "pathologist_decision"
+    } != set(immunoscore.PATHOLOGIST_DECISIONS):
+        raise PackageError("Pathologist review decision codebook differs")
+    complete_case_aliases = {
+        row["case_alias"] for row in values if row["qc_status"] in {"pass", "review"}
+    }
+    if (
+        len(paper_figures) != 4 * len(complete_case_aliases)
+        or {row["case_alias"] for row in paper_figures} != complete_case_aliases
+        or sum(row["figure_scope"] == "case_summary" for row in paper_figures)
+        != len(complete_case_aliases)
+        or sum(row["figure_scope"] == "slide_review" for row in paper_figures)
+        != 3 * len(complete_case_aliases)
+        or any(
+            row["dpi"] != "300"
+            or row["layout_version"] != immunoscore.PAPER_FIGURE_LAYOUT_VERSION
+            for row in paper_figures
+        )
+    ):
+        raise PackageError(
+            "Paper-figure manifest does not cover every complete case/slide"
+        )
+    for row in paper_figures:
+        if row["figure_scope"] == "case_summary":
+            if row["slide_alias"] or row["marker"] != "CK20+CD3+CD8":
+                raise PackageError("Case-summary paper-figure row is invalid")
+            continue
+        if row["figure_scope"] != "slide_review":
+            raise PackageError("Paper-figure scope is invalid")
+        inventory_row = inventory_by_slide.get(row["slide_alias"])
+        if (
+            inventory_row is None
+            or inventory_row["case_alias"] != row["case_alias"]
+            or inventory_row["marker"] != row["marker"]
+        ):
+            raise PackageError("Slide paper figure does not match the public inventory")
 
     output_candidate = output_dir.expanduser().absolute()
     if output_candidate.is_symlink():
@@ -389,12 +528,24 @@ def package_release(
         "case_compartment_densities.csv",
         "registration_qc.csv",
         "unavailable_cases.csv",
+        "pathologist_review_template.csv",
+        "pathologist_review_codebook.csv",
+        "paper_figure_manifest.csv",
     )
     for name in public_tables:
         _copy_public(analysis_root / "tables" / name, output_dir / name)
     _copy_public(
         analysis_root / "workflow_metadata/immunoscore_run.json",
         output_dir / "tumorquantai_immunoscore_run.json",
+    )
+    _copy_public(
+        analysis_root / "PATHOLOGIST_REVIEW.html",
+        output_dir / "PATHOLOGIST_REVIEW.html",
+    )
+    _atomic_figure_zip(
+        output_dir / "tumorquantai_immunoscore_paper_figures.zip",
+        analysis_root,
+        paper_figures,
     )
     _atomic_text(
         output_dir / "README.md",
@@ -455,6 +606,12 @@ def package_release(
         ),
         "marker_slide_counts": dict(sorted(marker_counts.items())),
         "registration_qc_image_count": len(qc_names),
+        "paper_figure_count": len(paper_figures),
+        "paper_figure_archive": "tumorquantai_immunoscore_paper_figures.zip",
+        "pathologist_review_template_is_blank": True,
+        "pathologist_review_schema_version": (
+            immunoscore.PATHOLOGIST_REVIEW_SCHEMA_VERSION
+        ),
         "source_identifiers_included": False,
         "private_linkage_included": False,
         "original_label_or_macro_content_included": False,
@@ -464,6 +621,13 @@ def package_release(
             "deterministic same-size generic neutral replacement"
         ),
         "consensus_immunoscore_included": False,
+        "provisional_immunoscore_included": True,
+        "provisional_immunoscore_schema_version": (
+            immunoscore.PROVISIONAL_SCORE_SCHEMA_VERSION
+        ),
+        "provisional_immunoscore_clinical_status": (
+            "exploratory_cohort_internal_proxy_not_consensus_immunoscore"
+        ),
     }
     _atomic_json(output_dir / "release_validation_report.json", validation)
 
@@ -492,7 +656,7 @@ def package_release(
                 path.name,
                 (
                     path.read_text(encoding="utf-8", errors="ignore")
-                    if path.suffix.casefold() != ".png"
+                    if path.suffix.casefold() not in {".png", ".pdf", ".zip"}
                     else ""
                 ),
             )
@@ -506,6 +670,7 @@ def package_release(
             [path for path in output_dir.iterdir() if path.is_file()]
         ),
         "registration_qc_image_count": len(qc_names),
+        "paper_figure_count": len(paper_figures),
     }
 
 

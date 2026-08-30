@@ -227,15 +227,23 @@ same PHI-free research result:
 ```text
 <colon-ihc-result>/
 ├── START_HERE.html
+├── PATHOLOGIST_REVIEW.html
 ├── cases/<case_alias>/
 │   ├── measurement.json
-│   └── registration_qc.png              # omitted with --no-qc
+│   ├── registration_qc.png              # omitted with --no-qc
+│   └── paper_figures/                    # when registration QC exists
+│       ├── case_summary_paper_figure.{png,pdf}
+│       ├── case_summary_paper_figure_legend.txt
+│       └── <slide_alias>_<marker>_paper_figure.{png,pdf}
 ├── tables/
 │   ├── public_slide_inventory.csv
 │   ├── tumorquantai_immunoscore_values.csv
 │   ├── cohort_density_summary.csv
 │   ├── case_compartment_densities.csv
 │   ├── registration_qc.csv
+│   ├── paper_figure_manifest.csv
+│   ├── pathologist_review_template.csv
+│   ├── pathologist_review_codebook.csv
 │   └── unavailable_cases.csv
 └── workflow_metadata/
     ├── immunoscore_run.json
@@ -245,9 +253,11 @@ same PHI-free research result:
 `tumorquantai_immunoscore_values.csv` is the clearest case-level table. It has
 one row for every anonymous discovered case and four TumorQuantAI density
 values: CD3 and CD8 positive cells/mm² in the CK20 epithelial and stromal
-proxy compartments. Automatic-QC-pass cases also receive four deterministic
-within-cohort mid-rank percentiles, their mean, and a clearly named internal
-rank group. Review, failed, and incomplete cases are not ranked.
+proxy compartments. Automatic-QC-pass cases define four deterministic
+within-cohort mid-rank reference distributions. Every numerically available
+pass/review case receives four percentiles, their mean, an internal rank group,
+and a provisional pI0-pI4 analogue. Review cases are scored against but never
+enter the reference. Failed and incomplete cases are unscored.
 
 `cohort_density_summary.csv` makes the cohort denominator explicit. It reports
 descriptive statistics once for automatic-QC-pass cases and once for all
@@ -267,6 +277,14 @@ status. The PNG places the CK20 overview, both registered immune sections,
 the CK20 proxy masks, and registration evidence together for visual review.
 Automated `pass` is not pathologist approval.
 
+Each complete case also has one 300-dpi case sheet and three marker-specific
+review sheets in PNG and PDF, with external legends. They show overview-scale
+registration/compartment evidence, exact densities, physical scale bars, the
+provisional-score gauge, and QC; they are not cell-outline overlays.
+`PATHOLOGIST_REVIEW.html` lets an expert export `accept`, `flag`, or `exclude`
+plus structured reasons, notes, reviewer code, and timestamp. Decisions remain
+separate from the immutable prediction and automatic-QC fields.
+
 Each case `measurement.json` records how CK20 was streamed and projected,
 including its selected level and MPP, block and positive-pixel counts,
 projected-fraction threshold and range, raw/final compartment fractions, and
@@ -284,6 +302,9 @@ The output never claims the consensus clinical Immunoscore. Its
 `consensus_immunoscore_status` states that pathologist-validated tumour-core
 and invasive-margin regions plus an external validated reference are
 required. See the [colon IHC output reference](colon-ihc-immunoscore.md).
+The separately named `ck20_guided_provisional_immunoscore` is an exploratory
+within-cohort review aid and must not be renamed or interpreted as that
+consensus score.
 
 ## Offline sanitized draft outputs
 

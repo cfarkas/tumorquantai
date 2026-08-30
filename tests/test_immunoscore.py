@@ -469,6 +469,11 @@ def test_aggregation_never_labels_internal_rank_as_consensus_immunoscore(
         "low",
         "high",
     }
+    assert {row["ck20_guided_provisional_immunoscore"] for row in rows} == {
+        "pI1",
+        "pI3",
+    }
+    assert {row["ck20_guided_provisional_reference_n"] for row in rows} == {"2"}
     with (tmp_path / "tables/cohort_density_summary.csv").open(
         encoding="utf-8", newline=""
     ) as handle:
@@ -483,6 +488,75 @@ def test_aggregation_never_labels_internal_rank_as_consensus_immunoscore(
     report = (tmp_path / "START_HERE.html").read_text(encoding="utf-8")
     assert "not clinical Immunoscore" in report
     assert "Cohort density summary" in report
+    review = (tmp_path / "PATHOLOGIST_REVIEW.html").read_text(encoding="utf-8")
+    assert "accept" in review
+    assert "flag" in review
+    assert "exclude" in review
+    with (tmp_path / "tables/pathologist_review_template.csv").open(
+        encoding="utf-8", newline=""
+    ) as handle:
+        review_rows = list(csv.DictReader(handle))
+    assert len(review_rows) == 2
+    assert {row["review_eligibility"] for row in review_rows} == {"eligible"}
+    assert {row["pathologist_decision"] for row in review_rows} == {""}
+
+
+@pytest.mark.parametrize(
+    ("percentile", "expected"),
+    [
+        (0.0, "pI0"),
+        (10.0, "pI0"),
+        (10.0001, "pI1"),
+        (25.0, "pI1"),
+        (25.0001, "pI2"),
+        (70.0, "pI2"),
+        (70.0001, "pI3"),
+        (95.0, "pI3"),
+        (95.0001, "pI4"),
+        (100.0, "pI4"),
+    ],
+)
+def test_provisional_immunoscore_uses_published_five_band_boundaries(
+    percentile: float,
+    expected: str,
+) -> None:
+    assert immunoscore._provisional_immunoscore(percentile) == expected
+
+
+def test_review_qc_case_receives_provisional_score_for_pathologist_adjudication(
+    tmp_path: Path,
+) -> None:
+    aliases = ["TQA_CI_" + letter * 20 for letter in "ABC"]
+    grouped = {
+        alias: {
+            marker: _slide(alias, marker) for marker in immunoscore.IMMUNOSCORE_MARKERS
+        }
+        for alias in aliases
+    }
+    results = [_case_result(aliases[0], 10.0), _case_result(aliases[1], 20.0)]
+    review_result = _case_result(aliases[2], 30.0)
+    for row in review_result["compartment_rows"]:
+        row["qc_status"] = "review"
+        row["qc_flags"] = "analyzed_area_below_minimum"
+    results.append(review_result)
+    immunoscore.aggregate_results(tmp_path, grouped, grouped, [], results, [])
+    with (tmp_path / "tables/tumorquantai_immunoscore_values.csv").open(
+        encoding="utf-8", newline=""
+    ) as handle:
+        by_case = {row["case_alias"]: row for row in csv.DictReader(handle)}
+    reviewed = by_case[aliases[2]]
+    assert reviewed["qc_status"] == "review"
+    assert reviewed["ck20_guided_provisional_immunoscore"] == "pI4"
+    assert (
+        "requires_pathologist_review"
+        in reviewed["ck20_guided_provisional_immunoscore_status"]
+    )
+    with (tmp_path / "tables/pathologist_review_template.csv").open(
+        encoding="utf-8", newline=""
+    ) as handle:
+        review_by_case = {row["case_alias"]: row for row in csv.DictReader(handle)}
+    assert review_by_case[aliases[2]]["review_eligibility"] == "eligible"
+    assert review_by_case[aliases[2]]["algorithm_qc_status"] == "review"
 
 
 def test_dry_run_does_not_create_output_or_linkage(tmp_path: Path) -> None:

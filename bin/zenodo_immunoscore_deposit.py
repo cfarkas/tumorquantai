@@ -23,7 +23,7 @@ EXPECTED_MDS_COUNT = 30
 EXPECTED_MDS_BYTES = 40_580_793_856
 MANIFEST_NAME = "tumorquantai_colon_immunoscore_mds_manifest.csv"
 DATASET_FORMAT = "sanitized-mds-colon-immunoscore-v1"
-PUBLIC_SUFFIXES = {".csv", ".json", ".md", ".html", ".png", ".txt"}
+PUBLIC_SUFFIXES = {".csv", ".json", ".md", ".html", ".png", ".txt", ".zip"}
 PUBLIC_EXTENSIONLESS_NAMES = {"SHA256SUMS", "MD5SUMS"}
 
 
@@ -58,8 +58,7 @@ def public_directory_files(
             if (
                 path.is_symlink()
                 or not path.is_file()
-                or base.digest_file(path.resolve())
-                != base.digest_file(manifest)
+                or base.digest_file(path.resolve()) != base.digest_file(manifest)
             ):
                 raise base.DepositError(
                     "Public directory manifest copy differs from --public-manifest"
@@ -106,6 +105,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--replace-mismatched", action="store_true")
     parser.add_argument(
+        "--adopt-expanded-release",
+        action="store_true",
+        help=(
+            "adopt a reviewed public-artifact expansion of this exact draft; "
+            "requires --replace-mismatched and never replaces MDS files"
+        ),
+    )
+    parser.add_argument(
         "--extra-file",
         action="append",
         default=[],
@@ -135,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
             retries=args.retries,
             workers=args.workers,
             replace_mismatched=args.replace_mismatched,
+            adopt_expanded_release=args.adopt_expanded_release,
             plan=args.plan,
             extra_files=extras,
         )

@@ -45,7 +45,12 @@ Run the package-native workflow described in the
 3. Missing marker sets are unavailable, not zero.
 4. Every complete case has a registration composite.
 5. The official consensus score is blank with the explicit unavailable status.
-6. Every registration and CK20 compartment mask has been visually reviewed.
+6. Every complete case has one case sheet and three marker-specific 300-dpi
+   review sheets, with 36 rows in `paper_figure_manifest.csv`.
+7. The pI0-pI4 field is explicitly provisional, uses the automatic-pass
+   reference `n`, and is never copied into `consensus_immunoscore`.
+8. `pathologist_review_template.csv` has blank decision/reviewer fields.
+9. Every registration and CK20 compartment mask has been visually reviewed.
 
 ## 2. Create sanitized MDS copies
 
@@ -106,6 +111,8 @@ The packager fails on private ID/path markers and creates:
 - an anonymous case/slide/marker catalog;
 - clear wide and long TumorQuantAI CSVs;
 - numeric and visual registration QC;
+- the blank pathologist accept/flag/exclude template, codebook, and offline dashboard;
+- the paper-figure manifest and one deterministic ZIP containing 36 PNG/PDF/legend triplets;
 - an English README and portable HTML report;
 - method/provenance JSON;
 - a release validation report;
@@ -122,7 +129,7 @@ Use a new mode-0600 JSON file:
 {
   "metadata": {
     "title": "TumorQuantAI colon cancer CD3, CD8, and CK20 whole-slide image dataset",
-    "description": "De-identified Motic MDS serial-section WSIs with an anonymous marker catalog, pixel-preserving sanitization evidence, TumorQuantAI CK20-guided CD3/CD8 research densities, and registration QC. This is not the clinically validated consensus Immunoscore.",
+    "description": "De-identified Motic MDS serial-section WSIs with an anonymous marker catalog, pixel-preserving sanitization evidence, TumorQuantAI CK20-guided CD3/CD8 research densities, provisional within-cohort pI0-pI4 review labels, pathologist accept/flag templates, and registration QC. The provisional label is not the clinically validated consensus Immunoscore.",
     "upload_type": "dataset",
     "access_right": "restricted",
     "access_conditions": "Access requests require custodian review of research purpose, data protection, redistribution restrictions, and applicable ethics or institutional approvals.",
@@ -171,7 +178,7 @@ quota. See Zenodo's [current file limits](https://help.zenodo.org/docs/deposit/m
 Then create and upload the new draft:
 
 ```bash
-python3 bin/zenodo_immunoscore_deposit.py --public-manifest /controlled/release_draft/tumorquantai_colon_immunoscore_mds_manifest.csv --private-mapping /controlled/private_release/sanitized_mds_private_mapping.csv --public-dir /controlled/release_draft/public_artifacts --metadata /controlled/private_release/zenodo_colon_metadata.json --state /controlled/private_release/zenodo_colon_new_entry_state.json --token-file /controlled/private_release/zenodo_token --workers 3
+python3 bin/zenodo_immunoscore_deposit.py --public-manifest /controlled/release_draft/tumorquantai_colon_immunoscore_mds_manifest.csv --private-mapping /controlled/private_release/sanitized_mds_private_mapping.csv --public-dir /controlled/release_draft/public_artifacts --metadata /controlled/private_release/zenodo_colon_metadata.json --state /controlled/private_release/zenodo_colon_new_entry_state.json --token-file /controlled/private_release/zenodo_token --workers 4
 ```
 
 The token file must be regular, owner-controlled, and mode 0600. The depositor
@@ -179,6 +186,28 @@ accepts only production or sandbox Zenodo HTTPS API origins. It verifies every
 local hash before upload, resumes exact remote size/MD5 matches, rejects
 unreviewed extra files, rechecks restricted metadata, and records state
 atomically.
+
+### Expanding public review artifacts in the same unsubmitted draft
+
+Do this only when the raw 30-slide roster is unchanged and a reviewed report,
+figure, or adjudication artifact was added while this exact draft was still
+uploading. First stop every uploader for the draft, rebuild the release package,
+review its checksum/roster diff, and run `--plan`. Then resume with both explicit
+safety switches:
+
+```bash
+python3 bin/zenodo_immunoscore_deposit.py --public-manifest /controlled/release_draft/tumorquantai_colon_immunoscore_mds_manifest.csv --private-mapping /controlled/private_release/sanitized_mds_private_mapping.csv --public-dir /controlled/release_draft/public_artifacts --metadata /controlled/private_release/zenodo_colon_metadata.json --state /controlled/private_release/zenodo_colon_new_entry_state.json --token-file /controlled/private_release/zenodo_token --workers 4 --adopt-expanded-release --replace-mismatched
+```
+
+`--adopt-expanded-release` is not a general fingerprint override. It requires
+the same restricted, editable deposition; rejects remote files outside the new
+reviewed roster; requires every checkpoint to remain present and unchanged;
+forbids removing checkpointed files; requires the authoritative MDS manifest to
+be byte-for-byte unchanged; and refuses replacement of any MDS under all
+circumstances. The unchanged manifest binds even WSIs that have not uploaded
+yet. The command records the old and new release fingerprints in the private
+state. Never run it concurrently with another uploader or use it to change the
+WSI roster.
 
 ## 7. Stop at the draft
 

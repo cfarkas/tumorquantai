@@ -44,6 +44,8 @@ IMMUNOSCORE_ENGINE_VERSION = (
     "serial-wsi-registration-ck20-streamed-compartment-cd3-cd8-v2"
 )
 IMMUNOSCORE_QC_POLICY_VERSION = "colon-ihc-automatic-qc-v2"
+PROVISIONAL_SCORE_SCHEMA_VERSION = "tumorquantai_ck20_provisional_immunoscore_v1"
+PATHOLOGIST_REVIEW_SCHEMA_VERSION = "tumorquantai_pathologist_review_v1"
 IMMUNOSCORE_MARKERS = ("CD3", "CD8", "CK20")
 IMMUNE_MARKERS = ("CD3", "CD8")
 CASE_ALIAS_RE = re.compile(r"^TQA_CI_[A-Z2-7]{20}$")
@@ -114,10 +116,55 @@ CASE_VALUE_FIELDS = (
     "cd8_ck20_stroma_internal_percentile",
     "ck20_guided_internal_mean_percentile",
     "ck20_guided_internal_rank_group",
+    "ck20_guided_provisional_immunoscore",
+    "ck20_guided_provisional_immunoscore_status",
+    "ck20_guided_provisional_reference_n",
     "consensus_immunoscore",
     "consensus_immunoscore_status",
     "qc_status",
     "qc_flags",
+)
+PATHOLOGIST_REVIEW_FIELDS = (
+    "review_schema_version",
+    "case_alias",
+    "ck20_guided_provisional_immunoscore",
+    "ck20_guided_internal_mean_percentile",
+    "tumorquantai_cd3_ck20_epithelium_density_per_mm2",
+    "tumorquantai_cd3_ck20_stroma_density_per_mm2",
+    "tumorquantai_cd8_ck20_epithelium_density_per_mm2",
+    "tumorquantai_cd8_ck20_stroma_density_per_mm2",
+    "algorithm_qc_status",
+    "algorithm_qc_flags",
+    "review_eligibility",
+    "pathologist_decision",
+    "pathologist_flag_reasons",
+    "pathologist_notes",
+    "reviewer_code",
+    "reviewed_at_iso8601",
+)
+PATHOLOGIST_DECISIONS = ("accept", "flag", "exclude")
+PATHOLOGIST_FLAG_REASONS = (
+    "registration",
+    "ck20_compartment",
+    "stain_quality",
+    "cell_segmentation",
+    "tissue_coverage",
+    "case_matching",
+    "score_not_representative",
+    "other",
+)
+PATHOLOGIST_REVIEW_CODEBOOK_FIELDS = ("field", "allowed_value", "definition")
+PAPER_FIGURE_LAYOUT_VERSION = "colon-ihc-paper-figure-v1"
+PAPER_FIGURE_FIELDS = (
+    "case_alias",
+    "slide_alias",
+    "marker",
+    "figure_scope",
+    "png_path",
+    "pdf_path",
+    "legend_path",
+    "dpi",
+    "layout_version",
 )
 CASE_DENSITY_FIELDS = CASE_VALUE_FIELDS[1:5]
 COHORT_DENSITY_SUMMARY_FIELDS = (
@@ -1746,6 +1793,110 @@ def _empirical_percentiles(values: Mapping[str, float]) -> dict[str, float]:
     return result
 
 
+def _percentile_against_reference(
+    value: float,
+    reference_values: Sequence[float],
+) -> float:
+    """Return a deterministic mid-rank percentile against an internal reference."""
+    array = np.asarray(reference_values, dtype=np.float64)
+    array = array[np.isfinite(array)]
+    if not len(array) or not math.isfinite(float(value)):
+        raise ImmunoscoreError("A finite, non-empty reference is required")
+    less = int(np.count_nonzero(array < float(value)))
+    equal = int(np.count_nonzero(array == float(value)))
+    return 100.0 * (less + 0.5 * equal) / len(array)
+
+
+def _provisional_immunoscore(mean_percentile: float) -> str:
+    """Map a mean percentile to explicitly provisional pI0-pI4 bands."""
+    value = float(mean_percentile)
+    if not math.isfinite(value) or value < 0.0 or value > 100.0:
+        raise ImmunoscoreError("Provisional-score percentile must be in [0, 100]")
+    if value <= 10.0:
+        return "pI0"
+    if value <= 25.0:
+        return "pI1"
+    if value <= 70.0:
+        return "pI2"
+    if value <= 95.0:
+        return "pI3"
+    return "pI4"
+
+
+def _internal_rank_group(mean_percentile: float) -> str:
+    value = float(mean_percentile)
+    return "low" if value <= 25.0 else "intermediate" if value <= 70.0 else "high"
+
+
+def _pathologist_review_rows(
+    value_rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for value_row in value_rows:
+        row: dict[str, Any] = {field: "" for field in PATHOLOGIST_REVIEW_FIELDS}
+        row["review_schema_version"] = PATHOLOGIST_REVIEW_SCHEMA_VERSION
+        row["case_alias"] = value_row.get("case_alias", "")
+        for field in (
+            "ck20_guided_provisional_immunoscore",
+            "ck20_guided_internal_mean_percentile",
+            *CASE_DENSITY_FIELDS,
+        ):
+            row[field] = value_row.get(field, "")
+        row["algorithm_qc_status"] = value_row.get("qc_status", "")
+        row["algorithm_qc_flags"] = value_row.get("qc_flags", "")
+        row["review_eligibility"] = (
+            "eligible"
+            if value_row.get("ck20_guided_provisional_immunoscore", "")
+            and value_row.get("qc_status", "") in {"pass", "review"}
+            else "not_eligible"
+        )
+        rows.append(row)
+    return rows
+
+
+def _pathologist_review_codebook_rows() -> list[dict[str, str]]:
+    decision_definitions = {
+        "accept": (
+            "Pathologist accepts the displayed registration, compartments, "
+            "quantification, and provisional score as technically representative."
+        ),
+        "flag": (
+            "Pathologist requests correction or adjudication; retain the original "
+            "TumorQuantAI values unchanged."
+        ),
+        "exclude": (
+            "Pathologist excludes the case from the reviewed analysis population."
+        ),
+    }
+    reason_definitions = {
+        "registration": "Serial-section registration is not acceptable.",
+        "ck20_compartment": "CK20 epithelial/stromal proxy is not acceptable.",
+        "stain_quality": "Stain or scan quality affects interpretation.",
+        "cell_segmentation": "Positive-cell segmentation is not acceptable.",
+        "tissue_coverage": "Tissue coverage or analyzed area is insufficient.",
+        "case_matching": "The serial slides may not belong to the same case.",
+        "score_not_representative": "The provisional score is not representative.",
+        "other": "A reason described in pathologist_notes.",
+    }
+    rows = [
+        {
+            "field": "pathologist_decision",
+            "allowed_value": value,
+            "definition": decision_definitions[value],
+        }
+        for value in PATHOLOGIST_DECISIONS
+    ]
+    rows.extend(
+        {
+            "field": "pathologist_flag_reasons",
+            "allowed_value": value,
+            "definition": reason_definitions[value],
+        }
+        for value in PATHOLOGIST_FLAG_REASONS
+    )
+    return rows
+
+
 def _cohort_density_summary(
     value_rows: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -1791,6 +1942,118 @@ def _cohort_density_summary(
                 }
             )
     return rows
+
+
+def _write_pathologist_review_dashboard(
+    output_root: Path,
+    review_rows: Sequence[Mapping[str, Any]],
+) -> Path:
+    """Write a PHI-free offline accept/flag dashboard with CSV export."""
+    payload = json.dumps(
+        {
+            "schema": PATHOLOGIST_REVIEW_SCHEMA_VERSION,
+            "fields": PATHOLOGIST_REVIEW_FIELDS,
+            "decisions": PATHOLOGIST_DECISIONS,
+            "flag_reasons": PATHOLOGIST_FLAG_REASONS,
+            "rows": [dict(row) for row in review_rows],
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).replace("<", "\\u003c")
+    document = f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TumorQuantAI pathologist review</title>
+<style>
+:root{{--ink:#17202a;--muted:#5d6975;--line:#cfd8df;--paper:#fff;--bg:#eef2f5;
+--blue:#155b86;--warn:#a33a2b;--ok:#26734d}}*{{box-sizing:border-box}}
+body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,sans-serif}}
+main{{max-width:1500px;margin:auto;padding:24px}}h1,h2{{line-height:1.15}}
+.warning{{background:#fff2ef;border-left:6px solid var(--warn);padding:14px 18px}}
+.toolbar{{position:sticky;top:0;z-index:5;background:#e8eef2;border:1px solid var(--line);
+padding:12px;margin:16px 0;display:flex;gap:10px;align-items:end;flex-wrap:wrap}}
+label{{font-weight:650}}input,select,textarea,button{{font:inherit}}
+input,select,textarea{{width:100%;padding:7px;border:1px solid #9eabb5;border-radius:5px;background:white}}
+button{{border:0;border-radius:5px;background:var(--blue);color:white;padding:9px 14px;cursor:pointer}}
+button.secondary{{background:#5c6770}}.case{{background:var(--paper);border:1px solid var(--line);
+border-radius:10px;margin:18px 0;overflow:hidden}}.case>header{{padding:12px 16px;background:#e8eef2;
+display:flex;justify-content:space-between;gap:14px;align-items:center}}.grid{{display:grid;
+grid-template-columns:minmax(420px,1.45fr) minmax(340px,1fr);gap:18px;padding:16px}}
+.figure img{{display:block;width:100%;height:auto;border:1px solid var(--line);background:#fafafa}}
+.figure a{{color:var(--blue)}}table{{border-collapse:collapse;width:100%;font-size:13px}}
+th,td{{border-bottom:1px solid #dde3e8;padding:6px;text-align:right}}th{{text-align:left}}
+.review{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}}.review .wide{{grid-column:1/-1}}
+.status-pass{{color:var(--ok)}}.status-review,.status-unavailable{{color:var(--warn)}}
+.small{{font-size:12px;color:var(--muted)}}code{{background:#edf1f4;padding:2px 4px}}
+@media(max-width:900px){{.grid{{grid-template-columns:1fr}}}}
+@media print{{.toolbar,button{{display:none}}body{{background:white}}.case{{break-inside:avoid}}main{{padding:0}}}}
+</style></head><body><main>
+<h1>Pathologist review: CK20-guided CD3/CD8 provisional score</h1>
+<p class="warning"><strong>Research review only.</strong> <code>pI0-pI4</code> is a
+cohort-internal analogue derived from CK20 epithelial/stromal proxies. It is not
+the consensus Immunoscore, does not use validated tumour-core/invasive-margin
+regions, and must not guide patient care. Accepting a case records expert visual
+adjudication; it does not convert the score into a clinically validated assay.</p>
+<div class="toolbar"><div><label for="reviewer">Reviewer code</label>
+<input id="reviewer" placeholder="e.g. PATH01"></div>
+<button id="export" type="button">Export completed review CSV</button>
+<button id="print" class="secondary" type="button">Print / save PDF</button>
+<button id="reset" class="secondary" type="button">Reset browser decisions</button>
+<span class="small">Draft choices are stored only in this browser until CSV export.</span></div>
+<div id="cases"></div>
+<script>const REVIEW={payload};
+const storageKey=REVIEW.schema+':'+location.pathname;
+let saved={{}};try{{saved=JSON.parse(localStorage.getItem(storageKey)||'{{}}')}}catch(_e){{saved={{}}}}
+const densityFields=[
+'tumorquantai_cd3_ck20_epithelium_density_per_mm2',
+'tumorquantai_cd3_ck20_stroma_density_per_mm2',
+'tumorquantai_cd8_ck20_epithelium_density_per_mm2',
+'tumorquantai_cd8_ck20_stroma_density_per_mm2'];
+const densityLabels=['CD3 · CK20 epithelium','CD3 · CK20 stroma','CD8 · CK20 epithelium','CD8 · CK20 stroma'];
+function text(tag,value,cls=''){{const node=document.createElement(tag);node.textContent=value??'';if(cls)node.className=cls;return node}}
+function persist(){{const values={{reviewer:document.querySelector('#reviewer').value,cases:{{}}}};
+document.querySelectorAll('.case').forEach(card=>{{values.cases[card.dataset.alias]={{
+decision:card.querySelector('.decision').value,
+reasons:Array.from(card.querySelector('.reasons').selectedOptions).map(o=>o.value),
+notes:card.querySelector('.notes').value}}}});try{{localStorage.setItem(storageKey,JSON.stringify(values))}}catch(_e){{}}}}
+document.querySelector('#reviewer').value=saved.reviewer||'';
+const host=document.querySelector('#cases');
+REVIEW.rows.forEach(row=>{{const card=document.createElement('article');card.className='case';card.dataset.alias=row.case_alias;
+const header=document.createElement('header');header.append(text('strong',row.case_alias));
+header.append(text('span',`${{row.ck20_guided_provisional_immunoscore||'unavailable'}} · algorithm QC: ${{row.algorithm_qc_status}}`,`status-${{row.algorithm_qc_status}}`));card.append(header);
+const grid=document.createElement('div');grid.className='grid';const figure=document.createElement('div');figure.className='figure';
+const link=document.createElement('a');link.target='_blank';link.rel='noopener';
+const paper=`cases/${{row.case_alias}}/paper_figures/case_summary_paper_figure.png`;
+const fallback=`cases/${{row.case_alias}}/registration_qc.png`;link.href=paper;
+const image=document.createElement('img');image.src=paper;image.alt=`Paper-ready review figure for ${{row.case_alias}}`;
+image.onerror=()=>{{image.onerror=null;image.src=fallback;link.href=fallback}};link.append(image);figure.append(link);
+figure.append(text('p','Open the full-resolution figure before deciding.','small'));grid.append(figure);
+const side=document.createElement('div');const score=document.createElement('h2');score.textContent=`${{row.ck20_guided_provisional_immunoscore||'No provisional score'}} · mean internal percentile ${{row.ck20_guided_internal_mean_percentile||'—'}}`;side.append(score);
+const table=document.createElement('table');densityFields.forEach((field,i)=>{{const tr=document.createElement('tr');tr.append(text('th',densityLabels[i]));const raw=row[field];const value=raw===''?'—':Number(raw).toFixed(2)+' cells/mm²';tr.append(text('td',value));table.append(tr)}});side.append(table);
+side.append(text('p',row.algorithm_qc_flags?`Algorithm flags: ${{row.algorithm_qc_flags}}`:'Algorithm flags: none','small'));
+const review=document.createElement('div');review.className='review';const dwrap=document.createElement('div');dwrap.append(text('label','Decision'));
+const decision=document.createElement('select');decision.className='decision';decision.append(new Option('Select…',''));
+REVIEW.decisions.forEach(v=>decision.append(new Option(v,v)));if(row.review_eligibility!=='eligible')decision.disabled=true;dwrap.append(decision);review.append(dwrap);
+const rwrap=document.createElement('div');rwrap.append(text('label','Flag reasons'));const reasons=document.createElement('select');reasons.className='reasons';reasons.multiple=true;reasons.size=4;REVIEW.flag_reasons.forEach(v=>reasons.append(new Option(v,v)));if(row.review_eligibility!=='eligible')reasons.disabled=true;rwrap.append(reasons);review.append(rwrap);
+const nwrap=document.createElement('div');nwrap.className='wide';nwrap.append(text('label','Notes'));const notes=document.createElement('textarea');notes.className='notes';notes.rows=3;if(row.review_eligibility!=='eligible')notes.disabled=true;nwrap.append(notes);review.append(nwrap);
+const prior=(saved.cases||{{}})[row.case_alias]||{{}};decision.value=prior.decision||'';Array.from(reasons.options).forEach(o=>o.selected=(prior.reasons||[]).includes(o.value));notes.value=prior.notes||'';
+[decision,reasons,notes].forEach(node=>node.addEventListener('change',persist));notes.addEventListener('input',persist);side.append(review);grid.append(side);card.append(grid);host.append(card)}});
+document.querySelector('#reviewer').addEventListener('input',persist);
+function csvCell(value){{return '"'+String(value??'').replaceAll('"','""')+'"'}}
+document.querySelector('#export').onclick=()=>{{const reviewer=document.querySelector('#reviewer').value.trim();const timestamp=new Date().toISOString();
+const completed=REVIEW.rows.map(row=>{{const card=document.querySelector(`.case[data-alias="${{row.case_alias}}"]`);return {{...row,
+pathologist_decision:card.querySelector('.decision').value,
+pathologist_flag_reasons:Array.from(card.querySelector('.reasons').selectedOptions).map(o=>o.value).join(';'),
+pathologist_notes:card.querySelector('.notes').value,reviewer_code:reviewer,
+reviewed_at_iso8601:card.querySelector('.decision').value?timestamp:''}}}});
+const errors=[];if(!reviewer)errors.push('Enter a reviewer code.');completed.forEach(row=>{{if(row.review_eligibility==='eligible'&&!row.pathologist_decision)errors.push(`${{row.case_alias}}: select accept, flag, or exclude.`);if(row.pathologist_decision==='flag'&&!row.pathologist_flag_reasons)errors.push(`${{row.case_alias}}: select at least one flag reason.`);if(row.pathologist_flag_reasons.split(';').includes('other')&&!row.pathologist_notes.trim())errors.push(`${{row.case_alias}}: describe the other flag reason in notes.`)}});if(errors.length){{alert(errors.join('\n'));return}}
+const csv=[REVIEW.fields.map(csvCell).join(','),...completed.map(row=>REVIEW.fields.map(field=>csvCell(row[field])).join(','))].join('\n')+'\n';
+const url=URL.createObjectURL(new Blob([csv],{{type:'text/csv;charset=utf-8'}}));const a=document.createElement('a');a.href=url;a.download='pathologist_review_completed.csv';a.click();URL.revokeObjectURL(url)}};
+document.querySelector('#print').onclick=()=>window.print();document.querySelector('#reset').onclick=()=>{{if(confirm('Clear locally saved reviewer decisions?')){{try{{localStorage.removeItem(storageKey)}}catch(_e){{}}location.reload()}}}};
+</script></main></body></html>"""
+    path = output_root / "PATHOLOGIST_REVIEW.html"
+    _atomic_text(path, document)
+    return path
 
 
 def _write_report(
@@ -1842,6 +2105,11 @@ and spatially variable, so it cannot define the entire invasive boundary. No
 pathologist-validated tumour core (CT), invasive margin (IM),
 or validated external reference distribution was supplied; therefore the
 consensus Immunoscore is deliberately reported as unavailable.</p>
+<p><strong>Provisional score:</strong> <code>pI0-pI4</code> applies the published
+five percentile bands to this run's four CK20-proxy measurements using only
+automatic-QC-pass cases as the internal reference. The prefix <code>p</code>,
+reference size, and status fields are mandatory warnings: this is an exploratory
+within-cohort rank and not a substitute for consensus Immunoscore.</p>
 <section class="panel"><h2>Run summary</h2><div class="metrics">
 <div class="metric"><strong>{summary['discovered_case_count']}</strong><br>source cases</div>
 <div class="metric"><strong>{summary['complete_case_count']}</strong><br>complete CD3/CD8/CK20 sets</div>
@@ -1849,6 +2117,7 @@ consensus Immunoscore is deliberately reported as unavailable.</p>
 <div class="metric"><strong>{summary['pass_case_count']}</strong><br>automatic QC pass</div>
 <div class="metric"><strong>{summary['review_case_count']}</strong><br>require review</div>
 <div class="metric"><strong>{summary['failed_case_count']}</strong><br>failed</div>
+<div class="metric"><strong>{summary['paper_figure_count']}</strong><br>paper figures</div>
 </div></section>
 <section class="panel"><h2>Open these first</h2>
 <p><a href="tables/tumorquantai_immunoscore_values.csv">Clear case values</a> ·
@@ -1856,10 +2125,15 @@ consensus Immunoscore is deliberately reported as unavailable.</p>
 <a href="tables/case_compartment_densities.csv">Long compartment densities</a> ·
 <a href="tables/registration_qc.csv">Registration QC</a> ·
 <a href="tables/unavailable_cases.csv">Unavailable cases</a> ·
+<a href="PATHOLOGIST_REVIEW.html">Pathologist accept/flag review</a> ·
+<a href="tables/pathologist_review_template.csv">Review CSV template</a> ·
+<a href="tables/pathologist_review_codebook.csv">Review codebook</a> ·
+<a href="tables/paper_figure_manifest.csv">Paper-figure manifest</a> ·
 <a href="workflow_metadata/immunoscore_run.json">Methods and provenance</a></p>
 <p>Each completed case also has a registration composite under
 <code>cases/CASE_ALIAS/registration_qc.png</code>. Review those images before
-interpreting any density.</p></section>
+interpreting any density. Its <code>paper_figures/</code> directory contains a
+300-dpi case sheet plus one PNG/PDF/legend triplet per CK20, CD3, and CD8 slide.</p></section>
 <section class="panel"><h2>Cohort density summary</h2>
 <p><code>automatic_qc_pass</code> excludes every review, failed, and incomplete
 case. <code>all_numerically_available</code> adds review-status cases but still
@@ -1874,8 +2148,11 @@ excludes failed and incomplete cases. Standard deviation is the sample SD.</p>
 <ul><li>The four reported density variables are TumorQuantAI research outputs.</li>
 <li>Internal percentiles rank only automatic-QC-pass cases in this cohort and
 must not be substituted for the validated 700-case reference population.</li>
-<li>The low/intermediate/high internal rank label uses 25/70 cut points only to
-summarize this cohort; it is not the consensus clinical classification.</li>
+<li>The provisional pI0-pI4 analogue uses mean-percentile bands 0-10,
+&gt;10-25, &gt;25-70, &gt;70-95, and &gt;95-100. These labels summarize this
+cohort only and are not the consensus clinical classification.</li>
+<li>A pathologist decision records acceptance, a flag, or exclusion without
+overwriting the original TumorQuantAI values or algorithm QC status.</li>
 <li>Serial-section registration and CK20 compartment masks require pathologist
 review. A low count may represent biology, staining, registration, or segmentation.</li>
 </ul></section>
@@ -1934,11 +2211,26 @@ def aggregate_results(
                 "positive_cell_density_per_mm2"
             ]
 
-    passing = {
+    def has_finite_densities(case_alias: str) -> bool:
+        try:
+            values = [
+                float(densities_by_case[case_alias][field])
+                for field in density_keys.values()
+            ]
+        except (KeyError, TypeError, ValueError):
+            return False
+        return all(math.isfinite(value) for value in values)
+
+    numerically_available = {
         case_alias
         for case_alias, result in result_by_case.items()
-        if result.get("qc_status") == "pass"
-        and all(key in densities_by_case[case_alias] for key in density_keys.values())
+        if result.get("qc_status") in {"pass", "review"}
+        and has_finite_densities(case_alias)
+    }
+    passing = {
+        case_alias
+        for case_alias in numerically_available
+        if result_by_case[case_alias].get("qc_status") == "pass"
     }
     percentile_fields = {
         "tumorquantai_cd3_ck20_epithelium_density_per_mm2": "cd3_ck20_epithelium_internal_percentile",
@@ -1946,14 +2238,13 @@ def aggregate_results(
         "tumorquantai_cd8_ck20_epithelium_density_per_mm2": "cd8_ck20_epithelium_internal_percentile",
         "tumorquantai_cd8_ck20_stroma_density_per_mm2": "cd8_ck20_stroma_internal_percentile",
     }
-    percentile_maps: dict[str, dict[str, float]] = {}
-    for density_field, percentile_field in percentile_fields.items():
-        percentile_maps[percentile_field] = _empirical_percentiles(
-            {
-                case_alias: float(densities_by_case[case_alias][density_field])
-                for case_alias in passing
-            }
-        )
+    reference_values = {
+        density_field: [
+            float(densities_by_case[case_alias][density_field])
+            for case_alias in sorted(passing)
+        ]
+        for density_field in percentile_fields
+    }
 
     failed_aliases = {str(row["case_alias"]) for row in failures}
     incomplete_aliases = set(grouped) - set(complete)
@@ -1976,22 +2267,50 @@ def aggregate_results(
         else:
             row["qc_status"] = result.get("qc_status", "failed")
             row["qc_flags"] = ";".join(result.get("qc_flags", []))
-        if case_alias in passing:
+        if case_alias in numerically_available and passing:
             percentiles = [
-                percentile_maps[field][case_alias]
-                for field in percentile_fields.values()
+                _percentile_against_reference(
+                    float(densities_by_case[case_alias][density_field]),
+                    reference_values[density_field],
+                )
+                for density_field in percentile_fields
             ]
             for field, value in zip(percentile_fields.values(), percentiles):
                 row[field] = value
             mean_percentile = float(np.mean(percentiles))
             row["ck20_guided_internal_mean_percentile"] = mean_percentile
-            row["ck20_guided_internal_rank_group"] = (
-                "low"
-                if mean_percentile <= 25.0
-                else "intermediate" if mean_percentile <= 70.0 else "high"
+            row["ck20_guided_internal_rank_group"] = _internal_rank_group(
+                mean_percentile
             )
-        elif case_alias not in incomplete_aliases and case_alias not in failed_aliases:
-            row["ck20_guided_internal_rank_group"] = "not_ranked_due_to_qc"
+            row["ck20_guided_provisional_immunoscore"] = _provisional_immunoscore(
+                mean_percentile
+            )
+            row["ck20_guided_provisional_reference_n"] = len(passing)
+            row["ck20_guided_provisional_immunoscore_status"] = (
+                "provisional_ck20_proxy_internal_qc_pass_reference"
+                if case_alias in passing
+                else "provisional_requires_pathologist_review_due_to_algorithm_qc"
+            )
+        elif case_alias in incomplete_aliases:
+            row["ck20_guided_internal_rank_group"] = "unavailable"
+            row["ck20_guided_provisional_immunoscore_status"] = (
+                "unavailable_incomplete_serial_marker_set"
+            )
+        elif case_alias in failed_aliases:
+            row["ck20_guided_internal_rank_group"] = "unavailable"
+            row["ck20_guided_provisional_immunoscore_status"] = (
+                "unavailable_analysis_failed"
+            )
+        elif not passing:
+            row["ck20_guided_internal_rank_group"] = "unavailable"
+            row["ck20_guided_provisional_immunoscore_status"] = (
+                "unavailable_no_automatic_qc_pass_internal_reference"
+            )
+        else:
+            row["ck20_guided_internal_rank_group"] = "unavailable"
+            row["ck20_guided_provisional_immunoscore_status"] = (
+                "unavailable_missing_four_finite_density_measurements"
+            )
         value_rows.append(row)
     _atomic_csv(
         tables / "tumorquantai_immunoscore_values.csv",
@@ -2004,6 +2323,47 @@ def aggregate_results(
         COHORT_DENSITY_SUMMARY_FIELDS,
         density_summary_rows,
     )
+    from tumorquantai_cli import immunoscore_figures
+
+    paper_figure_rows: list[dict[str, Any]] = []
+    for value_row in value_rows:
+        case_alias = str(value_row["case_alias"])
+        result = result_by_case.get(case_alias)
+        slides = complete.get(case_alias)
+        if result is None or slides is None:
+            continue
+        try:
+            paper_figure_rows.extend(
+                immunoscore_figures.render_case_paper_figures(
+                    output_root,
+                    case_alias,
+                    slides,
+                    result,
+                    value_row,
+                    layout_version=PAPER_FIGURE_LAYOUT_VERSION,
+                )
+            )
+        except immunoscore_figures.ImmunoscoreFigureError as exc:
+            raise ImmunoscoreError(
+                f"Paper-figure rendering failed for {case_alias}: {exc}"
+            ) from exc
+    _atomic_csv(
+        tables / "paper_figure_manifest.csv",
+        PAPER_FIGURE_FIELDS,
+        paper_figure_rows,
+    )
+    review_rows = _pathologist_review_rows(value_rows)
+    _atomic_csv(
+        tables / "pathologist_review_template.csv",
+        PATHOLOGIST_REVIEW_FIELDS,
+        review_rows,
+    )
+    _atomic_csv(
+        tables / "pathologist_review_codebook.csv",
+        PATHOLOGIST_REVIEW_CODEBOOK_FIELDS,
+        _pathologist_review_codebook_rows(),
+    )
+    review_dashboard = _write_pathologist_review_dashboard(output_root, review_rows)
 
     unavailable_rows = [dict(row) for row in unavailable]
     unavailable_rows.extend(
@@ -2031,11 +2391,15 @@ def aggregate_results(
         "pass_case_count": statuses["pass"],
         "review_case_count": statuses["review"],
         "failed_case_count": len(failures),
+        "paper_figure_count": len(paper_figure_rows),
     }
     report = _write_report(output_root, value_rows, density_summary_rows, summary)
     return {
         **summary,
         "report_path": str(report.relative_to(output_root)),
+        "pathologist_review_path": str(review_dashboard.relative_to(output_root)),
+        "provisional_score_reference_n": len(passing),
+        "provisional_score_case_count": len(numerically_available) if passing else 0,
     }
 
 
@@ -2235,10 +2599,56 @@ def run_immunoscore(
             ),
             "ck20_stroma_proxy": ("tissue minus the CK20-positive epithelial proxy"),
         },
+        "provisional_immunoscore": {
+            "schema_version": PROVISIONAL_SCORE_SCHEMA_VERSION,
+            "label_prefix": "pI",
+            "reference_population": "automatic_qc_pass_cases_in_this_run",
+            "reference_n": summary["provisional_score_reference_n"],
+            "scored_case_count": summary["provisional_score_case_count"],
+            "inputs": [
+                "CD3 CK20-epithelium-proxy density",
+                "CD3 CK20-stroma-proxy density",
+                "CD8 CK20-epithelium-proxy density",
+                "CD8 CK20-stroma-proxy density",
+            ],
+            "calculation": (
+                "Convert each density to a mid-rank percentile against automatic-"
+                "QC-pass cases, average the four percentiles, then apply bands: "
+                "pI0 0-10; pI1 >10-25; pI2 >25-70; pI3 >70-95; pI4 >95-100."
+            ),
+            "clinical_status": (
+                "exploratory_cohort_internal_proxy_not_consensus_immunoscore"
+            ),
+        },
+        "pathologist_review": {
+            "schema_version": PATHOLOGIST_REVIEW_SCHEMA_VERSION,
+            "allowed_decisions": list(PATHOLOGIST_DECISIONS),
+            "dashboard": summary["pathologist_review_path"],
+            "template": "tables/pathologist_review_template.csv",
+            "codebook": "tables/pathologist_review_codebook.csv",
+            "policy": (
+                "Pathologist decisions are additive adjudication fields and never "
+                "overwrite TumorQuantAI values or automatic QC."
+            ),
+        },
+        "paper_figures": {
+            "layout_version": PAPER_FIGURE_LAYOUT_VERSION,
+            "dpi": 300,
+            "figure_count": summary["paper_figure_count"],
+            "manifest": "tables/paper_figure_manifest.csv",
+            "scope": (
+                "One case sheet plus one marker-specific review sheet for each "
+                "complete CK20/CD3/CD8 slide triplet."
+            ),
+        },
         "scientific_limitations": [
             "Research-use proxy; not a clinical or consensus Immunoscore.",
             "No pathologist-validated tumour-core or invasive-margin ROIs.",
             "Internal cohort percentiles are not the validated 700-case reference.",
+            (
+                "Provisional pI0-pI4 values use CK20 epithelial/stromal proxies and "
+                "must not be represented as consensus Immunoscore."
+            ),
             (
                 "CK20 expression is differentiation-linked and spatially variable; "
                 "it cannot define the entire invasive tumour boundary."

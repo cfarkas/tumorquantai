@@ -26,8 +26,9 @@ tables plus visual registration QC.
     Immunoscore. The required pathologist-reviewed tumour core (CT), invasive
     margin (IM), and validated external reference population are absent.
     TumorQuantAI therefore leaves `consensus_immunoscore` blank and reports its
-    status as unavailable. The four density measurements and internal
-    percentiles are research outputs only.
+    status as unavailable. It also emits an explicitly provisional `pI0`–`pI4`
+    within-cohort analogue for pathologist accept/flag review. The four density
+    measurements, internal percentiles, and pI label are research outputs only.
 
 ## What this workflow answers
 
@@ -72,6 +73,7 @@ invasive boundary. TumorQuantAI makes the distinction explicit:
 | --- | --- | --- | --- |
 | Consensus Immunoscore | Pathologist-validated CT and 720 µm IM | Validated external 700-case cohort | Not available here |
 | TumorQuantAI CK20-guided proxy | CK20-positive epithelial proxy and CK20-negative common-tissue proxy | This cohort only | Research exploration and QC |
+| TumorQuantAI provisional pI0-pI4 | Mean of four CK20-proxy percentiles | Automatic-QC-pass cases in this run | Prioritize pathologist accept/flag review only |
 
 See the consensus validation
 [in *The Lancet*](https://doi.org/10.1016/S0140-6736(18)30789-X),
@@ -286,13 +288,42 @@ tumorquantai_cd8_ck20_epithelium_density_per_mm2
 tumorquantai_cd8_ck20_stroma_density_per_mm2
 ```
 
-### 6. Rank this cohort without impersonating validation
+### 6. Generate a provisional score without impersonating validation
 
-Only automatic-QC-pass cases receive deterministic mid-rank percentiles.
-TumorQuantAI averages the four internal percentiles and labels the internal
-rank as low (≤25), intermediate (>25–70), or high (>70). These thresholds make
-the current cohort easier to inspect; they are not a clinical score and are
-not comparable to the validated reference distribution.
+Automatic-QC-pass cases define four deterministic mid-rank reference
+distributions. Every numerically available pass or review case is placed
+against those references. TumorQuantAI averages its four percentiles and emits:
+
+```text
+pI0   0–10
+pI1  >10–25
+pI2  >25–70
+pI3  >70–95
+pI4  >95–100
+```
+
+The bands mirror the published five-category percentile presentation, but the
+mandatory `p` prefix marks a different, provisional calculation: CK20
+epithelium/stroma substitutes for CT/IM, and this small internal cohort
+substitutes for the validated external distribution. Review cases can receive a
+pI value so the pathologist can accept or flag the technical result, but they
+never contribute to the reference. `consensus_immunoscore` remains blank.
+
+### 7. Build paper-ready review sheets
+
+TumorQuantAI writes a 300-dpi case summary plus one PNG/PDF/legend triplet for
+each CK20, CD3, and CD8 WSI. The layout follows the useful conventions of WSI
+plotters such as LazySlide: clean overview panels, explicit overlays, physical
+scale bars, and export-resolution metadata. It adds the exact four density
+values, a pI gauge, and QC flags required for this workflow.
+See LazySlide's [WSI visualization guide](https://lazyslide.readthedocs.io/en/stable/tutorials/visualization.html)
+and [publication-quality export guidance](https://lazyslide.readthedocs.io/en/latest/how-to/visualization.html)
+for the visual conventions; TumorQuantAI's renderer is independent and adds no
+LazySlide runtime dependency.
+
+The immune panels are registration blends at overview scale. They are not
+cell-outline overlays. Open the source WSI at cellular resolution whenever
+segmentation itself is in question.
 
 ## Review the results
 
@@ -309,22 +340,34 @@ Review in this order:
 3. Reject or correct implausible serial-section registration.
 4. Review the CK20 epithelial proxy across both tumour centre and leading edge.
 5. Check analysed area and mapped-positive-cell fraction.
-6. Only then interpret the density tables.
+6. Open `PATHOLOGIST_REVIEW.html`, inspect the 300-dpi paper sheet, and choose
+   `accept`, `flag`, or `exclude`.
+7. Export `pathologist_review_completed.csv`; preserve the original prediction
+   and automatic-QC columns unchanged.
+8. Only then interpret the reviewed density and provisional-score tables.
 
 The output map is:
 
 ```text
 tumorquantai_immunoscore/
 ├── START_HERE.html
+├── PATHOLOGIST_REVIEW.html
 ├── cases/<case_alias>/
 │   ├── measurement.json
-│   └── registration_qc.png
+│   ├── registration_qc.png
+│   └── paper_figures/
+│       ├── case_summary_paper_figure.{png,pdf}
+│       ├── case_summary_paper_figure_legend.txt
+│       └── <slide_alias>_<marker>_paper_figure.{png,pdf}
 ├── tables/
 │   ├── public_slide_inventory.csv
 │   ├── tumorquantai_immunoscore_values.csv
 │   ├── cohort_density_summary.csv
 │   ├── case_compartment_densities.csv
 │   ├── registration_qc.csv
+│   ├── paper_figure_manifest.csv
+│   ├── pathologist_review_template.csv
+│   ├── pathologist_review_codebook.csv
 │   └── unavailable_cases.csv
 └── workflow_metadata/
     ├── immunoscore_run.json
@@ -335,10 +378,12 @@ tumorquantai_immunoscore/
 
 | File | Use it for | Important boundary |
 | --- | --- | --- |
-| `tumorquantai_immunoscore_values.csv` | One clear row per anonymous case and all four density values | Internal percentiles are blank for review/failed/incomplete cases |
+| `tumorquantai_immunoscore_values.csv` | One row per anonymous case, four densities, internal percentiles, pI0-pI4, and explicit consensus-unavailable fields | Review cases are scored against—but never included in—the automatic-pass reference |
 | `cohort_density_summary.csv` | Mean, sample SD, median, quartiles, and range for each density under pass-only and all-numeric populations | Population and `n` are explicit; review cases never silently enter pass-only statistics |
 | `case_compartment_densities.csv` | Counts, areas, densities, mapping fraction, MPP, and QC in long format | A technically completed row can still require review |
 | `registration_qc.csv` | Transform method, feature matches, inliers, tissue Dice, and affine matrix | Automated Dice does not replace visual review |
+| `paper_figure_manifest.csv` | Every 300-dpi case/slide PNG, PDF, legend, and layout version | Overview-scale figures do not prove cell-level segmentation accuracy |
+| `pathologist_review_template.csv` | Blank accept/flag/exclude adjudication fields beside immutable algorithm outputs | Exported review must retain reviewer code and timestamp; it never overwrites predictions |
 | `unavailable_cases.csv` | Missing-marker and failed-case audit | Missing is never encoded as biological zero |
 
 ## Zenodo privacy boundary
