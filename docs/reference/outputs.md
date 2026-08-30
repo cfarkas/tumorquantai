@@ -184,6 +184,12 @@ IHC schema v2 adds `dab_color_model`, unconstrained DAB counts/percentages and
 H-score, and `unconstrained_mean_dab_od` in optional cell tables. See the
 [IHC v1-to-v2 migration note](ihc-v2-migration.md).
 
+The private identity resolution happens before comparison. Neither the direct
+release-to-workbook mapping nor its source identifiers are copied into an IHC
+result or agreement report. See
+[breast-IHC case linkage and privacy](breast-ihc-case-linkage.md) for the
+complete chain and access classification.
+
 `tumorquantai ihc compare` adds a controlled agreement directory:
 
 ```text

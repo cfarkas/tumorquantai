@@ -196,7 +196,10 @@ CSV remains pseudonymized health data and must stay under controlled access.
 `concordance_metrics.csv` contains the complete aggregate kappa, error,
 correlation, concordance, category-margin, and specific-agreement report.
 
-See the [complete marker-quantification tutorial](../tutorials/breast-ihc-patches.md).
+See the [case-linkage and privacy reference](breast-ihc-case-linkage.md) for
+the exact identity chain, fail-closed behavior, controlled audit CSV, and
+reference-cohort counts. Then follow the
+[complete marker-quantification tutorial](../tutorials/breast-ihc-patches.md).
 
 ### Optional HistoPLUS raw TIFF cell typing
 

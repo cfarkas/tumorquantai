@@ -257,6 +257,9 @@ breast-ihc-results/
 
 This step is optional and private. The public deposit deliberately excludes
 the mapping between source biopsy identifiers and public case aliases.
+See [case linkage and privacy](../reference/breast-ihc-case-linkage.md) for the
+complete identity chain, reference-cohort audit, and file-by-file publication
+boundary.
 
 ### Create the minimum English CSV
 
@@ -291,9 +294,11 @@ Then add:
 ```
 
 The package requires a one-to-one crosswalk and records only its checksum and
-row count in provenance. For the reference run, 48 identifiers matched
-exactly and three independently reviewed identifiers differed by one
-character; no marker measurement participated in linkage.
+row count in provenance. The controlled reference audit found 48 exact
+identifier pairs and three unique one-character discrepancies. TumorQuantAI
+does not perform fuzzy matching: a custodian must review those discrepancies
+and record them as explicit crosswalk rows. No marker measurement participated
+in linkage.
 
 The resulting CSV has exactly six English fields:
 
@@ -314,6 +319,12 @@ laterality, specimen type, and grade are excluded.
     the CSV, workbook, linkage, crosswalk, and paired output outside Git and
     under controlled access. Only aggregate, non-case-level statistics belong
     in a public repository.
+
+The custodian's separate direct-ID audit CSV contains
+`case_alias,release_case_id,pathologist_biopsy_id,identifier_match_method,normalized_hamming_distance`.
+It explains every case association but must remain mode-`0600` and controlled;
+it is never a report or GitHub artifact. See the
+[complete linkage record](../reference/breast-ihc-case-linkage.md).
 
 ### Calculate agreement
 
@@ -362,6 +373,9 @@ without the contingency matrix and raw agreement.
 The complete public cohort was processed with the default
 `hdab-color-checked-watershed-membrane-proxy-v2` engine, all decoded-pixel
 checks enabled, 12 workers, and compressed cell output.
+
+This v2 analysis is the authoritative retained reference run. Superseded
+intermediate runs are not sources for the tables below.
 
 <div class="tqa-run-strip">
   <span><strong>1,516</strong> IHC patches completed</span>

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Documented the complete breast-IHC identity chain, the 51-case linkage audit,
+  explicit-crosswalk rule, controlled mapping CSV, privacy boundary, and
+  authoritative retained v2 run without publishing direct identifiers.
 - Added the versioned IHC v2 expected-brown optical-density cone, preventing
   magenta and near-neutral gray pixels from being silently counted as DAB.
   Nuclear-marker CSVs preserve the unconstrained HED percentages and H-scores

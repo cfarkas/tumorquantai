@@ -130,6 +130,9 @@ The HMAC-derived aliases appear in the public draft. Original identifiers,
 source paths, and the alias mapping appear only in the separately created
 mode-`0600` private linkage. `validation_report.json` records that the result
 is draft-only and that no network, upload, or publication action occurred.
+The [case-linkage and privacy reference](../reference/breast-ihc-case-linkage.md)
+explains how that protected release mapping is later used without publishing
+direct identifiers.
 
 The sanitized tree is an input to local packaging, not an upload payload. Do
 not upload or publish it; the sanitizer cannot perform either action.

@@ -76,6 +76,7 @@ nav:
       - Provenance Fields: reference/provenance.md
       - Version 1 Compatibility: reference/compatibility.md
       - IHC v1-to-v2 Migration: reference/ihc-v2-migration.md
+      - Breast IHC Case Linkage and Privacy: reference/breast-ihc-case-linkage.md
   - Help and About:
       - Troubleshooting: troubleshooting/index.md
       - Citation and Research Use: citation_research_use.md

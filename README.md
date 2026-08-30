@@ -148,6 +148,9 @@ kappa workflow through <code>tumorquantai ihc anonymize-clinical</code> and
 <code>concordance_metrics.csv</code> with the complete aggregate metrics, and
 wide and long paired case CSVs. Those case-level outputs are pseudonymized
 health data, not irreversibly anonymous data.
+The [case-linkage and privacy reference](docs/reference/breast-ihc-case-linkage.md)
+documents exactly how source `case_id`, workbook `Biopsia`, and public aliases
+relate, including the 51-case audit and the files that must never enter Git.
 
 For optional HistoPLUS cell typing, the established patch route accepts
 authorized local raw TIFFs, processes every discovered patch without
