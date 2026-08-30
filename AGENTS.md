@@ -9,6 +9,10 @@ not clinically validated.
 
 - Main command-line interface: `./tumorquantai doctor|demo|inspect|run|status|report`
 - Full raw-TIFF patch route: `./tumorquantai --patches PATH --paper-figures --output DIR`
+- IHC routes: `./tumorquantai ihc quantify|anonymize-clinical|compare|immunoscore`
+- Exact colon compatibility flag: `./tumorquantai --inmunoscore INPUT`
+- IHC scientific implementations: `tumorquantai_cli/ihc.py` and
+  `tumorquantai_cli/immunoscore.py`
 - Public one-slide path: `./tumorquantai quickstart --output MOUNTED_PATH`
 - Compatible expert interfaces: `./run.sh` and `nextflow run .`
 - Scientific worker: `lazyslide_histoplus_wsi_celltype.py`
@@ -33,6 +37,23 @@ silently change the biological/image-analysis engine.
 - Keep output names and schemas backward compatible unless a migration and
   regression tests accompany a change.
 - Preserve `run.sh`, direct Nextflow, worker overrides, and existing automation.
+- Verify public breast-IHC TIFFs through the manifest's domain-separated decoded
+  RGB hash and preserve per-image physical scale.
+- Treat ER/PR/Ki-67 nuclear measurements and the HER2 membrane proxy as research
+  pre-scores, never clinical assay results. The public patches have no verified
+  invasive-tumour ROI or validated tumour-cell classifier.
+- Join clinical values only through the exact private alias linkage. Never infer
+  identity from marker values, and never commit the linkage, workbook, or
+  pseudonymized patient rows.
+- Keep kappa scales, thresholds, contingency tables, and paired denominators
+  explicit; a failed or unavailable marker is not a negative result.
+- Treat CK20-guided CD3/CD8 epithelial/stromal densities and within-cohort
+  ranks as research proxies. Never emit a consensus Immunoscore without
+  pathologist-validated tumour-core/invasive-margin regions and the validated
+  external reference distribution.
+- Keep the colon private source IDs, HMAC secret, exact linkage, sanitized
+  private mapping, visual-review log, Zenodo token, and draft state outside Git
+  and outside public result packages.
 
 ## Security, privacy, and storage
 
@@ -86,6 +107,11 @@ MPP `0.261780`. The separate raw breast-IHC patch dataset is Zenodo record
 `21797920`, DOI `10.5281/zenodo.21797920`. Verify these identities against
 their public records before changing them. Never assign either dataset DOI to
 the software or invent performance, clinical-validation, or biological claims.
+
+Colon-IHC release tooling creates only a new restricted, unpublished Zenodo
+draft. It must preserve all DSI0 pixel bytes, neutralize non-pixel MDS streams,
+pass private-marker scans and independent visible-pixel review, and must never
+reuse an existing deposit state or offer a publication action.
 
 This repository is licensed under MIT as recorded in `LICENSE` and
 `docs/maintainers/LICENSE_DECISION.md`. Do not apply the repository license to

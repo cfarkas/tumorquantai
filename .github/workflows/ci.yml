@@ -27,6 +27,7 @@ jobs:
           python -m pip install
           'pandas>=2.2,<3' 'matplotlib>=3.8,<4' 'numpy>=1.26,<3'
           'tifffile>=2024.1' 'pillow>=10,<12' 'scipy>=1.15,<2'
+          'opencv-python-headless>=4.10,<5' 'scikit-image>=0.24,<1'
           'scikit-learn>=1.6,<2' 'openpyxl>=3.1,<4' 'PyYAML>=6,<7' 'requests>=2.32,<3'
           'olefile>=0.47,<1' 'pytest>=8,<9' 'jsonschema>=4,<5'
 
@@ -67,7 +68,7 @@ jobs:
       - name: CLI, documentation, and repository hygiene
         run: |
           ./tumorquantai --help >/dev/null
-          for command in doctor demo inspect run status report quickstart; do
+          for command in doctor demo inspect run status report quickstart ihc; do
             ./tumorquantai "$command" --help >/dev/null
           done
           python scripts/check_docs_language.py

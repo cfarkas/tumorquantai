@@ -137,6 +137,115 @@
   margin-top: 0.65rem;
 }
 
+.tqa-ihc-banner {
+  background:
+    radial-gradient(circle at 92% 14%, rgb(20 184 166 / 34%), transparent 26%),
+    linear-gradient(128deg, #0f172a 0%, #172554 62%, #155e75 100%);
+  border: 1px solid rgb(94 234 212 / 32%);
+  border-radius: 1rem;
+  box-shadow: 0 1rem 2.8rem rgb(15 23 42 / 22%);
+  color: #f8fafc;
+  margin: 0 0 1.4rem;
+  overflow: hidden;
+  padding: clamp(1.5rem, 5vw, 3.2rem);
+}
+
+.tqa-ihc-banner h2 {
+  border: 0;
+  color: #fff;
+  font-size: clamp(1.65rem, 4vw, 2.65rem);
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+  margin: 0.45rem 0 0.85rem;
+  max-width: 48rem;
+  padding: 0;
+}
+
+.tqa-ihc-banner p {
+  color: #dbeafe;
+  font-size: 1.03rem;
+  max-width: 48rem;
+}
+
+.tqa-kicker {
+  color: #99f6e4;
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.md-typeset .tqa-button {
+  background: #f8fafc;
+  border: 1px solid #f8fafc;
+  border-radius: 0.45rem;
+  color: #172554;
+  display: inline-block;
+  font-weight: 750;
+  margin: 0.55rem 0.45rem 0 0;
+  padding: 0.62rem 0.9rem;
+  text-decoration: none;
+}
+
+.md-typeset .tqa-button:hover {
+  background: #ccfbf1;
+  color: #0f172a;
+}
+
+.md-typeset .tqa-button-secondary {
+  background: transparent;
+  border-color: rgb(255 255 255 / 48%);
+  color: #fff;
+}
+
+.tqa-metric-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 1rem 0 1.6rem;
+}
+
+.tqa-metric {
+  background: var(--tqa-card);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.65rem;
+  padding: 0.9rem 1rem;
+}
+
+.tqa-metric strong {
+  color: var(--tqa-navy);
+  display: block;
+  font-size: 1.65rem;
+  line-height: 1.1;
+}
+
+.tqa-metric span {
+  color: var(--md-default-fg-color--light);
+  font-size: 0.76rem;
+  font-weight: 650;
+}
+
+[data-md-color-scheme="slate"] .tqa-metric strong {
+  color: #99f6e4;
+}
+
+.tqa-run-strip {
+  background: linear-gradient(110deg, #172554, #0f766e);
+  border-radius: 0.7rem;
+  color: #e2e8f0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.3rem;
+  justify-content: space-between;
+  margin: 1rem 0 1.5rem;
+  padding: 0.85rem 1rem;
+}
+
+.tqa-run-strip strong {
+  color: #fff;
+}
+
 .md-typeset img[src*="assets/tutorial/"] {
   background: #0f172a;
   border: 1px solid rgb(148 163 184 / 35%);
@@ -159,12 +268,18 @@
 }
 
 @media screen and (max-width: 52rem) {
-  .tqa-summary-grid {
+  .tqa-summary-grid,
+  .tqa-metric-grid {
     grid-template-columns: 1fr;
   }
 
   .tqa-summary-card {
     min-height: 0;
+  }
+
+  .tqa-run-strip {
+    display: grid;
+    justify-content: stretch;
   }
 
   .md-typeset table:not([class]) {

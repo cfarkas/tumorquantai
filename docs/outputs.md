@@ -199,6 +199,46 @@ scores, receptor-status calls, tumor classification, or proof of cell-level
 co-expression across separately stained patches. The layout reference is
 visual only and imports no external scientific or performance claim.
 
+## Colon CD3/CD8/CK20 whole-slide outputs
+
+The package-native `--inmunoscore` route has a separate result contract from
+the HistoPLUS files above. Start with:
+
+```text
+<colon-result>/START_HERE.html
+<colon-result>/tables/tumorquantai_immunoscore_values.csv
+<colon-result>/tables/cohort_density_summary.csv
+<colon-result>/tables/case_compartment_densities.csv
+<colon-result>/tables/registration_qc.csv
+<colon-result>/tables/paper_figure_manifest.csv
+<colon-result>/PATHOLOGIST_REVIEW.html
+```
+
+The first CSV reports the four headline CD3/CD8 cells/mm² values in CK20
+epithelial and stromal proxy compartments. The long CSV preserves numerator,
+analysed-area denominator, actual MPP, mapped-positive fraction, and QC. Open
+every `cases/<case_alias>/registration_qc.png` before interpreting either.
+Missing marker sets and failures remain blank/unavailable, never zero.
+
+Numerically available cases also receive a clearly named provisional pI0-pI4
+analogue based on the mean of four percentiles against the automatic-QC-pass
+cases in that run. It is a review-prioritization output, not consensus
+Immunoscore. Each complete case has a 300-dpi case sheet and one review sheet
+per CK20/CD3/CD8 WSI under `paper_figures/`; PNG, PDF, and external legends are
+enumerated in the manifest.
+
+`PATHOLOGIST_REVIEW.html` is an offline dashboard that preserves the algorithm
+values and lets a reviewer export `accept`, `flag`, or `exclude`, structured
+reasons, notes, reviewer code, and timestamp to CSV. The blank template and
+codebook are also under `tables/`. Expert decisions never overwrite the
+original prediction or automatic QC.
+
+These measurements are a CK20-guided research proxy. The output deliberately
+leaves the consensus Immunoscore blank because no pathologist-validated tumour
+core/invasive margin or validated external reference distribution is present.
+See the [full colon workflow](tutorials/colon-ihc-wsi-immunoscore.md) and
+[exact output schema](reference/colon-ihc-immunoscore.md).
+
 ## Completed zero versus failure
 
 A class count of zero is meaningful only when the slide completed and the class was absent from the processed tiles.

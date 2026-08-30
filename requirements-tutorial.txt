@@ -1,4 +1,4 @@
-# Lightweight host dependencies for public MDS download/conversion/inspection.
+# Host dependencies for download/conversion/inspection and IHC quantification.
 requests>=2.32,<3
 PyYAML>=6,<7
 numpy>=1.26,<3
@@ -6,3 +6,7 @@ olefile>=0.47,<1
 Pillow>=10,<13
 tifffile>=2024.12,<2027
 imagecodecs>=2024.12,<2027
+opencv-python-headless>=4.10,<5
+scipy>=1.12,<2
+scikit-image>=0.24,<1
+openpyxl>=3.1,<4

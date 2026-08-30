@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 470" role="img" aria-labelledby="title desc">
+  <title id="title">TumorQuantAI breast immunohistochemistry workflow</title>
+  <desc id="desc">Five steps show verified public case archives, direct ZIP reading, H-DAB segmentation for four markers, visual quality control and CSV review, and an optional private pathologist concordance analysis.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="0.58" stop-color="#172554"/>
+      <stop offset="1" stop-color="#155e75"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="9" stdDeviation="10" flood-color="#020617" flood-opacity="0.34"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#5eead4"/>
+    </marker>
+  </defs>
+  <rect width="1440" height="470" rx="28" fill="url(#background)"/>
+  <text x="65" y="68" fill="#f8fafc" font-family="system-ui, sans-serif" font-size="39" font-weight="760">Breast IHC · one auditable package workflow</text>
+  <text x="67" y="108" fill="#bae6fd" font-family="system-ui, sans-serif" font-size="20">ER, PR, HER2, and Ki-67 move from verified public TIFF archives to visual QC and explicit concordance metrics.</text>
+
+  <g font-family="system-ui, sans-serif" text-anchor="middle">
+    <g transform="translate(55 155)" filter="url(#shadow)">
+      <rect width="210" height="205" rx="18" fill="#f8fafc"/>
+      <path d="M105 30v55M81 65l24 24 24-24" fill="none" stroke="#0f766e" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="105" cy="104" r="25" fill="#dcfce7" stroke="#16a34a" stroke-width="4"/>
+      <path d="M92 104l9 9 18-22" fill="none" stroke="#16a34a" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="105" y="160" fill="#0f172a" font-size="19" font-weight="720">1 · download + verify</text>
+      <text x="105" y="184" fill="#475569" font-size="13">55 Zenodo files</text>
+    </g>
+    <path d="M278 258H301" stroke="#5eead4" stroke-width="7" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+    <g transform="translate(315 155)" filter="url(#shadow)">
+      <rect width="210" height="205" rx="18" fill="#f8fafc"/>
+      <rect x="50" y="35" width="88" height="76" rx="8" fill="#dbeafe" stroke="#1d4ed8" stroke-width="4"/>
+      <rect x="72" y="54" width="88" height="76" rx="8" fill="#e0f2fe" stroke="#0284c7" stroke-width="4"/>
+      <path d="M84 101c18-33 33 19 60-16" fill="none" stroke="#db2777" stroke-width="7" stroke-linecap="round"/>
+      <text x="105" y="160" fill="#0f172a" font-size="19" font-weight="720">2 · read case ZIPs</text>
+      <text x="105" y="184" fill="#475569" font-size="13">no 70 GiB extraction copy</text>
+    </g>
+    <path d="M538 258H561" stroke="#5eead4" stroke-width="7" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+    <g transform="translate(575 155)" filter="url(#shadow)">
+      <rect width="210" height="205" rx="18" fill="#f8fafc"/>
+      <g stroke="#fff" stroke-width="3">
+        <circle cx="70" cy="66" r="19" fill="#8b5cf6"/>
+        <circle cx="112" cy="51" r="16" fill="#a16207"/>
+        <circle cx="145" cy="82" r="22" fill="#d97706"/>
+        <circle cx="92" cy="105" r="21" fill="#7c3aed"/>
+        <circle cx="137" cy="119" r="15" fill="#92400e"/>
+      </g>
+      <text x="105" y="160" fill="#0f172a" font-size="19" font-weight="720">3 · segment H–DAB</text>
+      <text x="105" y="184" fill="#475569" font-size="13">ER · PR · HER2 · Ki-67</text>
+    </g>
+    <path d="M798 258H821" stroke="#5eead4" stroke-width="7" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+    <g transform="translate(835 155)" filter="url(#shadow)">
+      <rect width="210" height="205" rx="18" fill="#f8fafc"/>
+      <rect x="52" y="31" width="106" height="105" rx="9" fill="#ecfeff" stroke="#0f766e" stroke-width="4"/>
+      <path d="M70 58h69M70 77h50M70 96h69" stroke="#0f766e" stroke-width="7" stroke-linecap="round"/>
+      <circle cx="137" cy="117" r="20" fill="#dcfce7" stroke="#16a34a" stroke-width="4"/>
+      <path d="M127 117l7 7 13-16" fill="none" stroke="#16a34a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="105" y="160" fill="#0f172a" font-size="19" font-weight="720">4 · review QC + CSV</text>
+      <text x="105" y="184" fill="#475569" font-size="13">overlays, values, denominators</text>
+    </g>
+    <path d="M1058 258H1081" stroke="#5eead4" stroke-width="7" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+    <g transform="translate(1095 155)" filter="url(#shadow)">
+      <rect width="290" height="205" rx="18" fill="#f8fafc"/>
+      <circle cx="76" cy="78" r="39" fill="#fef3c7" stroke="#d97706" stroke-width="5"/>
+      <text x="76" y="91" fill="#92400e" font-size="47" font-family="Georgia, serif" font-weight="700">κ</text>
+      <path d="M134 49h112M134 72h86M134 95h101M134 118h69" stroke="#1e3a8a" stroke-width="7" stroke-linecap="round"/>
+      <text x="145" y="160" fill="#0f172a" font-size="19" font-weight="720">5 · compare privately</text>
+      <text x="145" y="184" fill="#475569" font-size="13">kappa + full concordance</text>
+    </g>
+  </g>
+
+  <g transform="translate(180 397)">
+    <rect width="1080" height="48" rx="24" fill="#0b2537" stroke="#5eead4" stroke-width="2"/>
+    <text x="540" y="31" text-anchor="middle" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="17">Public: images + aggregate statistics · Controlled: linkage + pathologist rows + paired case values · Research use only</text>
+  </g>
+</svg>

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Documented the complete breast-IHC identity chain, the 51-case linkage audit,
+  explicit-crosswalk rule, controlled mapping CSV, privacy boundary, and
+  authoritative retained v2 run without publishing direct identifiers.
+- Added the versioned IHC v2 expected-brown optical-density cone, preventing
+  magenta and near-neutral gray pixels from being silently counted as DAB.
+  Nuclear-marker CSVs preserve the unconstrained HED percentages and H-scores
+  as audit fields, while `--unconstrained-dab-color` explicitly reproduces the
+  earlier measurement in a new analysis signature.
 - Redesigned the per-patch HistoPLUS paper figure with a compact layout inspired
   by [STTT 2026 Figure
   6](https://www.nature.com/articles/s41392-026-02734-0#Fig6) and [Figure

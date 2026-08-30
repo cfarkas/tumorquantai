@@ -5,8 +5,10 @@ import hashlib
 import importlib.util
 import json
 import os
+import signal
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -61,9 +63,7 @@ def manifests(tmp_path: Path) -> tuple[Path, Path, Path]:
                 "pixel_stream_count": "10",
                 "pixel_sample_sha256": "a" * 64,
                 "pixel_full_sha256": "b" * 64,
-                "sanitization_profile": (
-                    "pixel-preserving-nonpixel-redaction-v2"
-                ),
+                "sanitization_profile": ("pixel-preserving-nonpixel-redaction-v2"),
             }
         )
     private = tmp_path / "private.csv"
@@ -134,9 +134,7 @@ def metadata_file(tmp_path: Path) -> Path:
     return path
 
 
-def test_collect_mds_uploads(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_collect_mds_uploads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     public, private, slide = manifests(tmp_path)
     allow_one_slide(monkeypatch, slide)
     uploads = module.collect_mds_uploads(public, private)
@@ -144,6 +142,10 @@ def test_collect_mds_uploads(
     by_kind = {upload.kind: upload for upload in uploads}
     assert by_kind["sanitized-mds"].local_path == slide.resolve()
     assert by_kind["public-manifest"].local_path == public.resolve()
+    assert [upload.kind for upload in uploads] == [
+        "public-manifest",
+        "sanitized-mds",
+    ]
 
 
 def test_collect_rejects_incomplete_privacy_review(tmp_path: Path) -> None:
@@ -185,16 +187,81 @@ def test_parser_has_no_publish_option() -> None:
     options = {action.dest for action in module.build_parser()._actions}
     assert "publish" not in options
     assert "authorization" not in options
+    assert "adopt_expanded_release" in options
 
 
 def test_progress_reader_preserves_bytes(tmp_path: Path) -> None:
     path = tmp_path / "payload"
     path.write_bytes(b"123456")
+    progress_events: list[int] = []
+    completion_events: list[int] = []
     with path.open("rb") as handle:
-        reader = module.ProgressReader(handle, "safe.mds", 6)
+        reader = module.ProgressReader(
+            handle,
+            "safe.mds",
+            6,
+            on_progress=lambda: progress_events.append(handle.tell()),
+            on_complete=lambda: completion_events.append(handle.tell()),
+        )
         assert len(reader) == 6
         assert reader.read(2) == b"12"
+        assert reader.seek(2) == 2
         assert reader.read() == b"3456"
+    assert progress_events == [2, 2]
+    assert completion_events == [6]
+
+
+def test_upload_has_a_bounded_no_progress_timeout(tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    class CaptureClient(module.ProgressZenodoClient):
+        def __init__(self) -> None:
+            pass
+
+        def request(self, method: str, url: str, **kwargs):
+            captured.update({"method": method, "url": url, **kwargs})
+            return object()
+
+        def json_response(self, _response, _description: str) -> dict[str, object]:
+            return {}
+
+    path = tmp_path / "slide.mds"
+    path.write_bytes(b"payload")
+    upload = module.base.UploadFile(path, path.name, 7, "0" * 64, "0" * 32, "test")
+    CaptureClient().upload_file("https://zenodo.org/api/files/test", upload)
+    assert captured["timeout"] == (
+        15.0,
+        float(module.UPLOAD_SOCKET_TIMEOUT_SECONDS),
+    )
+    assert module.UPLOAD_STALL_TIMEOUT_SECONDS == 60
+    assert module.UPLOAD_MIN_PROGRESS_BYTES_PER_WINDOW == 8 * 1024 * 1024
+    assert module.UPLOAD_SOCKET_TIMEOUT_SECONDS == 300
+
+
+@pytest.mark.skipif(
+    not hasattr(signal, "SIGALRM") or not hasattr(signal, "ITIMER_REAL"),
+    reason="POSIX progress watchdog",
+)
+def test_main_thread_watchdog_interrupts_a_stalled_upload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class StalledClient(module.ProgressZenodoClient):
+        def __init__(self) -> None:
+            pass
+
+        def request(self, *_args, **_kwargs):
+            time.sleep(2)
+            raise AssertionError("Progress watchdog did not interrupt the request")
+
+    path = tmp_path / "slide.mds"
+    path.write_bytes(b"payload")
+    upload = module.base.UploadFile(path, path.name, 7, "0" * 64, "0" * 32, "test")
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    monkeypatch.setattr(module, "UPLOAD_STALL_TIMEOUT_SECONDS", 1)
+    with pytest.raises(module.requests.Timeout, match="below minimum"):
+        StalledClient().upload_file("https://zenodo.org/api/files/test", upload)
+    assert signal.getsignal(signal.SIGALRM) == previous_handler
+    assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
 
 
 def test_restricted_metadata_allows_blank_license(tmp_path: Path) -> None:
@@ -289,6 +356,40 @@ def test_deposit_draft_chain_is_verified(
     assert len(stored["uploaded"]) == 2
 
 
+def test_sequential_uploads_use_fresh_clients(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FreshClient(FakeZenodoClient):
+        instances: list["FreshClient"] = []
+        upload_client_ids: set[int] = set()
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            type(self).instances.append(self)
+
+        def upload_file(
+            self, bucket_url: str, upload: module.base.UploadFile
+        ) -> dict[str, object]:
+            type(self).upload_client_ids.add(id(self))
+            return super().upload_file(bucket_url, upload)
+
+    public, private, slide = manifests(tmp_path)
+    allow_one_slide(monkeypatch, slide)
+    monkeypatch.setattr(module, "ProgressZenodoClient", FreshClient)
+    token = tmp_path / "token"
+    token.write_text("secret", encoding="utf-8")
+    os.chmod(token, 0o600)
+    module.deposit_mds(
+        public_manifest=public,
+        private_mapping=private,
+        metadata_file=metadata_file(tmp_path),
+        state_file=tmp_path / "state.json",
+        token_file=token,
+    )
+    assert len(FreshClient.instances) == 3
+    assert len(FreshClient.upload_client_ids) == 2
+    assert id(FreshClient.instances[0]) not in FreshClient.upload_client_ids
+
+
 def test_parallel_deposit_uses_bounded_workers_and_records_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -309,9 +410,7 @@ def test_parallel_deposit_uses_bounded_workers_and_records_state(
 
     public, private, slide = manifests(tmp_path)
     allow_one_slide(monkeypatch, slide)
-    monkeypatch.setattr(
-        module, "ProgressZenodoClient", ParallelFakeZenodoClient
-    )
+    monkeypatch.setattr(module, "ProgressZenodoClient", ParallelFakeZenodoClient)
     token = tmp_path / "token"
     token.write_text("secret", encoding="utf-8")
     os.chmod(token, 0o600)
@@ -329,9 +428,7 @@ def test_parallel_deposit_uses_bounded_workers_and_records_state(
     assert len(ParallelFakeZenodoClient.worker_threads) == 2
     stored = json.loads(state.read_text(encoding="utf-8"))
     assert len(stored["uploaded"]) == 2
-    assert {
-        item["status"] for item in stored["uploaded"].values()
-    } == {"uploaded"}
+    assert {item["status"] for item in stored["uploaded"].values()} == {"uploaded"}
 
 
 def test_parallel_failure_records_success_and_resumes(
@@ -388,16 +485,12 @@ def test_replacement_waits_until_all_local_files_are_verified(
         def delete_file(self, url: str) -> None:
             type(self).delete_calls += 1
             type(self).files = [
-                item
-                for item in type(self).files
-                if item["links"]["self"] != url
+                item for item in type(self).files if item["links"]["self"] != url
             ]
 
     public, private, slide = manifests(tmp_path)
     allow_one_slide(monkeypatch, slide)
-    monkeypatch.setattr(
-        module, "ProgressZenodoClient", ReplacementFakeZenodoClient
-    )
+    monkeypatch.setattr(module, "ProgressZenodoClient", ReplacementFakeZenodoClient)
     token = tmp_path / "token"
     token.write_text("secret", encoding="utf-8")
     os.chmod(token, 0o600)
@@ -432,13 +525,114 @@ def test_replacement_waits_until_all_local_files_are_verified(
         real_verify_local(upload)
 
     monkeypatch.setattr(module.base, "verify_local", fail_second_verification)
-    with pytest.raises(
-        module.base.DepositError, match="later local validation failed"
-    ):
+    with pytest.raises(module.base.DepositError, match="later local validation failed"):
         module.deposit_mds(**kwargs, replace_mismatched=True)
 
     assert ReplacementFakeZenodoClient.delete_calls == 0
     assert ReplacementFakeZenodoClient.files == [manifest]
+
+
+def test_expanded_release_adoption_is_explicit_and_keeps_mds_immutable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class AdoptionFakeZenodoClient(FakeZenodoClient):
+        deleted_names: list[str] = []
+
+        def create_draft(self) -> dict[str, object]:
+            type(self).deleted_names = []
+            return super().create_draft()
+
+        def delete_file(self, url: str) -> None:
+            matches = [
+                item for item in type(self).files if item["links"]["self"] == url
+            ]
+            assert len(matches) == 1
+            type(self).deleted_names.append(str(matches[0]["filename"]))
+            type(self).files = [
+                item for item in type(self).files if item["links"]["self"] != url
+            ]
+
+    public, private, slide = manifests(tmp_path)
+    allow_one_slide(monkeypatch, slide)
+    monkeypatch.setattr(module, "ProgressZenodoClient", AdoptionFakeZenodoClient)
+    token = tmp_path / "token"
+    token.write_text("secret", encoding="utf-8")
+    os.chmod(token, 0o600)
+    state = tmp_path / "state.json"
+    first_extra = tmp_path / "review.csv"
+    first_extra.write_text("case,decision\n", encoding="utf-8")
+    kwargs = {
+        "public_manifest": public,
+        "private_mapping": private,
+        "metadata_file": metadata_file(tmp_path),
+        "state_file": state,
+        "token_file": token,
+    }
+    module.deposit_mds(**kwargs, extra_files=[str(first_extra)])
+    old_fingerprint = json.loads(state.read_text(encoding="utf-8"))[
+        "release_fingerprint_sha256"
+    ]
+
+    original_manifest = public.read_bytes()
+    public.write_bytes(original_manifest + b"\n")
+    with pytest.raises(
+        module.base.DepositError, match="unchanged checkpointed MDS manifest"
+    ):
+        module.deposit_mds(
+            **kwargs,
+            extra_files=[str(first_extra)],
+            adopt_expanded_release=True,
+            replace_mismatched=True,
+        )
+    public.write_bytes(original_manifest)
+
+    first_extra.write_text("case,decision\nTQA_TEST,accept\n", encoding="utf-8")
+    second_extra = tmp_path / "figures.zip"
+    second_extra.write_bytes(b"reviewed figures")
+    expanded = [str(first_extra), str(second_extra)]
+    with pytest.raises(module.base.DepositError, match="expanded-release adoption"):
+        module.deposit_mds(**kwargs, extra_files=expanded)
+    with pytest.raises(module.base.DepositError, match="requires --replace-mismatched"):
+        module.deposit_mds(
+            **kwargs,
+            extra_files=expanded,
+            adopt_expanded_release=True,
+        )
+
+    result = module.deposit_mds(
+        **kwargs,
+        extra_files=expanded,
+        adopt_expanded_release=True,
+        replace_mismatched=True,
+    )
+    assert result["status"] == "restricted-unpublished-draft"
+    stored = json.loads(state.read_text(encoding="utf-8"))
+    assert stored["release_fingerprint_sha256"] != old_fingerprint
+    assert stored["release_adoptions"] == [
+        {
+            "from_release_fingerprint_sha256": old_fingerprint,
+            "to_release_fingerprint_sha256": stored["release_fingerprint_sha256"],
+            "mode": "expanded-public-artifacts-mds-immutable",
+        }
+    ]
+    assert first_extra.name in AdoptionFakeZenodoClient.deleted_names
+    assert module.DEFAULT_MANIFEST_NAME not in AdoptionFakeZenodoClient.deleted_names
+    assert slide.name not in AdoptionFakeZenodoClient.deleted_names
+    assert {item["filename"] for item in AdoptionFakeZenodoClient.files} == {
+        slide.name,
+        module.DEFAULT_MANIFEST_NAME,
+        first_extra.name,
+        second_extra.name,
+    }
+
+    mds_remote = next(
+        item
+        for item in AdoptionFakeZenodoClient.files
+        if item["filename"] == slide.name
+    )
+    mds_remote["checksum"] = "md5:" + "0" * 32
+    with pytest.raises(module.base.DepositError, match="Refusing to replace"):
+        module.deposit_mds(**kwargs, extra_files=expanded, replace_mismatched=True)
 
 
 @pytest.mark.parametrize("workers", [0, module.MAX_UPLOAD_WORKERS + 1])
@@ -467,6 +661,7 @@ def test_draft_metadata_requires_restricted_conditions() -> None:
     }
     with pytest.raises(module.base.DepositError, match="access conditions"):
         module.validate_draft_metadata(payload, payload["metadata"])
+
 
 @pytest.mark.parametrize(
     "field,replacement",
@@ -517,9 +712,7 @@ def test_draft_metadata_accepts_current_zenodo_normalization(
     expected["description"] = "H&E tutorial dataset"
     actual = dict(expected)
     actual["description"] = "H&amp;E tutorial dataset"
-    actual["creators"] = [
-        {"name": "Doe, Jane", "affiliation": None}
-    ]
+    actual["creators"] = [{"name": "Doe, Jane", "affiliation": None}]
     actual["access_conditions"] = None
     payload = {
         "submitted": False,
@@ -549,9 +742,7 @@ def test_draft_metadata_rejects_creator_change_after_normalization(
 ) -> None:
     expected = module.restricted_metadata_from_file(metadata_file(tmp_path))
     actual = dict(expected)
-    actual["creators"] = [
-        {"name": "Other, Person", "affiliation": None}
-    ]
+    actual["creators"] = [{"name": "Other, Person", "affiliation": None}]
     payload = {
         "submitted": False,
         "state": "unsubmitted",

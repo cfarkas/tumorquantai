@@ -151,6 +151,161 @@ rosters (74,958,557,152 bytes total). Paper and QC figures are local workflow
 outputs and are not part of the deposit. This DOI identifies the
 breast-IHC dataset, not the TumorQuantAI software or the lymphoma dataset.
 
+## Package-native breast IHC outputs
+
+`tumorquantai ihc quantify` creates a self-contained research result:
+
+```text
+<ihc-result>/
+├── START_HERE.html
+├── case_reports/<case_alias>.html
+├── tables/
+│   ├── tumorquantai_marker_values.csv
+│   ├── case_marker_measurements.csv
+│   ├── patch_measurements.csv
+│   └── unavailable_patches.csv
+├── patches/<case_alias>/<patch_alias>/
+│   ├── measurement.json
+│   ├── qc_overlay.png
+│   └── cell_measurements.csv.gz
+└── workflow_metadata/ihc_run.json
+```
+
+`tumorquantai_marker_values.csv` is the clearest case-level export: one row per
+public alias with color-checked ER, PR, and Ki-67 percentages, applicable
+H-scores, the HER2 membrane-proxy pre-score, segmented-object counts, and QC
+status. Each nuclear marker also has an
+`unconstrained_dab_percent` audit column that exposes what the inverse HED
+matrix would have reported before the expected-brown color check. It is not a
+second prediction. A missing marker is blank with `unavailable` QC status, not
+zero.
+
+IHC schema v2 adds `dab_color_model`, unconstrained DAB counts/percentages and
+H-score, and `unconstrained_mean_dab_od` in optional cell tables. See the
+[IHC v1-to-v2 migration note](ihc-v2-migration.md).
+
+The private identity resolution happens before comparison. Neither the direct
+release-to-workbook mapping nor its source identifiers are copied into an IHC
+result or agreement report. See
+[breast-IHC case linkage and privacy](breast-ihc-case-linkage.md) for the
+complete chain and access classification.
+
+`tumorquantai ihc compare` adds a controlled agreement directory:
+
+```text
+<agreement>/
+├── AGREEMENT_REPORT.html
+├── concordance_metrics.csv
+├── dab_color_check_impact.csv
+├── kappa_summary.csv
+├── contingency_tables.json
+├── case_concordance_values_pseudonymized.csv
+├── case_comparison_pseudonymized.csv
+└── agreement_summary.json
+```
+
+`concordance_metrics.csv` is aggregate and contains kappa plus bootstrap
+intervals, observed and expected agreement, positive/negative specific
+agreement, error and bias metrics, Pearson and Spearman correlations, Lin's
+CCC, and both category margins. The two case-level comparison CSVs remain
+pseudonymized health data even though their direct identifiers were removed;
+keep the whole agreement directory under controlled access unless a reviewed
+aggregate-only file is copied out.
+
+When v2 unconstrained audit columns are present,
+`dab_color_check_impact.csv` adds aggregate ER/PR checked-versus-unconstrained
+kappa and intervals, confusion counts, sensitivity, specificity, predictive
+values, balanced accuracy, ROC AUC, MAE/RMSE, and rank/concordance correlations.
+It contains no case aliases. It is a method sensitivity analysis, not an
+independent validation.
+
+## Package-native colon CD3/CD8/CK20 outputs
+
+`tumorquantai --inmunoscore` and `tumorquantai ihc immunoscore` create the
+same PHI-free research result:
+
+```text
+<colon-ihc-result>/
+├── START_HERE.html
+├── PATHOLOGIST_REVIEW.html
+├── cases/<case_alias>/
+│   ├── measurement.json
+│   ├── registration_qc.png              # omitted with --no-qc
+│   └── paper_figures/                    # when registration QC exists
+│       ├── case_summary_paper_figure.{png,pdf}
+│       ├── case_summary_paper_figure_legend.txt
+│       └── <slide_alias>_<marker>_paper_figure.{png,pdf}
+├── tables/
+│   ├── public_slide_inventory.csv
+│   ├── tumorquantai_immunoscore_values.csv
+│   ├── cohort_density_summary.csv
+│   ├── case_compartment_densities.csv
+│   ├── registration_qc.csv
+│   ├── paper_figure_manifest.csv
+│   ├── pathologist_review_template.csv
+│   ├── pathologist_review_codebook.csv
+│   └── unavailable_cases.csv
+└── workflow_metadata/
+    ├── immunoscore_run.json
+    └── failures.json                    # only when a case failed
+```
+
+`tumorquantai_immunoscore_values.csv` is the clearest case-level table. It has
+one row for every anonymous discovered case and four TumorQuantAI density
+values: CD3 and CD8 positive cells/mm² in the CK20 epithelial and stromal
+proxy compartments. Automatic-QC-pass cases define four deterministic
+within-cohort mid-rank reference distributions. Every numerically available
+pass/review case receives four percentiles, their mean, an internal rank group,
+and a provisional pI0-pI4 analogue. Review cases are scored against but never
+enter the reference. Failed and incomplete cases are unscored.
+
+`cohort_density_summary.csv` makes the cohort denominator explicit. It reports
+descriptive statistics once for automatic-QC-pass cases and once for all
+numerically available pass/review cases; failed and incomplete cases are
+excluded from both.
+
+`case_compartment_densities.csv` is the quantitative audit table. For each
+available marker and compartment it records the positive-cell count,
+segmented-nucleus count, analysed area in mm², density, mapped-positive-cell
+fraction, actual analysis MPP, registration Dice, and QC. The denominator is
+the registered tissue footprint of every valid streamed block, including
+valid tissue blocks in which no nucleus was detected.
+
+`registration_qc.csv` records the selected transform, feature/inlier counts,
+tissue Dice, registered-tissue fraction, affine coefficients, and automated
+status. The PNG places the CK20 overview, both registered immune sections,
+the CK20 proxy masks, and registration evidence together for visual review.
+Automated `pass` is not pathologist approval.
+
+Each complete case also has one 300-dpi case sheet and three marker-specific
+review sheets in PNG and PDF, with external legends. They show overview-scale
+registration/compartment evidence, exact densities, physical scale bars, the
+provisional-score gauge, and QC; they are not cell-outline overlays.
+`PATHOLOGIST_REVIEW.html` lets an expert export `accept`, `flag`, or `exclude`
+plus structured reasons, notes, reviewer code, and timestamp. Decisions remain
+separate from the immutable prediction and automatic-QC fields.
+
+Each case `measurement.json` records how CK20 was streamed and projected,
+including its selected level and MPP, block and positive-pixel counts,
+projected-fraction threshold and range, raw/final compartment fractions, and
+effective morphology. It also records the selected-level dimensions needed to
+audit scale-based coordinates independently of MDS tile padding.
+
+`public_slide_inventory.csv` contains only HMAC aliases, marker, format, and
+physical scale. The exact source case/slide IDs, paths, sizes, and hashes are
+stored only in the separate mode-0600 private linkage. Incomplete marker sets
+appear in `unavailable_cases.csv`; missing or failed values are blank and are
+never converted to biological zero.
+
+The output never claims the consensus clinical Immunoscore. Its
+`consensus_immunoscore` field is blank, and
+`consensus_immunoscore_status` states that pathologist-validated tumour-core
+and invasive-margin regions plus an external validated reference are
+required. See the [colon IHC output reference](colon-ihc-immunoscore.md).
+The separately named `ck20_guided_provisional_immunoscore` is an exploratory
+within-cohort review aid and must not be renamed or interpreted as that
+consensus score.
+
 ## Offline sanitized draft outputs
 
 The separate `bin/prepare_breast_ihc_patch_release.py` utility creates a new

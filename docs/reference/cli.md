@@ -48,6 +48,18 @@ tumorquantai quickstart [--output PATH]
                          [--profile auto|gpu|cpu|local | --cpu | --gpu]
                          [--seed INT] [--local-weight FILE]
 
+tumorquantai --inmunoscore INPUT --output DIR
+             --alias-secret-file FILE --private-linkage CSV
+             [--workers INT] [--source-mpp FLOAT]
+             [--target-analysis-mpp FLOAT] [--overview-max-edge INT]
+             [--block-tiles INT] [--minimum-registration-dice FLOAT]
+             [--immune-weak-dab-od FLOAT] [--ck20-minimum-dab-od FLOAT]
+             [--ck20-target-mpp FLOAT]
+             [--ck20-minimum-projected-fraction FLOAT]
+             [--ck20-minimum-component-um2 FLOAT]
+             [--ck20-epithelium-expansion-um FLOAT]
+             [--no-qc] [--no-resume] [--fail-fast] [--dry-run]
+
 tumorquantai --patches TIFF_PATH --paper-figures --output DIR
              [--source-mpp FLOAT]
              [--docker | --singularity | --conda]
@@ -144,7 +156,107 @@ model access is already configured. It never expands to four or 21 slides.
 When `--output` is omitted, the output is created beside the cloned repository
 as `tumorquantai-quickstart-one-wsi`.
 
-### Raw TIFF patch mode
+### Package-native breast IHC marker quantification
+
+The `ihc` command group quantifies ER, PR, HER2, and Ki-67 staining without
+HistoPLUS access. It reads the published case ZIPs directly, validates the
+manifest and decoded pixels, writes QC overlays and auditable tables, and
+resumes matching patch checkpoints:
+
+```bash
+tumorquantai ihc quantify /path/to/breast-ihc-downloads \
+  --manifest /path/to/manifest/patch_manifest.csv \
+  --output /path/to/breast-ihc-results \
+  --workers 12 \
+  --save-cells
+```
+
+`tables/tumorquantai_marker_values.csv` is the concise 51-row wide export.
+`tables/case_marker_measurements.csv` is the long case-marker audit table.
+Missing markers are empty and explicitly marked `unavailable`; they are never
+converted to zero. The default v2 engine requires the expected brown-DAB
+optical-density ordering and exports the unconstrained HED value separately.
+For an explicit earlier-method reproduction, use
+`--unconstrained-dab-color` with a new output directory. Expert color-cone
+controls are `--minimum-dab-color-margin-od` (default `0.02`) and
+`--minimum-dab-color-ratio` (default `0.15`).
+
+See [IHC v1-to-v2 migration](ihc-v2-migration.md) before comparing old and new
+result directories.
+
+The optional private agreement route first creates an English, six-column
+minimum marker table and then calculates marker-wise concordance:
+
+```bash
+tumorquantai ihc anonymize-clinical /private/path/review.xlsx \
+  --sheet "Biopsias finales incluidas" \
+  --linkage /private/path/private-linkage.csv \
+  --clinical-id-column Biopsia \
+  --linkage-id-column case_id \
+  --output /private/path/pathologist-markers-pseudonymized.csv
+
+tumorquantai ihc compare /path/to/breast-ihc-results \
+  --pathologist-csv /private/path/pathologist-markers-pseudonymized.csv \
+  --output /private/path/agreement \
+  --bootstrap-iterations 10000
+```
+
+If reviewed identifiers require correction, `--identifier-crosswalk` accepts
+only an exact-mode-`0600`, one-to-one CSV with `linkage_id,clinical_id`.
+TumorQuantAI never uses marker values to infer identity. The wide paired case
+CSV remains pseudonymized health data and must stay under controlled access.
+`concordance_metrics.csv` contains the complete aggregate kappa, error,
+correlation, concordance, category-margin, and specific-agreement report.
+
+See the [case-linkage and privacy reference](breast-ihc-case-linkage.md) for
+the exact identity chain, fail-closed behavior, controlled audit CSV, and
+reference-cohort counts. Then follow the
+[complete marker-quantification tutorial](../tutorials/breast-ihc-patches.md).
+
+### Package-native colon CD3/CD8/CK20 whole-slide quantification
+
+The following commands are equivalent:
+
+```bash
+tumorquantai --inmunoscore /private/motic-bundles \
+  --output /controlled/results/colon-ihc \
+  --alias-secret-file /controlled/private/alias_secret.bin \
+  --private-linkage /controlled/private/case_slide_linkage.csv
+
+tumorquantai ihc immunoscore /private/motic-bundles \
+  --output /controlled/results/colon-ihc \
+  --alias-secret-file /controlled/private/alias_secret.bin \
+  --private-linkage /controlled/private/case_slide_linkage.csv
+```
+
+The deliberately preserved top-level spelling is `--inmunoscore`; the
+canonical English subcommand is `ihc immunoscore`. This route reads Motic MDS
+`DSI0` pixels directly, registers CD3 and CD8 serial sections to CK20, and
+reports positive-cell counts, analysed area, and cells/mm² in
+`ck20_epithelium_proxy`, `ck20_stroma_proxy`, and common-tissue compartments.
+CK20 detection is streamed at approximately 2 µm/pixel and area-projected into
+the bounded registration overview so focal staining is not averaged away. It
+does not run HistoPLUS or Nextflow.
+
+The owner-controlled alias secret must be a regular, single-linked, mode-0600
+file with at least 32 bytes. The private linkage must remain outside the
+result directory. Case grouping uses the exact source bundle prefix before the
+CD3/CD8/CK20 token; staining values are never used to infer identity. Cases
+missing a marker remain explicitly unavailable.
+
+`--dry-run` inventories marker sets and verifies physical scale without
+hashing WSIs or writing output. Normal runs are resumable and verify the exact
+source size/SHA-256 linkage before reusing a completed case. Automated
+registration and CK20 masks always require visual review.
+
+This is a research proxy. It neither defines pathologist-reviewed tumour-core
+and invasive-margin regions nor imports the validated external reference
+distribution, so `consensus_immunoscore` is always blank with an explicit
+unavailable status. See the
+[complete colon-IHC tutorial](../tutorials/colon-ihc-wsi-immunoscore.md) and
+[exact CSV/QC reference](colon-ihc-immunoscore.md).
+
+### Optional HistoPLUS raw TIFF cell typing
 
 `--patches TIFF_PATH` selects the dedicated raw-TIFF patch route. `TIFF_PATH`
 may identify an authorized local TIFF patch input or collection prepared for
@@ -267,7 +379,7 @@ and re-verifies each row's MPP, and writes manifests, counts, checksums, and a
 validation report. It does not detect visible identifiers burned into pixels.
 
 This utility has no network, deposit, upload, or publication capability. See the
-[release-draft procedure](../tutorials/breast-ihc-patches.md#8-prepare-an-offline-release-draft).
+[release-draft procedure](../maintainers/breast-ihc-dataset-release.md#1-prepare-an-offline-release-draft).
 
 ### Deterministic local release packaging
 
@@ -312,7 +424,7 @@ cohort's 55 files total 74,958,557,152 bytes and therefore required additional
 record storage while remaining within the file-count limit. New releases still
 require measured-size and quota checks plus independent privacy, governance,
 and publication review. See the
-[local packaging procedure](../tutorials/breast-ihc-patches.md#9-package-the-sanitized-draft-locally).
+[local packaging procedure](../maintainers/breast-ihc-dataset-release.md#2-package-the-sanitized-draft-locally).
 
 ### Draft-only breast-IHC Zenodo uploader
 
@@ -340,7 +452,7 @@ filename/size/MD5 roster and retries only when the target is confirmed absent.
 Pending or mismatched files stop the run. Packages above 50 GB also require the
 confirmed total allocation through `--confirmed-quota-bytes`. The state is
 mode `0600` and fingerprint-bound. There is no publish option. See the
-[draft upload procedure](../tutorials/breast-ihc-patches.md#10-create-or-resume-the-open-zenodo-draft).
+[draft upload procedure](../maintainers/breast-ihc-dataset-release.md#3-create-or-resume-the-open-zenodo-draft).
 
 ### Publish-only breast-IHC Zenodo command
 
@@ -365,7 +477,7 @@ state, editable remote draft, open metadata, and exact 55-file size/MD5 roster,
 then sends one non-retried publish action. It verifies the published deposition,
 anonymous public record, DOI, and URLs before atomically marking the state
 published. See the
-[publication procedure](../tutorials/breast-ihc-patches.md#11-publish-the-independently-authorized-draft).
+[publication procedure](../maintainers/breast-ihc-dataset-release.md#4-publish-the-independently-authorized-draft).
 
 ## Advanced compatibility
 

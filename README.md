@@ -9,7 +9,10 @@
 [![Lymphoma dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21466410.svg)](https://doi.org/10.5281/zenodo.21466410)
 [![Breast-IHC dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21797920.svg)](https://doi.org/10.5281/zenodo.21797920)
 
-TumorQuantAI is a Nextflow workflow for H&E whole-slide images (WSIs). It validates physical scale, samples tissue reproducibly, runs HistoPLUS, and writes overlays, cell coordinates, per-slide summaries, and cohort tables.
+TumorQuantAI analyzes H&E whole-slide images (WSIs) and brightfield breast-IHC
+patches. The WSI route validates physical scale, samples tissue reproducibly,
+runs HistoPLUS, and writes cell-type outputs. The package-native IHC route
+segments and quantifies ER, PR, HER2, and Ki-67 with reviewable QC.
 
 Version 1.0.0 is distributed as a GitHub source release. It does not publish a
 standalone PyPI workflow package, a new TumorQuantAI application container, or
@@ -25,6 +28,7 @@ terms.
 
 ```text
 H&E WSI -> validated scale -> tissue tiles -> HistoPLUS -> overlays + coordinates + cohort tables
+IHC TIFFs -> decoded-RGB verification -> color-checked H–DAB + segmentation -> marker tables + QC + agreement
 ```
 
 ## Install the `tumorquantai` command
@@ -118,11 +122,40 @@ See the [complete one-WSI QuickStart](https://cfarkas.github.io/tumorquantai/qui
 
 The [full tutorial](https://cfarkas.github.io/tumorquantai/full_tutorial/) starts with `git clone` and `cd tumorquantai`, uses fixed relative tutorial directories, downloads all 21 public lymphoma MDS files, validates every SHA-256 checksum, converts L0/L2 with the installed `tumorquantai convert` command, and processes a deterministic 10% of detected tissue tiles per slide.
 
-## Other example run: breast IHC TIFF patches at 100%
+## Breast IHC: marker quantification and optional cell typing
 
-The patch route accepts authorized local raw TIFF patches, processes every
-discovered patch without percentage subsampling, and can write paper-ready and
-QC figures. Use TIFF-embedded physical pixel size when it is reliable:
+The package-native route reads extracted TIFFs or published case ZIPs directly
+and quantifies every selected ER, PR, HER2, and Ki-67 patch. It does not require
+HistoPLUS model access:
+
+```bash
+# Quantify every published IHC patch and keep per-cell audit tables.
+tumorquantai ihc quantify /path/to/breast-ihc-downloads \
+  --manifest /path/to/manifest/patch_manifest.csv \
+  --output /path/to/breast-ihc-marker-results \
+  --workers 12 \
+  --save-cells
+```
+
+Open <code>START_HERE.html</code> to review the cohort table and segmentation
+overlays. The clear wide result is
+<code>tables/tumorquantai_marker_values.csv</code>; v2 reports color-checked
+values and keeps unconstrained HED percentages as explicit audit columns. An
+exact private alias linkage can then drive the privacy-minimized pathologist
+CSV and marker-wise
+kappa workflow through <code>tumorquantai ihc anonymize-clinical</code> and
+<code>tumorquantai ihc compare</code>. The comparison writes a visual report,
+<code>concordance_metrics.csv</code> with the complete aggregate metrics, and
+wide and long paired case CSVs. Those case-level outputs are pseudonymized
+health data, not irreversibly anonymous data.
+The [case-linkage and privacy reference](docs/reference/breast-ihc-case-linkage.md)
+documents exactly how source `case_id`, workbook `Biopsia`, and public aliases
+relate, including the 51-case audit and the files that must never enter Git.
+
+For optional HistoPLUS cell typing, the established patch route accepts
+authorized local raw TIFFs, processes every discovered patch without
+percentage subsampling, and can write paper-ready and QC figures. Use reliable
+TIFF-embedded physical pixel size:
 
 ```bash
 # Process every local TIFF patch on CPU and request paper/QC figures.
@@ -181,6 +214,32 @@ rosters (74,958,557,152 bytes total). Generated paper and QC figures are local
 workflow outputs and are not part of the Zenodo deposit. This
 DOI identifies the breast-IHC dataset, not the TumorQuantAI software or the
 separate lymphoma dataset. See the [breast IHC patch tutorial](https://cfarkas.github.io/tumorquantai/tutorials/breast-ihc-patches/).
+
+## Colon IHC: direct Motic WSI quantification
+
+TumorQuantAI can read Motic MDS pixel pyramids directly and quantify registered
+CD3/CD8 serial sections in CK20-guided epithelial and stromal proxy
+compartments:
+
+```bash
+# Quantify a private CD3/CD8/CK20 serial-section collection.
+tumorquantai --inmunoscore /private/extracted/inmunoscore \
+  --output /controlled/results/tumorquantai_immunoscore \
+  --alias-secret-file /controlled/private_release/alias_secret.bin \
+  --private-linkage /controlled/private_release/case_slide_linkage.csv \
+  --workers 3
+```
+
+The command writes one clear case-value CSV, an explicit pass-only/all-numeric
+cohort summary, a long counts/areas/densities CSV, registration metrics,
+composite QC images, 300-dpi case/slide review sheets, a provisional pI0-pI4
+within-cohort analogue, and an offline pathologist accept/flag/exclude dashboard.
+The pI label is a CK20-guided research proxy, not the consensus clinical
+Immunoscore: the official field remains blank without pathologist-validated
+tumour-core/invasive-margin regions and the validated external reference
+distribution. Reviewer decisions are additive and never overwrite the
+algorithm values or automatic QC. See the [colon IHC whole-slide
+tutorial](https://cfarkas.github.io/tumorquantai/tutorials/colon-ihc-wsi-immunoscore/).
 
 ## Run your own WSIs
 

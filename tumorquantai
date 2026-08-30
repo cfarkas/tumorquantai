@@ -75,6 +75,7 @@ ROOT = _resolve_repository_root()
 sys.path.insert(0, str(ROOT / "bin"))
 
 import tumorquantai_core as core  # noqa: E402
+from tumorquantai_cli import ihc as ihc_cli  # noqa: E402
 
 SCHEMA = json.loads((ROOT / "nextflow_schema.json").read_text(encoding="utf-8"))
 SCHEMA_PROPERTIES: dict[str, dict[str, Any]] = SCHEMA["properties"]
@@ -197,7 +198,7 @@ PATCH_COMPATIBILITY_PATTERNS = ("*.tif", "*.tiff", "*.TIF", "*.TIFF")
 PATCH_COMPATIBILITY_SUFFIXES = (".ome.tiff", ".ome.tif", ".tiff", ".tif")
 PATCH_COMPATIBILITY_COMMANDS = frozenset({
     "install", "doctor", "demo", "inspect", "convert", "run", "status",
-    "report", "quickstart",
+    "report", "quickstart", "ihc",
 })
 
 
@@ -634,6 +635,64 @@ def _compatibility_option_values(
                 raise _parameter_error(f"{option} requires a value.")
             values.append(arguments[index + 1])
     return values
+
+
+def _rewrite_immunoscore_compatibility_arguments(
+    arguments: Sequence[str],
+) -> list[str]:
+    """Rewrite the top-level Immunoscore option onto the native IHC command."""
+    raw = list(arguments)
+    if not _compatibility_has_option(raw, "--inmunoscore"):
+        return raw
+    if raw[:1] and raw[0] in PATCH_COMPATIBILITY_COMMANDS:
+        raise _parameter_error(
+            "--inmunoscore is a top-level compatibility flag; do not combine "
+            "it with a subcommand."
+        )
+    if _compatibility_has_option(raw, "--patches", "--paper-figures"):
+        raise _parameter_error(
+            "--inmunoscore cannot be combined with raw-patch compatibility mode."
+        )
+    if "--" in raw:
+        raise _parameter_error(
+            "--inmunoscore does not accept Nextflow expert passthrough arguments."
+        )
+    values: list[str] = []
+    cleaned: list[str] = []
+    index = 0
+    help_only = False
+    while index < len(raw):
+        argument = raw[index]
+        if argument == "--inmunoscore":
+            if index + 1 >= len(raw) or raw[index + 1].startswith("--"):
+                if raw[index + 1 : index + 2] == ["--help"] and len(raw) == 2:
+                    help_only = True
+                    index += 1
+                    continue
+                raise _parameter_error(
+                    "--inmunoscore requires the extracted Motic WSI root."
+                )
+            values.append(raw[index + 1])
+            index += 2
+            continue
+        if argument.startswith("--inmunoscore="):
+            value = argument.split("=", 1)[1]
+            if not value:
+                raise _parameter_error(
+                    "--inmunoscore requires the extracted Motic WSI root."
+                )
+            values.append(value)
+            index += 1
+            continue
+        cleaned.append(argument)
+        index += 1
+    if help_only:
+        return ["ihc", "immunoscore", "--help"]
+    if len(values) != 1:
+        raise _parameter_error(
+            "Immunoscore mode requires exactly one --inmunoscore INPUT."
+        )
+    return ["ihc", "immunoscore", values[0], *cleaned]
 
 
 def _rewrite_patch_compatibility_arguments(
@@ -1133,7 +1192,10 @@ def build_parser() -> argparse.ArgumentParser:
             "  tumorquantai inspect /data/slides --output /data/tqa-inspection\n"
             "  tumorquantai convert downloads --output slides --resume\n"
             "  tumorquantai quickstart --no-inference\n"
-            "  tumorquantai --patches /data/patches --paper-figures --output results"
+            "  tumorquantai --patches /data/patches --paper-figures --output results\n"
+            "  tumorquantai --inmunoscore /private/motic --output results "
+            "--alias-secret-file /private/alias.key "
+            "--private-linkage /private/linkage.csv"
         ),
     )
     parser.add_argument("--version", action="version", version=f"TumorQuantAI {core.VERSION}")
@@ -1381,6 +1443,7 @@ def build_parser() -> argparse.ArgumentParser:
     quickstart.add_argument("--seed", type=int, default=core.DEFAULT_SEED)
     quickstart.add_argument("--token-file", type=Path, help=argparse.SUPPRESS)
     quickstart.add_argument("--local-weight", type=Path, help="authorized local HistoPLUS weight file")
+    ihc_cli.add_cli_parser(subparsers)
     return parser
 
 
@@ -2321,6 +2384,9 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     raw_arguments = list(argv) if argv is not None else sys.argv[1:]
     try:
+        raw_arguments = _rewrite_immunoscore_compatibility_arguments(
+            raw_arguments
+        )
         raw_arguments, patch_value = _rewrite_patch_compatibility_arguments(
             raw_arguments
         )
@@ -2363,6 +2429,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cmd_report(args)
         if args.command == "quickstart":
             return cmd_quickstart(args)
+        if args.command == "ihc":
+            try:
+                return ihc_cli.dispatch_cli(args)
+            except ihc_cli.IHCError as exc:
+                raise core.TumorQuantAIError(
+                    str(exc), core.EXIT_DATA
+                ) from exc
     except core.TumorQuantAIError as exc:
         print(f"ERROR: {core.redact_text(str(exc), paths=True)}", file=sys.stderr)
         return exc.exit_code
