@@ -194,18 +194,21 @@ def test_progress_reader_preserves_bytes(tmp_path: Path) -> None:
     path = tmp_path / "payload"
     path.write_bytes(b"123456")
     progress_events: list[int] = []
+    completion_events: list[int] = []
     with path.open("rb") as handle:
         reader = module.ProgressReader(
             handle,
             "safe.mds",
             6,
             on_progress=lambda: progress_events.append(handle.tell()),
+            on_complete=lambda: completion_events.append(handle.tell()),
         )
         assert len(reader) == 6
         assert reader.read(2) == b"12"
         assert reader.seek(2) == 2
         assert reader.read() == b"3456"
-    assert progress_events == [2, 2, 6]
+    assert progress_events == [2, 2]
+    assert completion_events == [6]
 
 
 def test_upload_has_a_bounded_no_progress_timeout(tmp_path: Path) -> None:
@@ -228,9 +231,10 @@ def test_upload_has_a_bounded_no_progress_timeout(tmp_path: Path) -> None:
     CaptureClient().upload_file("https://zenodo.org/api/files/test", upload)
     assert captured["timeout"] == (
         15.0,
-        float(module.UPLOAD_STALL_TIMEOUT_SECONDS),
+        float(module.UPLOAD_SOCKET_TIMEOUT_SECONDS),
     )
-    assert module.UPLOAD_STALL_TIMEOUT_SECONDS == 300
+    assert module.UPLOAD_STALL_TIMEOUT_SECONDS == 60
+    assert module.UPLOAD_SOCKET_TIMEOUT_SECONDS == 300
 
 
 @pytest.mark.skipif(

@@ -32,7 +32,8 @@ EXPECTED_MDS_COUNT = 21
 EXPECTED_MDS_BYTES = 17_370_771_968
 ALLOWED_API_ORIGINS = {"zenodo.org", "sandbox.zenodo.org"}
 MAX_UPLOAD_WORKERS = 4
-UPLOAD_STALL_TIMEOUT_SECONDS = 5 * 60
+UPLOAD_STALL_TIMEOUT_SECONDS = 60
+UPLOAD_SOCKET_TIMEOUT_SECONDS = 5 * 60
 MDS_PRIVATE_COLUMNS = {
     "alias",
     "staged_path",
@@ -75,6 +76,7 @@ class ProgressReader:
         name: str,
         size: int,
         on_progress: Callable[[], None] | None = None,
+        on_complete: Callable[[], None] | None = None,
     ) -> None:
         self.handle = handle
         self.name = name
@@ -82,15 +84,19 @@ class ProgressReader:
         self.last_reported = 0
         self.threshold = max(64 * 1024 * 1024, size // 20)
         self.on_progress = on_progress
+        self.on_complete = on_complete
 
     def __len__(self) -> int:
         return self.size
 
     def read(self, amount: int = -1) -> bytes:
         chunk = self.handle.read(amount)
-        if self.on_progress is not None:
-            self.on_progress()
         position = self.handle.tell()
+        if position >= self.size:
+            if self.on_complete is not None:
+                self.on_complete()
+        elif self.on_progress is not None:
+            self.on_progress()
         if position == self.size or position - self.last_reported >= self.threshold:
             percent = 100.0 * position / self.size if self.size else 100.0
             print(
@@ -140,6 +146,10 @@ class ProgressZenodoClient(base.ZenodoClient):
                     float(UPLOAD_STALL_TIMEOUT_SECONDS),
                 )
 
+        def disarm_watchdog() -> None:
+            if watchdog_enabled:
+                signal.setitimer(signal.ITIMER_REAL, 0.0)
+
         if watchdog_enabled:
             previous_handler = signal.getsignal(signal.SIGALRM)
 
@@ -155,17 +165,18 @@ class ProgressZenodoClient(base.ZenodoClient):
                     upload.remote_name,
                     upload.size_bytes,
                     on_progress=arm_watchdog,
+                    on_complete=disarm_watchdog,
                 )
                 response = self.request(
                     "PUT",
                     url,
                     expected=(200, 201),
                     data=progress,
-                    timeout=(15.0, float(UPLOAD_STALL_TIMEOUT_SECONDS)),
+                    timeout=(15.0, float(UPLOAD_SOCKET_TIMEOUT_SECONDS)),
                 )
         finally:
             if watchdog_enabled:
-                signal.setitimer(signal.ITIMER_REAL, 0.0)
+                disarm_watchdog()
                 signal.signal(signal.SIGALRM, previous_handler)
         return self.json_response(response, f"Upload of {upload.remote_name}")
 
