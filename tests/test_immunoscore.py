@@ -492,6 +492,8 @@ def test_aggregation_never_labels_internal_rank_as_consensus_immunoscore(
     assert "accept" in review
     assert "flag" in review
     assert "exclude" in review
+    assert "registration_qc_${row.case_alias}.png" in review
+    assert "extract" in review
     with (tmp_path / "tables/pathologist_review_template.csv").open(
         encoding="utf-8", newline=""
     ) as handle:

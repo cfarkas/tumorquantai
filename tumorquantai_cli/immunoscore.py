@@ -2000,6 +2000,10 @@ adjudication; it does not convert the score into a clinically validated assay.</
 <button id="print" class="secondary" type="button">Print / save PDF</button>
 <button id="reset" class="secondary" type="button">Reset browser decisions</button>
 <span class="small">Draft choices are stored only in this browser until CSV export.</span></div>
+<p class="small">Release bundle: extract
+<code>tumorquantai_immunoscore_paper_figures.zip</code> beside this HTML to show
+the full 300-dpi case sheets. If that <code>cases/</code> tree is absent, the
+dashboard falls back to the flat registration-QC image for each case.</p>
 <div id="cases"></div>
 <script>const REVIEW={payload};
 const storageKey=REVIEW.schema+':'+location.pathname;
@@ -2024,9 +2028,10 @@ header.append(text('span',`${{row.ck20_guided_provisional_immunoscore||'unavaila
 const grid=document.createElement('div');grid.className='grid';const figure=document.createElement('div');figure.className='figure';
 const link=document.createElement('a');link.target='_blank';link.rel='noopener';
 const paper=`cases/${{row.case_alias}}/paper_figures/case_summary_paper_figure.png`;
-const fallback=`cases/${{row.case_alias}}/registration_qc.png`;link.href=paper;
+const fallbacks=[`registration_qc_${{row.case_alias}}.png`,`cases/${{row.case_alias}}/registration_qc.png`];
+let fallbackIndex=0;link.href=paper;
 const image=document.createElement('img');image.src=paper;image.alt=`Paper-ready review figure for ${{row.case_alias}}`;
-image.onerror=()=>{{image.onerror=null;image.src=fallback;link.href=fallback}};link.append(image);figure.append(link);
+image.onerror=()=>{{if(fallbackIndex>=fallbacks.length){{image.onerror=null;return}}const fallback=fallbacks[fallbackIndex++];image.src=fallback;link.href=fallback}};link.append(image);figure.append(link);
 figure.append(text('p','Open the full-resolution figure before deciding.','small'));grid.append(figure);
 const side=document.createElement('div');const score=document.createElement('h2');score.textContent=`${{row.ck20_guided_provisional_immunoscore||'No provisional score'}} · mean internal percentile ${{row.ck20_guided_internal_mean_percentile||'—'}}`;side.append(score);
 const table=document.createElement('table');densityFields.forEach((field,i)=>{{const tr=document.createElement('tr');tr.append(text('th',densityLabels[i]));const raw=row[field];const value=raw===''?'—':Number(raw).toFixed(2)+' cells/mm²';tr.append(text('td',value));table.append(tr)}});side.append(table);

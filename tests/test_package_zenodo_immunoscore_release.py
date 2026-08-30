@@ -225,6 +225,9 @@ def test_packages_exact_anonymous_release_artifacts(tmp_path: Path) -> None:
     assert (output / "REPORT.html").is_file()
     assert (output / "cohort_density_summary.csv").is_file()
     assert (output / "PATHOLOGIST_REVIEW.html").is_file()
+    readme = (output / "README.md").read_text(encoding="utf-8")
+    assert "extract" in readme
+    assert "pathologist_review_completed.csv" in readme
     figure_zip = output / "tumorquantai_immunoscore_paper_figures.zip"
     assert figure_zip.is_file()
     with zipfile.ZipFile(figure_zip) as archive:

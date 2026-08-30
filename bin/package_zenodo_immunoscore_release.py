@@ -243,6 +243,17 @@ retained for completeness but lack at least one marker
 - REPORT.html: portable summary of the computational values.
 - SHA256SUMS and MD5SUMS: checksums for the complete draft payload.
 
+## Pathologist review
+
+Download PATHOLOGIST_REVIEW.html and the flat registration_qc_*.png files into
+one directory. For the full paper sheets, extract
+tumorquantai_immunoscore_paper_figures.zip in that same directory while
+preserving its cases/ tree. The dashboard first uses the full case sheet and
+automatically falls back to the flat registration-QC image when the archive has
+not been extracted. Enter a reviewer code, choose accept, flag, or exclude for
+each eligible case, give a structured reason for every flag, and export
+pathologist_review_completed.csv. Browser choices are local until export.
+
 ## De-identification
 
 Every public case and slide name is a non-semantic, HMAC-derived pseudonym.
@@ -336,7 +347,10 @@ catalog</a>, and <a href="case_compartment_densities.csv">the long density
 table</a>. Use the offline <a href="PATHOLOGIST_REVIEW.html">pathologist review
 dashboard</a> to export accept/flag/exclude decisions, and download the
 <a href="tumorquantai_immunoscore_paper_figures.zip">paper-figure bundle</a>.
-Review every registration image before interpreting values.</p>
+Extract that ZIP beside the dashboard while preserving its <code>cases/</code>
+tree to enable the full sheets; otherwise the dashboard uses the flat
+registration-QC fallbacks. Review every registration image before interpreting
+values.</p>
 <h2>Cohort density summary</h2>
 <p><code>automatic_qc_pass</code> excludes review-status cases;
 <code>all_numerically_available</code> includes them. Both exclude failed and
