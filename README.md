@@ -138,10 +138,14 @@ tumorquantai ihc quantify /path/to/breast-ihc-downloads \
 ```
 
 Open <code>START_HERE.html</code> to review the cohort table and segmentation
-overlays. An exact private alias linkage can then drive the privacy-minimized
-pathologist CSV and marker-wise kappa workflow through <code>tumorquantai ihc
-anonymize-clinical</code> and <code>tumorquantai ihc compare</code>. The output
-is pseudonymized health data, not irreversibly anonymous data.
+overlays. The clear wide result is
+<code>tables/tumorquantai_marker_values.csv</code>. An exact private alias
+linkage can then drive the privacy-minimized pathologist CSV and marker-wise
+kappa workflow through <code>tumorquantai ihc anonymize-clinical</code> and
+<code>tumorquantai ihc compare</code>. The comparison writes a visual report,
+<code>concordance_metrics.csv</code> with the complete aggregate metrics, and
+wide and long paired case CSVs. Those case-level outputs are pseudonymized
+health data, not irreversibly anonymous data.
 
 For optional HistoPLUS cell typing, the established patch route accepts
 authorized local raw TIFFs, processes every discovered patch without

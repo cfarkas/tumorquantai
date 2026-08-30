@@ -144,7 +144,53 @@ model access is already configured. It never expands to four or 21 slides.
 When `--output` is omitted, the output is created beside the cloned repository
 as `tumorquantai-quickstart-one-wsi`.
 
-### Raw TIFF patch mode
+### Package-native breast IHC marker quantification
+
+The `ihc` command group quantifies ER, PR, HER2, and Ki-67 staining without
+HistoPLUS access. It reads the published case ZIPs directly, validates the
+manifest and decoded pixels, writes QC overlays and auditable tables, and
+resumes matching patch checkpoints:
+
+```bash
+tumorquantai ihc quantify /path/to/breast-ihc-downloads \
+  --manifest /path/to/manifest/patch_manifest.csv \
+  --output /path/to/breast-ihc-results \
+  --workers 12 \
+  --save-cells
+```
+
+`tables/tumorquantai_marker_values.csv` is the concise 51-row wide export.
+`tables/case_marker_measurements.csv` is the long case-marker audit table.
+Missing markers are empty and explicitly marked `unavailable`; they are never
+converted to zero.
+
+The optional private agreement route first creates an English, six-column
+minimum marker table and then calculates marker-wise concordance:
+
+```bash
+tumorquantai ihc anonymize-clinical /private/path/review.xlsx \
+  --sheet "Biopsias finales incluidas" \
+  --linkage /private/path/private-linkage.csv \
+  --clinical-id-column Biopsia \
+  --linkage-id-column case_id \
+  --output /private/path/pathologist-markers-pseudonymized.csv
+
+tumorquantai ihc compare /path/to/breast-ihc-results \
+  --pathologist-csv /private/path/pathologist-markers-pseudonymized.csv \
+  --output /private/path/agreement \
+  --bootstrap-iterations 10000
+```
+
+If reviewed identifiers require correction, `--identifier-crosswalk` accepts
+only an exact-mode-`0600`, one-to-one CSV with `linkage_id,clinical_id`.
+TumorQuantAI never uses marker values to infer identity. The wide paired case
+CSV remains pseudonymized health data and must stay under controlled access.
+`concordance_metrics.csv` contains the complete aggregate kappa, error,
+correlation, concordance, category-margin, and specific-agreement report.
+
+See the [complete marker-quantification tutorial](../tutorials/breast-ihc-patches.md).
+
+### Optional HistoPLUS raw TIFF cell typing
 
 `--patches TIFF_PATH` selects the dedicated raw-TIFF patch route. `TIFF_PATH`
 may identify an authorized local TIFF patch input or collection prepared for
@@ -267,7 +313,7 @@ and re-verifies each row's MPP, and writes manifests, counts, checksums, and a
 validation report. It does not detect visible identifiers burned into pixels.
 
 This utility has no network, deposit, upload, or publication capability. See the
-[release-draft procedure](../tutorials/breast-ihc-patches.md#8-prepare-an-offline-release-draft).
+[release-draft procedure](../maintainers/breast-ihc-dataset-release.md#1-prepare-an-offline-release-draft).
 
 ### Deterministic local release packaging
 
@@ -312,7 +358,7 @@ cohort's 55 files total 74,958,557,152 bytes and therefore required additional
 record storage while remaining within the file-count limit. New releases still
 require measured-size and quota checks plus independent privacy, governance,
 and publication review. See the
-[local packaging procedure](../tutorials/breast-ihc-patches.md#9-package-the-sanitized-draft-locally).
+[local packaging procedure](../maintainers/breast-ihc-dataset-release.md#2-package-the-sanitized-draft-locally).
 
 ### Draft-only breast-IHC Zenodo uploader
 
@@ -340,7 +386,7 @@ filename/size/MD5 roster and retries only when the target is confirmed absent.
 Pending or mismatched files stop the run. Packages above 50 GB also require the
 confirmed total allocation through `--confirmed-quota-bytes`. The state is
 mode `0600` and fingerprint-bound. There is no publish option. See the
-[draft upload procedure](../tutorials/breast-ihc-patches.md#10-create-or-resume-the-open-zenodo-draft).
+[draft upload procedure](../maintainers/breast-ihc-dataset-release.md#3-create-or-resume-the-open-zenodo-draft).
 
 ### Publish-only breast-IHC Zenodo command
 
@@ -365,7 +411,7 @@ state, editable remote draft, open metadata, and exact 55-file size/MD5 roster,
 then sends one non-retried publish action. It verifies the published deposition,
 anonymous public record, DOI, and URLs before atomically marking the state
 published. See the
-[publication procedure](../tutorials/breast-ihc-patches.md#11-publish-the-independently-authorized-draft).
+[publication procedure](../maintainers/breast-ihc-dataset-release.md#4-publish-the-independently-authorized-draft).
 
 ## Advanced compatibility
 

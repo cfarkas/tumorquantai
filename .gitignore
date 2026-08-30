@@ -39,6 +39,9 @@ hf_token
 
 # Patient-level clinical/ML artifacts must never be committed.
 data/
+!docs/assets/data/
+docs/assets/data/*
+!docs/assets/data/breast_ihc_reference_concordance_metrics.csv
 outputs/
 clinical_ml_results/
 *.[xX][lL][sS][xX]

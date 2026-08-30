@@ -2,12 +2,34 @@
 
 This directory accompanies the
 [breast IHC raw-TIFF patch tutorial](../../docs/tutorials/breast-ihc-patches.md).
-It contains command templates only. It does not contain TIFFs, private case
-mappings, clinical data, checksums, or a public manifest. The public raw-only
-dataset is [Zenodo record 21797920](https://zenodo.org/records/21797920), DOI
+It contains command templates and links to an aggregate reference result. It
+does not contain TIFFs, private case mappings, case-level clinical data,
+checksums, or a public manifest. The public raw-only dataset is
+[Zenodo record 21797920](https://zenodo.org/records/21797920), DOI
 [`10.5281/zenodo.21797920`](https://doi.org/10.5281/zenodo.21797920), under
 CC BY 4.0. Do not assign the lymphoma tutorial DOI to this collection or use
 either dataset DOI as a TumorQuantAI software DOI.
+
+## Package-native marker quantification
+
+This route measures ER, PR, HER2, and Ki-67 staining and does not require
+HistoPLUS:
+
+```bash
+tumorquantai ihc quantify /path/to/breast-ihc-downloads \
+  --manifest /path/to/manifest/patch_manifest.csv \
+  --output /path/to/breast-ihc-marker-results \
+  --workers 12 \
+  --save-cells
+```
+
+Open `START_HERE.html` and inspect every segmentation overlay. The concise
+output is `tables/tumorquantai_marker_values.csv`; it includes all four marker
+pre-scores, denominators, and QC status in one row per public case.
+
+The [aggregate reference concordance CSV](../../docs/assets/data/breast_ihc_reference_concordance_metrics.csv)
+contains no case rows. The private 51-row pathologist CSV and paired case
+outputs are deliberately excluded from Git.
 
 ## Embedded-MPP CPU run
 

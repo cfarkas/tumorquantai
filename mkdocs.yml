@@ -52,7 +52,7 @@ nav:
   - Other Example Runs:
       - Structural Software Demo: start-here/demo.md
       - Four Public WSIs at 10%: tutorials/four-public-slides.md
-      - Breast IHC TIFF Patches at 100%: tutorials/breast-ihc-patches.md
+      - Breast IHC Marker Quantification: tutorials/breast-ihc-patches.md
   - Run and Configure:
       - Workflow, Presets, and Resume: running.md
       - Download Public MDS Files: how-to/download-mds.md
@@ -79,6 +79,7 @@ nav:
       - Troubleshooting: troubleshooting/index.md
       - Citation and Research Use: citation_research_use.md
       - Developer Guide: developer_guide.md
+      - Breast IHC Dataset Release: maintainers/breast-ihc-dataset-release.md
       - Glossary: GLOSSARY.md
 
 plugins:

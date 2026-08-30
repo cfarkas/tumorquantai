@@ -193,6 +193,49 @@ def test_pathologist_export_keeps_only_public_alias_and_marker_values(
     assert "names" in provenance["excluded_data"]
 
 
+def test_pathologist_export_accepts_only_explicit_private_id_crosswalk(
+    tmp_path: Path,
+) -> None:
+    workbook = tmp_path / "private_clinical.xlsx"
+    book = openpyxl.Workbook()
+    sheet = book.active
+    sheet.title = "Biopsias finales incluidas"
+    sheet.append(["Biopsia", *ihc.DEFAULT_CLINICAL_COLUMNS.values()])
+    sheet.append(["CLINICAL_CASE_1", 10, 20, 1, 0, 30])
+    book.save(workbook)
+
+    alias = "TQA_BC_IIIIIIIIIIIIIIIIIIII"
+    linkage = tmp_path / "private_linkage.csv"
+    write_csv(
+        linkage,
+        ["case_alias", "case_id"],
+        [{"case_alias": alias, "case_id": "LINKAGE_CASE_1"}],
+    )
+    crosswalk = tmp_path / "private_crosswalk.csv"
+    write_csv(
+        crosswalk,
+        ihc.IDENTIFIER_CROSSWALK_FIELDS,
+        [{"linkage_id": "LINKAGE_CASE_1", "clinical_id": "CLINICAL_CASE_1"}],
+    )
+    crosswalk.chmod(0o600)
+    output = tmp_path / "pathologist.csv"
+
+    result = ihc.export_pathologist_csv(
+        workbook,
+        linkage,
+        output,
+        clinical_id_column="Biopsia",
+        linkage_id_column="case_id",
+        identifier_crosswalk=crosswalk,
+    )
+
+    assert result["identifier_crosswalk_used"] is True
+    assert result["identifier_crosswalk_rows"] == 1
+    assert result["marker_values_used_for_linkage"] is False
+    assert "LINKAGE_CASE_1" not in output.read_text(encoding="utf-8")
+    assert "CLINICAL_CASE_1" not in output.read_text(encoding="utf-8")
+
+
 def test_agreement_report_writes_marker_wise_kappa_and_contingencies(
     tmp_path: Path,
 ) -> None:
@@ -254,16 +297,109 @@ def test_agreement_report_writes_marker_wise_kappa_and_contingencies(
     assert summary[("Ki-67", "secondary-binary-at-20-percent")][
         "kappa"
     ] == pytest.approx(1.0)
-    assert (results / "agreement/AGREEMENT_REPORT.html").is_file()
+    for key in (
+        ("ER", "binary-at-1-percent"),
+        ("PR", "binary-at-1-percent"),
+        ("HER2", "ordinal-0-to-3"),
+        ("Ki-67", "percentage-deciles"),
+    ):
+        assert summary[key]["root_mean_squared_error"] == pytest.approx(0.0)
+        assert summary[key]["spearman_correlation"] == pytest.approx(1.0)
+        assert summary[key]["lin_concordance_correlation"] == pytest.approx(1.0)
+    assert result["schema_version"] == "tumorquantai_ihc_agreement_v2"
+    assert result["case_rows"] == 4
+    report = results / "agreement/AGREEMENT_REPORT.html"
+    assert report.is_file()
+    assert stat.S_IMODE(report.parent.stat().st_mode) == 0o700
+    report_html = report.read_text(encoding="utf-8")
+    assert "Agreement at a glance" in report_html
+    assert "Contingency matrices" in report_html
+    assert "Full concordance metrics CSV" in report_html
+    metrics_path = results / "agreement/concordance_metrics.csv"
+    with metrics_path.open(encoding="utf-8", newline="") as handle:
+        metrics_reader = csv.DictReader(handle)
+        metric_rows = list(metrics_reader)
+    assert len(metric_rows) == 5
+    assert {
+        "expected_category_agreement",
+        "root_mean_squared_error",
+        "median_absolute_error",
+        "mean_bias_tumorquantai_minus_pathologist",
+        "limits_of_agreement_95_low",
+        "limits_of_agreement_95_high",
+        "spearman_correlation",
+        "lin_concordance_correlation",
+        "positive_specific_agreement",
+        "negative_specific_agreement",
+        "pathologist_category_counts",
+        "tumorquantai_category_counts",
+    } <= set(metrics_reader.fieldnames or ())
+    assert stat.S_IMODE(metrics_path.stat().st_mode) == 0o600
+    wide_path = results / "agreement/case_concordance_values_pseudonymized.csv"
+    with wide_path.open(encoding="utf-8", newline="") as handle:
+        wide_reader = csv.DictReader(handle)
+        wide_rows = list(wide_reader)
+    assert tuple(wide_reader.fieldnames or ()) == ihc.CASE_CONCORDANCE_WIDE_FIELDS
+    assert len(wide_rows) == 4
+    assert wide_rows[0]["pathologist_er_percent"] == "0"
+    assert wide_rows[0]["tumorquantai_er_percent"] == "0.0"
+    assert wide_rows[-1]["pathologist_her2_ihc_score"] == "3"
+    assert wide_rows[-1]["tumorquantai_her2_membrane_proxy_pre_score"] == "3.0"
+    assert stat.S_IMODE(wide_path.stat().st_mode) == 0o600
     contingency = json.loads(
         (results / "agreement/contingency_tables.json").read_text(encoding="utf-8")
     )
+    assert contingency["HER2"]["category_labels"] == ["0", "1+", "2+", "3+"]
     assert contingency["HER2"]["matrix_rows_pathologist_columns_tumorquantai"] == [
         [1, 0, 0, 0],
         [0, 1, 0, 0],
         [0, 0, 1, 0],
         [0, 0, 0, 1],
     ]
+
+
+def test_wide_tumorquantai_values_make_missing_markers_explicit() -> None:
+    alias = "TQA_BC_LLLLLLLLLLLLLLLLLLLL"
+    rows = ihc.wide_tumorquantai_case_values(
+        [
+            {
+                "case_alias": alias,
+                "marker": "ER",
+                "marker_pre_score": 42.5,
+                "h_score": 88.0,
+                "cell_count": 1234,
+                "qc_status": "pass",
+            }
+        ]
+    )
+
+    assert len(rows) == 1
+    assert tuple(rows[0]) == ihc.TUMORQUANTAI_WIDE_FIELDS
+    assert rows[0]["tumorquantai_er_percent"] == 42.5
+    assert rows[0]["tumorquantai_er_segmented_objects"] == 1234
+    assert rows[0]["tumorquantai_her2_membrane_proxy_pre_score"] == ""
+    assert rows[0]["tumorquantai_her2_qc_status"] == "unavailable"
+
+
+def test_agreement_notes_flag_a_single_prediction_category() -> None:
+    summaries = [
+        {
+            "marker": "ER",
+            "primary_scale": "binary-at-1-percent",
+        }
+    ]
+    tables = {
+        "ER": {
+            "category_labels": ["Negative (<1%)", "Positive (≥1%)"],
+            "matrix_rows_pathologist_columns_tumorquantai": [[0, 2], [0, 8]],
+        }
+    }
+
+    notes = ihc._agreement_interpretation_notes(summaries, tables)
+
+    assert len(notes) == 1
+    assert "used only the Positive" in notes[0]
+    assert "raw agreement is high" in notes[0]
 
 
 def test_kappa_rejects_values_outside_prespecified_scale() -> None:

@@ -151,6 +151,52 @@ rosters (74,958,557,152 bytes total). Paper and QC figures are local workflow
 outputs and are not part of the deposit. This DOI identifies the
 breast-IHC dataset, not the TumorQuantAI software or the lymphoma dataset.
 
+## Package-native breast IHC outputs
+
+`tumorquantai ihc quantify` creates a self-contained research result:
+
+```text
+<ihc-result>/
+├── START_HERE.html
+├── case_reports/<case_alias>.html
+├── tables/
+│   ├── tumorquantai_marker_values.csv
+│   ├── case_marker_measurements.csv
+│   ├── patch_measurements.csv
+│   └── unavailable_patches.csv
+├── patches/<case_alias>/<patch_alias>/
+│   ├── measurement.json
+│   ├── qc_overlay.png
+│   └── cell_measurements.csv.gz
+└── workflow_metadata/ihc_run.json
+```
+
+`tumorquantai_marker_values.csv` is the clearest case-level export: one row per
+public alias with ER, PR, and Ki-67 percentages, applicable H-scores, the HER2
+membrane-proxy pre-score, segmented-object counts, and QC status. A missing
+marker is blank with `unavailable` QC status, not zero.
+
+`tumorquantai ihc compare` adds a controlled agreement directory:
+
+```text
+<agreement>/
+├── AGREEMENT_REPORT.html
+├── concordance_metrics.csv
+├── kappa_summary.csv
+├── contingency_tables.json
+├── case_concordance_values_pseudonymized.csv
+├── case_comparison_pseudonymized.csv
+└── agreement_summary.json
+```
+
+`concordance_metrics.csv` is aggregate and contains kappa plus bootstrap
+intervals, observed and expected agreement, positive/negative specific
+agreement, error and bias metrics, Pearson and Spearman correlations, Lin's
+CCC, and both category margins. The two case-level comparison CSVs remain
+pseudonymized health data even though their direct identifiers were removed;
+keep the whole agreement directory under controlled access unless a reviewed
+aggregate-only file is copied out.
+
 ## Offline sanitized draft outputs
 
 The separate `bin/prepare_breast_ihc_patch_release.py` utility creates a new

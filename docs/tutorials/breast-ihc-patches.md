@@ -1,81 +1,112 @@
-# Breast IHC: quantify ER, PR, HER2, and Ki-67
+# Breast IHC quantification
 
-This tutorial turns the public breast-IHC patches into reviewable marker
-measurements, segmentation overlays, and a cohort report with one TumorQuantAI
-command. A second, optional route runs HistoPLUS cell typing; it answers a
-different question and is kept separate below. Most readers need sections
-1–7. Sections 8–11 document dataset release maintenance.
+<div class="tqa-ihc-banner" markdown>
+<span class="tqa-kicker">PUBLIC 51-CASE WORKFLOW</span>
 
-!!! info "Public raw patch dataset"
-    The raw-only breast-IHC collection is public under CC BY 4.0 at
-    [Zenodo record 21797920](https://zenodo.org/records/21797920), with dataset
-    DOI [`10.5281/zenodo.21797920`](https://doi.org/10.5281/zenodo.21797920).
-    Its 55 files comprise 51 case archives containing 1,901 TIFF patches plus
-    four auxiliary files: one manifest bundle, one packaging report, and two
-    checksum rosters (74,958,557,152 bytes total). Generated paper and QC
-    figures are not part of the deposit; create them locally with this
-    workflow. This DOI identifies the breast-IHC dataset, not TumorQuantAI
-    software. The separate lymphoma tutorial retains its own dataset DOI.
+## Measure ER, PR, HER2, and Ki-67 in one reproducible run
+
+TumorQuantAI reads the published case archives directly, verifies every image,
+segments the IHC patches, and builds a visual cohort report. An optional
+privacy-controlled step compares the computational pre-scores with pathologist
+values.
+
+<a class="tqa-button" href="#run-the-cohort">Run the cohort</a>
+<a class="tqa-button tqa-button-secondary" href="#reference-run">See the reference run</a>
+</div>
+
+<div class="tqa-metric-grid">
+  <div class="tqa-metric"><strong>51</strong><span>public cases</span></div>
+  <div class="tqa-metric"><strong>1,901</strong><span>raw TIFF patches</span></div>
+  <div class="tqa-metric"><strong>4</strong><span>IHC markers quantified</span></div>
+  <div class="tqa-metric"><strong>1</strong><span>package command</span></div>
+</div>
+
+![Breast IHC workflow](../assets/tutorial/breast_ihc_flow.svg)
 
 !!! danger "Research use only"
-    TumorQuantAI and HistoPLUS predictions are not diagnoses, pathologist
-    ground truth, treatment recommendations, or clinically validated assay
-    results. Breast IHC group labels must be reported as **computational
-    receptor-profile pre-score groups**.
+    TumorQuantAI produces computational research pre-scores. They are not
+    diagnoses, clinical assay results, treatment recommendations, or evidence
+    of clinical validation. The public fields have no pathologist-verified
+    invasive-tumour ROI and no validated tumour-cell classifier.
 
-## Choose the analysis that matches the question
+## What this workflow answers
 
-| Question | TumorQuantAI command | Output |
-| --- | --- | --- |
-| How much ER, PR, HER2, or Ki-67 signal is present? | `tumorquantai ihc quantify` | H–DAB measurements, segmentation overlays, case-marker tables, and an HTML report |
-| How well do computational pre-scores agree with a pathologist? | `tumorquantai ihc compare` | Paired pseudonymized values, contingency tables, marker-wise kappa, bootstrap intervals, MAE, and correlation |
-| Which HistoPLUS cell types are predicted in each patch? | `tumorquantai --patches ...` | HistoPLUS coordinates, cell-type counts, overlays, and paper figures |
+<div class="tqa-summary-grid">
+  <div class="tqa-summary-card" markdown>
+  ### Marker signal
 
-The package-native IHC route reads extracted TIFFs or the original case ZIPs,
-verifies each decoded RGB array against the public manifest, uses per-image
-physical scale, and processes every selected IHC patch. It does not need
-HistoPLUS model access. Full patch processing still does not make the
-collection a whole-slide analysis or make separate stains measurements of the
-same cells.
+  `tumorquantai ihc quantify` measures nuclear H–DAB signal for ER, PR, and
+  Ki-67 and a membrane-proxy signal for HER2. It writes overlays, cell tables,
+  case summaries, and a portable HTML report.
+  </div>
+  <div class="tqa-summary-card" markdown>
+  ### Pathologist agreement
 
-## 1. Install TumorQuantAI
+  `tumorquantai ihc compare` uses a protected alias linkage and a
+  privacy-minimized CSV to calculate marker-wise kappa, bootstrap intervals,
+  exact agreement, MAE, correlation, and contingency matrices.
+  </div>
+  <div class="tqa-summary-card" markdown>
+  ### A different question
+
+  The optional HistoPLUS route predicts cell types in H&E or IHC patches. It
+  does not quantify receptor staining and is kept separate at the end of this
+  page.
+  </div>
+</div>
+
+## Before you begin
+
+The dataset is public under CC BY 4.0 at
+[Zenodo record 21797920](https://zenodo.org/records/21797920), DOI
+[`10.5281/zenodo.21797920`](https://doi.org/10.5281/zenodo.21797920). Its 55
+files total 74,958,557,152 bytes: 51 case ZIPs, one manifest bundle, one
+packaging report, and two checksum rosters.
+
+Plan for:
+
+- about 69.8 GiB for the download;
+- about 4–5 GiB for overlays, reports, checkpoints, and compressed cell tables
+  when `--save-cells` is enabled;
+- a local filesystem with reliable free space;
+- no HistoPLUS token or model weights for the package-native IHC route.
+
+The command reads TIFF members from the case ZIPs. You only extract the small
+manifest bundle, avoiding a second roughly 70 GiB image copy.
+
+## Install TumorQuantAI
 
 ```bash
-# Clone TumorQuantAI and install the command plus IHC scientific stack.
 git clone https://github.com/cfarkas/tumorquantai.git
 cd tumorquantai
-./tumorquantai install --docker
+
+# Install the global command and the package-native IHC dependencies.
+./tumorquantai install --conda
 export PATH="$HOME/.local/bin:$PATH"
 
-# Confirm the installed command and IHC subcommands.
 tumorquantai ihc --help
-tumorquantai doctor
 ```
 
-The IHC command runs locally and does not require HistoPLUS weights. Docker is
-still useful for the optional HistoPLUS route in section 7. Configure
-[HistoPLUS model access](../how-to/model-access.md) only when using that route.
+Use `--poetry`, `--docker`, or `--singularity` instead when that is your
+supported installation route. IHC quantification itself runs locally and does
+not call the gated HistoPLUS model.
 
-## 2. Download and verify the public cohort
+## Download and verify the dataset
 
-The record is about 69.8 GiB. Plan space for the 51 case ZIPs, QC overlays,
-cell tables, and reports before starting. Download all 55 files from
-[Zenodo record 21797920](https://zenodo.org/records/21797920) into one
-directory without renaming them:
+Download all 55 files from the
+[Zenodo record](https://zenodo.org/records/21797920) into one directory without
+renaming them:
 
 ```text
 breast-ihc-downloads/
-├── TQA_BC_<public-case-alias>.zip          # 51 archives
+├── TQA_BC_<public-case-alias>.zip          # 51 case archives
 ├── TQA_BreastIHC_manifest_bundle.zip
 ├── packaging_report.json
-├── MD5SUMS
-└── SHA256SUMS
+├── SHA256SUMS
+└── MD5SUMS
 ```
 
-Verify the 51 archives, manifest bundle, and packaging report against the
-published roster, then extract only the small manifest bundle. The IHC command
-can read TIFF members from the case ZIPs, so it does not duplicate roughly
-70 GiB of image payload.
+Verify the complete payload, then extract only the manifest bundle:
 
 ```bash
 cd /path/to/breast-ihc-downloads
@@ -85,106 +116,153 @@ mkdir -p manifest
 unzip TQA_BreastIHC_manifest_bundle.zip -d manifest
 ```
 
-A successful checksum check establishes file integrity, not suitability for a
-clinical purpose. Keep the public aliases and manifest filenames unchanged.
+Every line must report `OK`. A checksum proves file integrity; it does not make
+the data or method clinically suitable.
 
-## 3. Quantify all IHC markers
+## Run the cohort
 
-Preview the exact cohort first. This checks the manifest, selection, archive
-availability, settings, and analysis identity without decoding images:
+Set paths once so the preview and full run are identical:
 
 ```bash
-tumorquantai ihc quantify /path/to/breast-ihc-downloads \
-  --manifest /path/to/breast-ihc-downloads/manifest/patch_manifest.csv \
-  --output /path/to/breast-ihc-ihc-results \
+TQA_DOWNLOADS=/path/to/breast-ihc-downloads
+TQA_MANIFEST="$TQA_DOWNLOADS/manifest/patch_manifest.csv"
+TQA_RESULTS=/path/to/breast-ihc-results
+```
+
+### 1. Preview
+
+The dry run checks the cohort, marker selection, archives, and analysis
+settings without decoding images:
+
+```bash
+tumorquantai ihc quantify "$TQA_DOWNLOADS" \
+  --manifest "$TQA_MANIFEST" \
+  --output "$TQA_RESULTS" \
   --workers 12 \
   --save-cells \
   --dry-run
 ```
 
-Run the same plan without <code>--dry-run</code>:
+### 2. Quantify
+
+Remove only `--dry-run`:
 
 ```bash
-tumorquantai ihc quantify /path/to/breast-ihc-downloads \
-  --manifest /path/to/breast-ihc-downloads/manifest/patch_manifest.csv \
-  --output /path/to/breast-ihc-ihc-results \
+tumorquantai ihc quantify "$TQA_DOWNLOADS" \
+  --manifest "$TQA_MANIFEST" \
+  --output "$TQA_RESULTS" \
   --workers 12 \
   --save-cells
 ```
 
-The run is deterministic for the recorded engine version and settings.
-Completed per-patch records are reused after interruption. TumorQuantAI fails
-closed when a selected archive is missing or a decoded RGB hash differs from
-the public manifest. Use <code>--allow-missing</code> only when an explicitly
-incomplete report is intended; unavailable patches remain unavailable and
-never become zero.
+The run is resumable. Each completed patch has an analysis-signature-matched
+checkpoint, so repeating the same command after interruption reuses valid
+work. TumorQuantAI fails closed when an archive is missing or decoded pixels
+do not match the manifest. `--allow-missing` is reserved for an intentionally
+incomplete audit; unavailable markers never become numerical zero.
 
-By default, the command writes a PNG QC overlay for every IHC patch.
-<code>--save-cells</code> additionally writes compressed per-cell tables and
-can be omitted when only aggregate values are required. The principal marker
-measurements are:
+### What is measured
 
-| Marker | Package-native research measurement |
-| --- | --- |
-| ER and PR | Percentage of accepted segmented nuclei with nuclear DAB, intensity counts, and H-score |
-| Ki-67 | Percentage of accepted segmented nuclei with nuclear DAB, intensity counts, and H-score |
-| HER2 | Expanded-nucleus boundary DAB measurements and a conservative 0/1+/2+/3+ membrane-proxy pre-score |
+| Marker | Research measurement | Case pre-score |
+| --- | --- | --- |
+| ER | Accepted nuclei with nuclear DAB, intensity classes, and H-score | DAB-positive percentage |
+| PR | Accepted nuclei with nuclear DAB, intensity classes, and H-score | DAB-positive percentage |
+| Ki-67 | Accepted nuclei with nuclear DAB, intensity classes, and H-score | DAB-positive percentage |
+| HER2 | DAB along an expanded-nucleus boundary proxy | Conservative 0 / 1+ / 2+ / 3+ membrane-proxy category |
 
 The implementation uses the optical-density colour-deconvolution framework of
-[Ruifrok and Johnston (2001)](https://pubmed.ncbi.nlm.nih.gov/11531144/).
-Clinical interpretation context comes from the
-[ASCO/CAP ER and PR guideline update](https://ascopubs.org/doi/10.1200/JCO.19.02309),
-the [CAP HER2 testing guideline update](https://www.cap.org/cap-guidelines/her2-testing-in-breast-cancer-2023-guideline-update/),
+[Ruifrok and Johnston](https://pubmed.ncbi.nlm.nih.gov/11531144/). Clinical
+interpretation context is provided by the
+[ASCO/CAP ER and PR update](https://ascopubs.org/doi/10.1200/JCO.19.02309),
+[CAP HER2 guidance](https://www.cap.org/cap-guidelines/her2-testing-in-breast-cancer-2023-guideline-update/),
 and the
-[International Ki67 Working Group recommendations](https://pmc.ncbi.nlm.nih.gov/articles/PMC8487652/).
-These sources do not clinically validate TumorQuantAI's research measurements.
+[International Ki67 Working Group](https://pmc.ncbi.nlm.nih.gov/articles/PMC8487652/).
+Those sources do not validate these computational measurements.
 
-The default thresholds and physical-scale settings are serialized in
-<code>workflow_metadata/ihc_run.json</code> and hashed into the analysis
-signature. Changing a threshold requires a new output directory, making silent
-mixing of settings difficult.
+## Review the results
 
-## 4. Review the report and segmentation QC
+Open:
 
-Open <code>START_HERE.html</code>, then review the audit tables before using a
-case value:
-
-| Output | Review purpose |
-| --- | --- |
-| <code>tables/case_marker_measurements.csv</code> | One aggregate row per public case alias and marker |
-| <code>tables/patch_measurements.csv</code> | Patch-level numerators, denominators, values, hash verification, and QC status |
-| <code>patches/&lt;case&gt;/&lt;patch&gt;/qc_overlay.png</code> | Visual check of accepted objects and DAB classes |
-| <code>patches/&lt;case&gt;/&lt;patch&gt;/cell_measurements.csv.gz</code> | Optional per-cell measurements |
-| <code>workflow_metadata/ihc_run.json</code> | Dataset, settings, engine, counts, timestamps, and completion state |
-
-!!! warning "Mandatory interpretation boundary"
-    The public data contain selected fields, not whole slides, and do not
-    provide a pathologist-verified invasive-tumour ROI or a validated
-    tumour-cell classifier. ER, PR, and Ki-67 denominators therefore include
-    all accepted segmented nuclei. HER2 is a membrane proxy, not a clinical
-    HER2 score. Review overlays for every case; do not treat a technically
-    completed row as clinical validation.
-
-## 5. Create the privacy-minimized pathologist CSV
-
-Agreement requires the private linkage created when the public HMAC aliases
-were generated. The public deposit intentionally does not contain that mapping.
-Never reconstruct it from marker values: doing so is both circular and an
-identity-disclosure risk.
-
-Keep the workbook, linkage, and exported CSV outside the repository and any
-public release directory. Use explicit identifier columns:
-
-```bash
-tumorquantai ihc anonymize-clinical \
-  /private/path/pathologist-review.xlsx \
-  --linkage /private/path/private-linkage.csv \
-  --clinical-id-column "Número de paciente" \
-  --linkage-id-column case_id \
-  --output /private/path/pathologist-markers-pseudonymized.csv
+```text
+breast-ihc-results/START_HERE.html
 ```
 
-The exporter joins only through the exact linkage and writes these six columns:
+The report begins with cohort completion and marker distributions, then links
+to all 51 case galleries. Review in this order:
+
+1. Confirm `1,516 / 1,516` selected IHC patches completed.
+2. Confirm all decoded-RGB checks and automated QC checks passed.
+3. Open every case page and inspect segmentation overlays.
+4. Check patch-level denominators before using a case aggregate.
+5. Treat technically complete values as research measurements, not validation.
+
+The core output map is:
+
+```text
+breast-ihc-results/
+├── START_HERE.html
+├── case_reports/<case_alias>.html
+├── tables/
+│   ├── tumorquantai_marker_values.csv
+│   ├── case_marker_measurements.csv
+│   ├── patch_measurements.csv
+│   └── unavailable_patches.csv
+├── patches/<case_alias>/<patch_alias>/
+│   ├── measurement.json
+│   ├── qc_overlay.png
+│   └── cell_measurements.csv.gz
+└── workflow_metadata/ihc_run.json
+```
+
+!!! warning "Interpretation boundary"
+    ER, PR, and Ki-67 denominators include all accepted segmented nuclei, not
+    verified invasive tumour cells. HER2 is an expanded-boundary proxy, not a
+    clinical membrane-scoring algorithm. Separate stains are unregistered and
+    cannot establish cell-level co-expression.
+
+## Compare with pathologist values
+
+This step is optional and private. The public deposit deliberately excludes
+the mapping between source biopsy identifiers and public case aliases.
+
+### Create the minimum English CSV
+
+Use only the reviewed `Biopsias finales incluidas` worksheet and the exact
+private release linkage. For this cohort the workbook-side key is `Biopsia`
+and the linkage-side key is `case_id`:
+
+```bash
+install -d -m 700 /private/path/breast-ihc-agreement
+
+tumorquantai ihc anonymize-clinical \
+  /private/path/pathologist-review.xlsx \
+  --sheet "Biopsias finales incluidas" \
+  --linkage /private/path/private-linkage.csv \
+  --clinical-id-column "Biopsia" \
+  --linkage-id-column case_id \
+  --output /private/path/breast-ihc-agreement/pathologist-markers-pseudonymized.csv
+```
+
+If identifiers differ between the two reviewed sources, do not match on marker
+values. Create an explicitly reviewed, mode-`0600` private crosswalk:
+
+```csv
+linkage_id,clinical_id
+PRIVATE_LINKAGE_IDENTIFIER,PRIVATE_WORKBOOK_IDENTIFIER
+```
+
+Then add:
+
+```bash
+  --identifier-crosswalk /private/path/identifier-crosswalk.csv
+```
+
+The package requires a one-to-one crosswalk and records only its checksum and
+row count in provenance. For the reference run, 48 identifiers matched
+exactly and three independently reviewed identifiers differed by one
+character; no marker measurement participated in linkage.
+
+The resulting CSV has exactly six English fields:
 
 ```text
 case_alias
@@ -195,580 +273,136 @@ pathologist_her2_fish
 pathologist_ki67_percent
 ```
 
-Names, national identifiers, biopsy identifiers, dates, age, diagnosis text,
-laterality, specimen type, and grade are excluded. A provenance JSON records
-the source-workbook hash and minimization policy without copying direct
-identifiers.
+Names, national identifiers, biopsy identifiers, dates, age, diagnosis,
+laterality, specimen type, and grade are excluded.
 
 !!! danger "Pseudonymized is not anonymous"
-    Public aliases combined with marker values remain pseudonymized health
-    data. Protect the CSV, restrict access, and never publish the private
-    linkage. TumorQuantAI deliberately calls the output pseudonymized rather
-    than claiming irreversible anonymization.
+    Public aliases plus marker values remain pseudonymized health data. Keep
+    the CSV, workbook, linkage, crosswalk, and paired output outside Git and
+    under controlled access. Only aggregate, non-case-level statistics belong
+    in a public repository.
 
-## 6. Calculate marker-wise agreement and kappa
-
-Run comparison only after the full IHC table and the exact-linkage clinical
-export are ready:
+### Calculate agreement
 
 ```bash
-tumorquantai ihc compare /path/to/breast-ihc-ihc-results \
-  --pathologist-csv /private/path/pathologist-markers-pseudonymized.csv \
-  --output /private/path/breast-ihc-agreement
+tumorquantai ihc compare "$TQA_RESULTS" \
+  --pathologist-csv /private/path/breast-ihc-agreement/pathologist-markers-pseudonymized.csv \
+  --output /private/path/breast-ihc-agreement/report \
+  --bootstrap-iterations 10000 \
+  --bootstrap-seed 20260829
 ```
 
-Open <code>AGREEMENT_REPORT.html</code>. The prespecified agreement scales are:
+Open `AGREEMENT_REPORT.html`. It includes:
 
-| Marker | Primary kappa scale |
-| --- | --- |
-| ER | Cohen's kappa, negative versus positive at 1% |
-| PR | Cohen's kappa, negative versus positive at 1% |
-| HER2 | Quadratic-weighted kappa on 0, 1+, 2+, and 3+ |
-| Ki-67 | Quadratic-weighted kappa on percentage deciles |
-| Ki-67 sensitivity view | Unweighted kappa below versus at/above 20% |
+- unweighted Cohen's kappa for ER and PR at 1%;
+- quadratic-weighted kappa for HER2 on 0 / 1+ / 2+ / 3+;
+- quadratic-weighted kappa for Ki-67 percentage deciles;
+- a secondary unweighted Ki-67 view at 20%;
+- case-resampled percentile 95% intervals;
+- observed and expected agreement plus positive/negative specific agreement;
+- MAE, RMSE, median absolute error, mean bias, and 95% limits of agreement;
+- Pearson correlation, Spearman correlation, and Lin's concordance correlation
+  coefficient;
+- both raters' category margins and every contingency matrix;
+- automatic warnings when a rater uses only one category.
 
-The report also writes bootstrap 95% intervals, exact agreement, mean absolute
-error, Pearson correlation for continuous values, and every contingency
-matrix. Kappa is prevalence-sensitive and cannot by itself validate the image
-method. Interpret it together with sample count, margins of the contingency
-table, confidence interval, QC exclusions, and continuous paired values.
-The coefficient follows
-[Cohen's original definition](https://doi.org/10.1177/001316446002000104);
-weighted variants use the prespecified ordinal weights recorded in the report.
+The clearest machine-readable outputs are:
 
-## 7. Optional: run HistoPLUS cell typing
+| CSV | Rows | Contents | Access |
+| --- | ---: | --- | --- |
+| `$TQA_RESULTS/tables/tumorquantai_marker_values.csv` | 51 | One row per public case with TumorQuantAI ER, PR, HER2-proxy, and Ki-67 values, segmented-object denominators, H-scores where applicable, and QC status | Local result |
+| `report/concordance_metrics.csv` | 5 | One aggregate row per prespecified marker scale with the full kappa and concordance report | Safe to share when it contains no case rows |
+| `report/case_concordance_values_pseudonymized.csv` | 51 | Wide side-by-side pathologist and TumorQuantAI values and derived categories | Controlled access only |
+| `report/case_comparison_pseudonymized.csv` | 203 | The same paired values in long case-marker form | Controlled access only |
 
-The remaining analysis steps apply the gated HistoPLUS model to each TIFF.
-They predict cell types; they do not quantify ER, PR, HER2, or Ki-67 stain
-intensity and must not be substituted for sections 3–6.
+The compact `kappa_summary.csv` remains available for backward-compatible
+downstream use. Empty marker cells mean unavailable, never numerical zero.
 
-### Prepare privacy-safe TIFF patch names
+Kappa follows [Cohen's definition](https://doi.org/10.1177/001316446002000104)
+and is sensitive to prevalence and marginal distributions. Never interpret it
+without the contingency matrix and raw agreement.
 
-Use research IDs and canonical English marker names. Do not place names, medical
-record numbers, dates of birth, or private linkage values in paths or image
-metadata.
+## Reference run
 
-```text
-/path/to/breast-ihc-tiff-patches/
-├── study_001_HE_01.tif
-├── study_001_ER_01.tif
-├── study_001_PR_01.tif
-├── study_001_HER2_01.tif
-└── study_001_KI67_01.tif
-```
+The complete public cohort was processed with the default
+`hdab-watershed-membrane-proxy-v1` engine, all decoded-pixel checks enabled,
+12 workers, and compressed cell output.
 
-The filename describes the intended stain; it does not prove a result. Keep the
-private case-linkage table outside the repository and publication package.
+<div class="tqa-run-strip">
+  <span><strong>1,516</strong> IHC patches completed</span>
+  <span><strong>0</strong> failed or unavailable</span>
+  <span><strong>8,119,901</strong> segmented measurement proxies</span>
+  <span><strong>203</strong> case-marker rows</span>
+</div>
 
-### Establish source MPP
+### Computational cohort overview
 
-Every TIFF patch needs a trustworthy physical pixel size in micrometres per
-pixel. Use embedded metadata only when it is complete and consistent with the
-scanner/export record. If metadata are absent or unreliable, obtain the value
-from the acquisition system or a traceable calibration and pass it explicitly.
+| Marker | Cases | Median pre-score | Additional view |
+| --- | ---: | ---: | --- |
+| ER | 51 | 64.5% DAB-positive | 51 / 51 at or above 1% |
+| PR | 51 | 26.4% DAB-positive | 50 / 51 at or above 1% |
+| Ki-67 | 51 | 26.8% DAB-positive | 30 / 51 at or above 20% |
+| HER2 | 50 | — | 0+: 7 · 1+: 5 · 2+: 29 · 3+: 9 |
 
-Do not infer MPP from image dimensions, a rescaled or unverified screenshot, an
-unrelated slide, or the HistoPLUS target MPP. A measured scale bar supports an
-audit only when its stated length and original pixel geometry are verified. A
-single `--source-mpp` override applies to the selected collection and therefore
-requires a common source scale.
+One public case has no HER2 patch in the manifest, so HER2 has 50 rather than
+51 case-level values.
 
-For release preparation, the manifest's per-image MPP must come from an
-external calibration audit. Source TIFF resolution tags are not authoritative:
-they may be absent or wrong. Record the audited value and its allowlisted
-provenance in the private source manifest; the sanitizer embeds that value into
-the sanitized TIFF and verifies the resulting resolution tags.
+### Aggregate pathologist concordance
 
-### Run all patches on CPU
+| Marker | Prespecified scale | n | κ | Bootstrap 95% CI | Exact | MAE | RMSE | Lin's CCC |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ER | Unweighted, 1% binary | 51 | 0.000 | 0.000–0.000 | 86.3% | 42.4 | 52.1 | -0.028 |
+| PR | Unweighted, 1% binary | 51 | 0.100 | 0.000–0.314 | 74.5% | 36.3 | 46.9 | 0.165 |
+| HER2 | Quadratic, 0 / 1+ / 2+ / 3+ | 50 | 0.392 | 0.225–0.542 | 38.0% | 1.08 | 1.41 | 0.392 |
+| Ki-67 | Quadratic, percentage deciles | 51 | 0.232 | 0.055–0.428 | 23.5% | 31.1 | 44.4 | 0.217 |
+| Ki-67 | Unweighted, 20% binary | 51 | 0.287 | 0.049–0.521 | 62.7% | — | — | — |
 
-When every TIFF contains reliable embedded MPP, use:
+[Download the complete aggregate concordance CSV](../assets/data/breast_ihc_reference_concordance_metrics.csv).
+For ER, PR, and Ki-67, errors are percentage points; for HER2 they are
+0–3 pre-score units. The downloadable file also contains expected agreement,
+specific agreement, median error, bias and limits of agreement, Pearson and
+Spearman correlations, and category margins.
+
+ER illustrates why raw agreement alone is insufficient: TumorQuantAI assigned
+all 51 paired cases to the positive category. The 86.3% exact agreement
+therefore coexists with κ = 0 and no binary discrimination of the seven
+pathologist-negative cases.
+
+!!! warning "This is a reproducibility result, not a performance claim"
+    The reference comparison uses selected fields, an all-accepted-nuclei
+    denominator, no invasive-tumour annotation, and an unvalidated HER2 proxy.
+    It demonstrates that the package executes transparently; it does not
+    establish sensitivity, specificity, clinical equivalence, or fitness for
+    patient care.
+
+The public repository contains only this aggregate summary. The 51-row
+pseudonymized clinical CSV and paired case table remain private.
+
+## Optional HistoPLUS cell typing
+
+HistoPLUS answers which cell types are predicted in each patch. It does not
+replace IHC stain quantification:
 
 ```bash
-# Process 100% of the discovered TIFF patches and request paper/QC figures.
-tumorquantai --patches /path/to/breast-ihc-tiff-patches \
+tumorquantai --patches /path/to/extracted-tiff-patches \
   --paper-figures \
-  --output /path/to/breast-ihc-patch-results \
+  --output /path/to/histoplus-patch-results \
   --cpu
 ```
 
-When embedded MPP is missing or unreliable, enter the verified common value and
-pass it explicitly:
-
-```bash
-# Enter the verified common source MPP without copying another dataset's value.
-read -rp "Verified source MPP in micrometres per pixel: " SOURCE_MPP
-
-# Process the same complete collection with an explicit physical scale.
-tumorquantai --patches /path/to/breast-ihc-tiff-patches \
-  --paper-figures \
-  --output /path/to/breast-ihc-patch-results \
-  --source-mpp "$SOURCE_MPP" \
-  --cpu
-```
-
-Patch mode fails closed when it cannot establish physical scale. Reliable
-embedded MPP is resolved independently for every patch, so mixed 4×, 10×, and
-40× exports may remain in one run. A single explicit `--source-mpp` override
-is valid only when every selected TIFF shares that verified scale. CPU
-inference can be substantially slower than GPU inference; stopping and
-repeating the identical command preserves normal resume behavior.
-
-### Confirm complete processing
-
-```bash
-# Review completed, failed, incomplete, excluded, and pending patch inputs.
-tumorquantai status /path/to/breast-ihc-patch-results
-
-# Regenerate the portable results index after inference finishes.
-tumorquantai report /path/to/breast-ihc-patch-results
-```
-
-Open `START_HERE.html`, then verify that the aggregation audit accounts for the
-entire intended TIFF roster. Full mode means every discovered input was
-scheduled; it does not mean every input succeeded. Failed or incomplete patches
-remain explicit and never become numerical zero.
-
-When patch inputs contain mixed embedded scales, `tumorquantai status`, its
-JSON `source_mpp_values` and `source_mpp_provenance` fields, `START_HERE.html`,
-and the text run summary report the distinct per-input MPP values and identify
-their provenance as per-input embedded TIFF metadata. Review these values before
-interpreting scale bars or counts.
-
-### Review HistoPLUS paper and QC outputs
-
-For every completed patch, inspect:
-
-1. `<sample>/overlays/celltypes_overview_and_zoom.png` for tissue, alignment,
-   the connected zoom, configured cell-type overlay, and scale bars.
-2. `<sample>/paper_figures/celltypes_paper_figure.png` and `.pdf` for the
-   publication-oriented composition.
-3. `<sample>/paper_figures/celltypes_paper_figure_legend.txt` for the slide ID,
-   panel descriptions, count source and denominator, scale/ROI/model provenance,
-   and research-use limitations.
-4. `<sample>/paper_figures/celltype_counts_barplot.png` and `.pdf` for the
-   standalone detected-cell count chart.
-5. `<sample>/cell_types/class_counts.csv` and the coordinate table for the
-   plotted source values.
-6. `<sample>/summary/summary.json` for completion, resolved MPP, model identity,
-   input fingerprint, device, figure-layout version, and provenance.
-7. `aggregated_celltypes/sample_aggregation_audit.csv` before interpreting any
-   cohort matrix.
-
-The compact paper figure uses a visual grammar inspired by [STTT 2026 Figure
-6](https://www.nature.com/articles/s41392-026-02734-0#Fig6) and [Figure
-7](https://www.nature.com/articles/s41392-026-02734-0#Fig7):
-
-| Panel | Content |
-| --- | --- |
-| **a** | Every detected HistoPLUS cell type, with raw count and percentage of all cells detected in that input |
-| **b** | Scale-calibrated whole-input overview with the selected ROI outlined |
-| **c** | Enlarged QC inset with the configured cell-type overlay and its own scale bar |
-
-The artwork has bold lowercase panel letters and necessary graph labels, but no
-sample title or explanatory prose. Those details belong in the companion text
-legend. The visual reference concerns layout only; it does not transfer methods,
-performance, or biological claims from another study.
-
-Before manuscript submission, separately check the [Nature Research figure
-specifications](https://research-figure-guide.nature.com/figures/preparing-figures-our-specifications/).
-The generated PNG/PDF files are not a guarantee of journal-production
-compliance.
-
-For newly rendered outputs, `run_metadata.json` records the portable legend
-path and paper-figure layout version. When the completion summary records the
-current layout version, a missing or empty legend prevents completion/resume
-reuse. Because the layout version is separate from the scientific worker
-processing signature, direct reuse of the same persistent worker output retains
-the legacy completion contract for a summary without a layout version. Standard
-`tumorquantai` execution uses Nextflow, whose cache also keys staged worker code
-and configuration; a software upgrade may invalidate `PROCESS_SLIDE` and
-re-enter HistoPLUS inference. Preview the complete command with
-`--resume --dry-run`, then confirm the expanded engine command uses Nextflow
-`-resume` and the original work directory. Preserve the exact software/work
-cache, or choose `--cpu` when reuse is uncertain. To obtain the redesigned
-figure for a legacy result, choose a new output directory or a deliberate rerun.
-The count denominator is all
-HistoPLUS-detected cells in the analyzed input, not tissue area, all cells in a
-case, or an extrapolated whole-slide total.
-
-See the [output schema](../reference/outputs.md) for the complete path list.
-
-### Describe HistoPLUS-derived groups conservatively
-
-If a downstream presentation arranges marker-specific patch results by ER, PR,
-HER2, or Ki-67 patterns, call the categories **computational receptor-profile
-pre-score groups**. Keep continuous values and their numerators/denominators
-visible. Do not imply that differently stained patches are cell-level
-co-expression measurements.
-
-An equivocal HER2 pre-score remains equivocal and requires appropriate
-independent clinical testing. A missing or failed marker is not negative. Do
-not infer histologic type, intrinsic molecular subtype, prognosis, treatment
-eligibility, or clinical accuracy from these research outputs.
-
-## 8. Prepare an offline release draft
-
-`bin/prepare_breast_ihc_patch_release.py` prepares a new, local sanitized
-draft from an explicitly selected set of authorized TIFF patches. It has no
-network, deposit, upload, or publication capability. The source manifest,
-alias secret, and private linkage are private materials and must remain outside
-both the repository and the public staging directory.
-
-The private source-selection CSV has these required columns:
-
-| Column | Required content |
-| --- | --- |
-| `case_id` | Private source case identifier |
-| `marker` | Canonical English marker: `H&E`, `ER`, `PR`, `HER2`, or `Ki-67` |
-| `field_id` | Private source field or patch identifier |
-| `source_path` | Authorized `.tif` or `.tiff` source path, absolute or relative to the manifest |
-| `include` | Exactly `true` or `false` |
-| `microns_per_pixel` | Verified physical scale for this individual image |
-| `mpp_provenance` | Allowlisted English provenance for the audited scale |
-
-For example, the following is a schema illustration, not a usable manifest.
-Replace every placeholder and keep the completed CSV private:
-
-```csv
-case_id,marker,field_id,source_path,include,microns_per_pixel,mpp_provenance
-PRIVATE_CASE_ID,H&E,PRIVATE_FIELD_ID,/path/to/authorized/source-patch.tif,true,VERIFIED_PER_IMAGE_MPP,measured_scale_bar_calibration
-```
-
-`mpp_provenance` is not free text. Use one of the safe English provenance
-categories `measured_scale_bar_calibration`,
-`documented_magnification_extrapolation`, or
-`externally_verified_calibration`. Known cohort-specific objective/binning
-forms are normalized to corresponding canonical English values. The canonical
-value is published in `patch_manifest.csv` and summarized in
-`validation_report.json`; private instrument, vendor, date, or operator notes
-must not be placed in this column.
-
-This provenance describes how the external audit established
-`microns_per_pixel`; it does not claim that the source TIFF's resolution tags
-were present or correct.
-
-Source TIFFs may omit the TIFF `Orientation` tag or use its default top-left
-value. The sanitizer rejects a non-default orientation rather than silently
-changing pixel coordinates or visual orientation during re-encoding.
-
-Create the alias secret in a private location. The utility requires a regular,
-non-symlink file owned by the current user, with exactly mode `0600`, at least
-32 random bytes, and no additional hard links. Retain a protected backup when
-stable aliases must be reproduced.
-
-```bash
-# Create private release material outside the repository and public staging.
-install -d -m 700 /path/outside/repository/private-release-material
-umask 077
-dd if=/dev/urandom \
-  of=/path/outside/repository/private-release-material/alias-secret.bin \
-  bs=32 count=1 status=none
-chmod 600 /path/outside/repository/private-release-material/alias-secret.bin
-```
-
-A dry run is mandatory before local draft creation. Choose new public-output
-and private-linkage targets that do not already exist, replace the two count
-placeholders with the exact included-case and included-file integers, and run:
-
-```bash
-# Validate the complete private selection and plan without writing either output.
-python3 bin/prepare_breast_ihc_patch_release.py \
-  --source-manifest /path/outside/repository/private-source-selection.csv \
-  --alias-secret-file /path/outside/repository/private-release-material/alias-secret.bin \
-  --public-output /path/outside/repository/breast-ihc-public-draft \
-  --private-linkage /path/outside/repository/private-release-material/private-linkage.csv \
-  --expected-cases REPLACE_WITH_INCLUDED_CASE_COUNT \
-  --expected-files REPLACE_WITH_INCLUDED_TIFF_COUNT \
-  --dry-run
-```
-
-The dry run validates the selection and prints a safe summary without private
-IDs or paths. It writes neither the public draft nor the private linkage. Only
-after it passes, rerun the same inputs without `--dry-run`:
-
-```bash
-# Create the local sanitized draft after the mandatory dry run passes.
-python3 bin/prepare_breast_ihc_patch_release.py \
-  --source-manifest /path/outside/repository/private-source-selection.csv \
-  --alias-secret-file /path/outside/repository/private-release-material/alias-secret.bin \
-  --public-output /path/outside/repository/breast-ihc-public-draft \
-  --private-linkage /path/outside/repository/private-release-material/private-linkage.csv \
-  --expected-cases REPLACE_WITH_INCLUDED_CASE_COUNT \
-  --expected-files REPLACE_WITH_INCLUDED_TIFF_COUNT
-```
-
-The local public draft contains only the following release-side structure:
-
-```text
-breast-ihc-public-draft/
-├── patches/<case_alias>/<patch_alias>_<MARKER>.tif
-├── patch_manifest.csv
-├── case_marker_counts.csv
-├── validation_report.json
-├── SHA256SUMS
-└── MD5SUMS
-```
-
-For each selected image, the utility fully decodes the source and sanitized
-TIFF, verifies identical decoded RGB pixels, strips descriptions, dates,
-software, vendor, OME, shaped, and other non-allowlisted metadata, and computes
-checksums. It carries that row's verified `microns_per_pixel` value into the
-sanitized TIFF resolution tags, then reads and verifies the embedded scale.
-Different rows may therefore retain different physical scales. Metadata
-stripping does not detect identifiers burned into pixels, so independent
-visible-pixel, privacy, ethics, rights, and governance review remains required.
-
-The public `patch_manifest.csv` records each image's audited MPP, canonical
-`mpp_provenance`, and domain-separated decoded-RGB SHA-256. The private linkage
-retains both the original and canonical provenance values.
-
-The HMAC-derived aliases appear in the public draft. Original identifiers,
-source paths, and the alias mapping appear only in the separately created
-mode-`0600` private linkage. `validation_report.json` records that the result
-is draft-only and that no network, upload, or publication action occurred.
-
-The sanitized tree is an input to local packaging, not an upload payload. Do
-not upload or publish it; the sanitizer cannot perform either action.
-
-## 9. Package the sanitized draft locally
-
-`bin/package_breast_ihc_patch_release.py` converts one completed sanitized
-draft into deterministic local upload files. It retains and never modifies the
-source tree. The package output must be a new directory outside the repository
-and separate from the sanitized source tree.
-
-A packager dry run is mandatory. Replace both count placeholders with the exact
-counts recorded by the completed sanitized draft:
-
-```bash
-# Validate the exact draft roster and report disk/upload plans without writing.
-python3 bin/package_breast_ihc_patch_release.py \
-  --source-draft /path/outside/repository/breast-ihc-public-draft \
-  --package-output /path/outside/repository/breast-ihc-upload-package \
-  --expected-cases REPLACE_WITH_SANITIZED_CASE_COUNT \
-  --expected-files REPLACE_WITH_SANITIZED_TIFF_COUNT \
-  --dry-run
-```
-
-The dry run validates the entire source roster and reports the upload-file
-count and conservative additional-disk estimate. It writes no package output.
-Only after that exact plan passes, repeat it without `--dry-run`:
-
-```bash
-# Create the deterministic local package after the mandatory dry run passes.
-python3 bin/package_breast_ihc_patch_release.py \
-  --source-draft /path/outside/repository/breast-ihc-public-draft \
-  --package-output /path/outside/repository/breast-ihc-upload-package \
-  --expected-cases REPLACE_WITH_SANITIZED_CASE_COUNT \
-  --expected-files REPLACE_WITH_SANITIZED_TIFF_COUNT
-```
-
-For this cohort, the validated planning values are **51 cases** and **1,901
-sanitized TIFFs**. Use `--expected-cases 51 --expected-files 1901` only for
-that exact roster. Its package has 55 top-level upload files:
-
-```text
-breast-ihc-upload-package/
-├── TQA_BC_<case-alias>.zip                 # 51 ZIP64 case archives
-├── TQA_BreastIHC_manifest_bundle.zip       # 1 manifest bundle
-├── packaging_report.json                   # 1 packaging report
-├── SHA256SUMS                              # 1 upload checksum file
-└── MD5SUMS                                 # 1 upload checksum file
-```
-
-The manifest bundle contains `patch_manifest.csv`, `case_marker_counts.csv`,
-`validation_report.json`, the sanitized draft's `SHA256SUMS` and `MD5SUMS`, and
-the generated `archive_manifest.csv`. The outer checksum files cover all 51
-case archives, the manifest bundle, and the packaging report.
-
-Case archives use forced ZIP64 and `ZIP_STORED`; no TIFF recompression occurs.
-For identical validated inputs and the same supported packager tool/runtime,
-fixed member order, timestamps, modes, and ZIP settings produce exact archive
-bytes independently of source filesystem metadata. This is not a guarantee of
-byte identity across arbitrary Python versions or ZIP implementations.
-`ZIP_STORED` also duplicates the retained TIFF payload on disk. Confirm the
-dry-run value of `estimated_additional_disk_bytes` before packaging.
-
-Before writing, the packager verifies the exact allowlisted source roster,
-manifest and case-marker counts, sanitizer report, source checksums, aliases,
-TIFF headers, metadata allowlist, per-image MPP, and canonical MPP provenance.
-It fully decodes every sanitized TIFF and recomputes its domain-separated RGB
-SHA-256 instead of trusting the manifest value alone. After writing, it reopens
-every archive and verifies its exact member roster, fixed member metadata,
-ZIP64 requirement, stored sizes, CRC32, SHA-256, and MD5. It then verifies the
-exact 55-file output roster and both upload checksum files and confirms that
-the sanitized source roster remains unchanged.
-
-The packager has no network, deposit, upload, or publication capability.
-Zenodo's default planning limits remain 50 GB and 100 files per record. The
-published cohort package contains exactly 55 files and 74,958,557,152 bytes, so
-it required additional record storage while remaining within the file-count
-limit. A new release still requires its own measured-size check, quota where
-needed, visible-pixel/privacy review, governance approval, and publication
-authorization.
-
-## 10. Create or resume the open Zenodo draft
-
-`bin/zenodo_breast_ihc_deposit.py` is the draft-only uploader for this exact
-release. It accepts only the 51 verified case ZIPs and the four verified
-auxiliary files described above. It revalidates the complete package locally,
-including both checksum rosters, the manifest bundle, every case archive and
-member, and the packaging report before it reads a credential or contacts
-Zenodo.
-
-Prepare a separate JSON metadata file with a title, description, license, at
-least one named creator, `"upload_type": "dataset"`, and
-`"access_right": "open"`. Keep the state and token outside the package. The
-token file must have mode `0600` and needs only the Zenodo `deposit:write`
-scope. Start from this deliberately incomplete template; replace the creator
-and license placeholders with reviewed, authorized values:
-
-```json
-{
-  "title": "TumorQuantAI breast IHC raw TIFF patch dataset",
-  "description": "Sanitized raw breast-IHC TIFF patches and verification manifests for research workflows.",
-  "upload_type": "dataset",
-  "access_right": "open",
-  "license": "REPLACE_WITH_AUTHORIZED_CANONICAL_LICENSE_ID",
-  "creators": [
-    {"name": "REPLACE_WITH_REAL_FAMILY_NAME, REAL_GIVEN_NAME"}
-  ],
-  "keywords": ["digital pathology", "immunohistochemistry"]
-}
-```
-
-The uploader rejects unresolved placeholders. It canonicalizes known legacy
-license aliases before fingerprinting. If optional `language` is present, use
-the canonical three-letter code. Related identifiers require an explicit
-supported scheme and canonical relation; omit optional empty arrays instead of
-writing `[]`.
-
-First run the network-free plan:
-
-```bash
-python3 bin/zenodo_breast_ihc_deposit.py \
-  --package-dir /path/outside/repository/breast-ihc-upload-package \
-  --metadata /path/outside/repository/zenodo-metadata.json \
-  --state /path/outside/repository/private-release-material/zenodo-state.json \
-  --plan
-```
-
-If the package is larger than the record's available quota, create and verify
-the open-access draft without uploading files, then request quota for that
-deposition:
-
-```bash
-python3 bin/zenodo_breast_ihc_deposit.py \
-  --package-dir /path/outside/repository/breast-ihc-upload-package \
-  --metadata /path/outside/repository/zenodo-metadata.json \
-  --state /path/outside/repository/private-release-material/zenodo-state.json \
-  --token-file /path/outside/repository/private-release-material/zenodo-token \
-  --create-only
-```
-
-An approved account allocation is not sufficient by itself. Open that exact
-draft in Zenodo, choose **Manage storage**, allocate the additional quota to
-that specific draft, and select **Apply**. Confirm that the draft's resulting
-storage allocation covers the complete measured package. Only then run the
-same command without `--create-only` and record the confirmed total quota in
-bytes when it exceeds 50 GB:
-
-```bash
-python3 bin/zenodo_breast_ihc_deposit.py \
-  --package-dir /path/outside/repository/breast-ihc-upload-package \
-  --metadata /path/outside/repository/zenodo-metadata.json \
-  --state /path/outside/repository/private-release-material/zenodo-state.json \
-  --token-file /path/outside/repository/private-release-material/zenodo-token \
-  --confirmed-quota-bytes REPLACE_WITH_CONFIRMED_TOTAL_QUOTA_BYTES
-```
-
-The state is mode `0600` and is bound to the exact metadata and 55 local file
-hashes. Repeating the command resumes by remote size and MD5. Each bucket
-upload attempt is exactly one PUT, with no blind transport retry. After a
-failed or ambiguous PUT, the uploader rereads the exact draft and reconciles
-the complete remote roster by filename, size, and MD5. It retries the target
-only when that reconciliation confirms the file is absent; an exact committed
-file is accepted. A pending or mismatched file, an unexpected file, or the
-loss of a previously verified file stops the run rather than triggering
-another PUT, deletion, or replacement. Before an upload attempt,
-`--replace-mismatched` permits an explicitly reviewed replacement only after
-every local file is rehashed. Production and sandbox are the only accepted
-origins; use `--api-url https://sandbox.zenodo.org/api` for a sandbox exercise.
-The command cannot publish. Inspect the resulting draft in Zenodo and retain
-the separate governance and publication approvals.
-
-## 11. Publish the independently authorized draft
-
-`bin/zenodo_breast_ihc_publish.py` is a separate publish-only command. It
-cannot create a deposition, change metadata, upload, replace, or delete files.
-Use it only after the draft uploader has verified all 55 remote files and the
-data steward has approved the irreversible public release.
-
-First obtain the exact release fingerprint and canonical license without a
-credential or network request:
-
-```bash
-python3 bin/zenodo_breast_ihc_publish.py \
-  --package-dir /path/outside/repository/breast-ihc-upload-package \
-  --metadata /path/outside/repository/zenodo-metadata.json \
-  --state /path/outside/repository/private-release-material/zenodo-state.json \
-  --deposition-id REPLACE_WITH_EXACT_DEPOSITION_ID \
-  --plan
-```
-
-Create a new JSON authorization file containing exactly the following keys.
-Copy the license and fingerprint verbatim from the plan, identify the actual
-authorizer, and use a timezone-aware ISO-8601 time:
-
-```json
-{
-  "deidentification_review_complete": true,
-  "pixel_content_privacy_review_complete": true,
-  "public_redistribution_authorized": true,
-  "dataset_rights_confirmed": true,
-  "license_confirmed": true,
-  "metadata_review_complete": true,
-  "publish_irreversibility_acknowledged": true,
-  "authorized_by": "REPLACE_WITH_DATA_STEWARD_NAME",
-  "authorized_at": "2026-08-04T12:00:00-04:00",
-  "license": "REPLACE_WITH_EXACT_CANONICAL_LICENSE_FROM_PLAN",
-  "release_fingerprint_sha256": "REPLACE_WITH_EXACT_FINGERPRINT_FROM_PLAN"
-}
-```
-
-Keep the authorization, token, and state as three distinct files outside the
-package, each owned by the current user with exact mode `0600`. The token needs
-both Zenodo `deposit:write` and `deposit:actions`. Publication requires the
-explicit `--publish` action:
-
-```bash
-python3 bin/zenodo_breast_ihc_publish.py \
-  --package-dir /path/outside/repository/breast-ihc-upload-package \
-  --metadata /path/outside/repository/zenodo-metadata.json \
-  --state /path/outside/repository/private-release-material/zenodo-state.json \
-  --deposition-id REPLACE_WITH_EXACT_DEPOSITION_ID \
-  --authorization /path/outside/repository/private-release-material/publication-authorization.json \
-  --token-file /path/outside/repository/private-release-material/zenodo-actions-token \
-  --publish
-```
-
-Immediately before the one permitted publish request, the command atomically
-records `publish-intent` in the state. It does not retry that POST. If the
-outcome is ambiguous, rerunning the same command performs read-only
-reconciliation and will not issue a second publish request. The state becomes
-`published` only after the published deposition and anonymous public record
-both match the exact metadata and 55-file size/MD5 roster, and the public DOI
-and URLs have been verified.
-
-## Dataset publication status
-
-The raw-only example is published under CC BY 4.0 at
-[Zenodo record 21797920](https://zenodo.org/records/21797920), dataset DOI
-[`10.5281/zenodo.21797920`](https://doi.org/10.5281/zenodo.21797920). The exact
-deposit contains 55 files: 51 case archives holding 1,901 TIFF patches, one
-manifest bundle, one packaging report, and two checksum rosters, totaling
-74,958,557,152 bytes. It does not contain the locally generated paper or QC
-figures. Cite this DOI only for the breast-IHC
-dataset and cite the TumorQuantAI software separately.
-
-The repository support folder is `examples/breast-ihc-patches/`.
+This route requires trustworthy per-image embedded MPP or an externally
+verified common `--source-mpp`, plus authorized HistoPLUS access. See
+[model access](../how-to/model-access.md),
+[physical scale](../explanation/mpp.md), and
+[output review](../reference/outputs.md).
+
+## Cite and maintain
+
+Cite the breast-IHC dataset DOI and the TumorQuantAI software separately.
+Generated overlays and reports are not part of the Zenodo deposit.
+
+Dataset maintainers should use the separate
+[breast-IHC release and publication procedure](../maintainers/breast-ihc-dataset-release.md).
+It covers TIFF sanitization, deterministic packaging, upload reconciliation,
+and independently authorized publication without interrupting this analysis
+tutorial.

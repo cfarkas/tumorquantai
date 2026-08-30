@@ -23,6 +23,7 @@ import html
 import json
 import math
 import os
+import stat
 import tempfile
 import traceback
 import zipfile
@@ -779,6 +780,25 @@ CASE_RESULT_FIELDS = (
     "qc_flags",
 )
 
+TUMORQUANTAI_WIDE_FIELDS = (
+    "case_alias",
+    "tumorquantai_er_percent",
+    "tumorquantai_er_h_score",
+    "tumorquantai_er_segmented_objects",
+    "tumorquantai_er_qc_status",
+    "tumorquantai_pr_percent",
+    "tumorquantai_pr_h_score",
+    "tumorquantai_pr_segmented_objects",
+    "tumorquantai_pr_qc_status",
+    "tumorquantai_her2_membrane_proxy_pre_score",
+    "tumorquantai_her2_segmented_objects",
+    "tumorquantai_her2_qc_status",
+    "tumorquantai_ki67_percent",
+    "tumorquantai_ki67_h_score",
+    "tumorquantai_ki67_segmented_objects",
+    "tumorquantai_ki67_qc_status",
+)
+
 
 def _finite_or_blank(value: Any) -> Any:
     if isinstance(value, (float, np.floating)) and not math.isfinite(float(value)):
@@ -1313,6 +1333,43 @@ def aggregate_case_results(
     return output
 
 
+def wide_tumorquantai_case_values(
+    case_rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    by_case_marker = {
+        (str(row["case_alias"]), str(row["marker"])): row for row in case_rows
+    }
+    cases = sorted({str(row["case_alias"]) for row in case_rows})
+    output: list[dict[str, Any]] = []
+    for case_alias in cases:
+        row: dict[str, Any] = {field: "" for field in TUMORQUANTAI_WIDE_FIELDS}
+        row["case_alias"] = case_alias
+        for marker, prefix in (("ER", "er"), ("PR", "pr"), ("Ki-67", "ki67")):
+            source = by_case_marker.get((case_alias, marker))
+            row[f"tumorquantai_{prefix}_qc_status"] = (
+                source.get("qc_status", "") if source else "unavailable"
+            )
+            if source:
+                row[f"tumorquantai_{prefix}_percent"] = source.get(
+                    "marker_pre_score", ""
+                )
+                row[f"tumorquantai_{prefix}_h_score"] = source.get("h_score", "")
+                row[f"tumorquantai_{prefix}_segmented_objects"] = source.get(
+                    "cell_count", ""
+                )
+        her2 = by_case_marker.get((case_alias, "HER2"))
+        row["tumorquantai_her2_qc_status"] = (
+            her2.get("qc_status", "") if her2 else "unavailable"
+        )
+        if her2:
+            row["tumorquantai_her2_membrane_proxy_pre_score"] = her2.get(
+                "marker_pre_score", ""
+            )
+            row["tumorquantai_her2_segmented_objects"] = her2.get("cell_count", "")
+        output.append(row)
+    return output
+
+
 def _format_number(value: Any, digits: int = 1) -> str:
     parsed = _number(value)
     return "—" if parsed is None else f"{parsed:,.{digits}f}"
@@ -1514,7 +1571,7 @@ table{{border-collapse:collapse;width:100%;font-size:14px}} th,td{{border-bottom
 <header><h1>TumorQuantAI IHC quantification</h1><p>Deterministic H–DAB stain separation, physical-scale-aware nuclear segmentation, marker measurements, and reviewable QC. Research use only.</p></header>
 <main><section class="cards"><div class="card"><b>{len(cases)}</b><span>cases</span></div><div class="card"><b>{completed:,}</b><span>completed patches</span></div><div class="card"><b>{failed:,}</b><span>failed patches</span></div><div class="card"><b>{total_cells:,}</b><span>segmented measurement proxies</span></div></section>
 <section class="panel warning"><h2>Interpretation boundary</h2><p>These selected fields are not whole-slide measurements. No pathologist-verified invasive-tumour ROI or independently validated tumour-cell classifier is supplied. ER/PR/Ki-67 values include every accepted segmented nucleus; HER2 is an expanded-nucleus boundary proxy, not a clinical membrane score. Separate stains are not registered and do not measure same-cell co-expression. Review every overlay and do not use these outputs for patient care.</p></section>
-<section class="panel"><h2>Open the audit tables first</h2><p><a href="tables/patch_measurements.csv">Patch measurements</a> · <a href="tables/case_marker_measurements.csv">Case-marker measurements</a> · <a href="workflow_metadata/ihc_run.json">Run provenance</a></p></section>
+<section class="panel"><h2>Open the audit tables first</h2><p><a href="tables/tumorquantai_marker_values.csv">Wide TumorQuantAI marker values</a> · <a href="tables/case_marker_measurements.csv">Long case-marker measurements</a> · <a href="tables/patch_measurements.csv">Patch measurements</a> · <a href="workflow_metadata/ihc_run.json">Run provenance</a></p></section>
 <section class="panel"><h2>Cohort overview</h2><p>Descriptive research summaries across available case-level measurements.</p><div class="marker-grid">{''.join(cohort_cards)}</div></section>
 <section class="panel"><h2>Case-marker summary</h2><div class="scroll"><table><thead><tr><th>Public case alias</th><th>Marker</th><th>Measurement</th><th>Cells</th><th>QC</th></tr></thead><tbody>{''.join(marker_rows)}</tbody></table></div></section>
 <section class="panel"><h2>Method identity and sources</h2><p><code>{html.escape(str(run_manifest.get('engine_version', IHC_ENGINE_VERSION)))}</code><br>Analysis signature: <code>{html.escape(str(run_manifest.get('analysis_signature', '')))}</code><br>Dataset DOI: <a href="https://doi.org/{PUBLIC_DATASET_DOI}">{PUBLIC_DATASET_DOI}</a></p><ul><li><a href="https://pubmed.ncbi.nlm.nih.gov/11531144/">Ruifrok &amp; Johnston (2001)</a>: H–DAB colour deconvolution foundation.</li><li><a href="https://ascopubs.org/doi/10.1200/JCO.19.02309">ASCO/CAP ER and PR guideline update</a>.</li><li><a href="https://www.cap.org/cap-guidelines/her2-testing-in-breast-cancer-2023-guideline-update/">CAP HER2 testing guideline update</a>.</li><li><a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC8487652/">International Ki67 Working Group recommendations</a>.</li></ul></section>
@@ -1676,6 +1733,7 @@ def run_quantification(
             )
             _atomic_json(patch_dir / "measurement.json", row)
     case_rows = aggregate_case_results(results, config)
+    wide_case_rows = wide_tumorquantai_case_values(case_rows)
     _write_csv(
         output_root / "tables/patch_measurements.csv",
         results,
@@ -1685,6 +1743,11 @@ def run_quantification(
         output_root / "tables/case_marker_measurements.csv",
         case_rows,
         CASE_RESULT_FIELDS,
+    )
+    _write_csv(
+        output_root / "tables/tumorquantai_marker_values.csv",
+        wide_case_rows,
+        TUMORQUANTAI_WIDE_FIELDS,
     )
     _write_csv(
         output_root / "tables/unavailable_patches.csv",
@@ -1709,6 +1772,7 @@ def run_quantification(
             "case_qc_reports": "case_reports/",
             "patch_measurements": "tables/patch_measurements.csv",
             "case_marker_measurements": "tables/case_marker_measurements.csv",
+            "tumorquantai_marker_values": ("tables/tumorquantai_marker_values.csv"),
             "unavailable_patches": "tables/unavailable_patches.csv",
         },
     }
@@ -1745,6 +1809,29 @@ PATHOLOGIST_FIELDS = (
     "pathologist_ki67_percent",
 )
 
+CASE_CONCORDANCE_WIDE_FIELDS = (
+    "case_alias",
+    "pathologist_er_percent",
+    "tumorquantai_er_percent",
+    "pathologist_er_binary_at_1_percent",
+    "tumorquantai_er_binary_at_1_percent",
+    "pathologist_pr_percent",
+    "tumorquantai_pr_percent",
+    "pathologist_pr_binary_at_1_percent",
+    "tumorquantai_pr_binary_at_1_percent",
+    "pathologist_her2_ihc_score",
+    "pathologist_her2_fish",
+    "tumorquantai_her2_membrane_proxy_pre_score",
+    "pathologist_her2_category",
+    "tumorquantai_her2_category",
+    "pathologist_ki67_percent",
+    "tumorquantai_ki67_percent",
+    "pathologist_ki67_decile",
+    "tumorquantai_ki67_decile",
+    "pathologist_ki67_binary_at_20_percent",
+    "tumorquantai_ki67_binary_at_20_percent",
+)
+
 DEFAULT_CLINICAL_COLUMNS = {
     "pathologist_er_percent": "Receptor de estrógeno (%)",
     "pathologist_pr_percent": "Receptor de progesterona (%)",
@@ -1754,6 +1841,8 @@ DEFAULT_CLINICAL_COLUMNS = {
     ),
     "pathologist_ki67_percent": "Ki67",
 }
+
+IDENTIFIER_CROSSWALK_FIELDS = ("linkage_id", "clinical_id")
 
 
 def _load_linkage_rows(path: Path) -> tuple[list[dict[str, str]], list[str]]:
@@ -1775,6 +1864,52 @@ def _load_linkage_rows(path: Path) -> tuple[list[dict[str, str]], list[str]]:
     return rows, fields
 
 
+def _load_identifier_crosswalk(path: Path) -> tuple[dict[str, str], str]:
+    candidate = path.expanduser().absolute()
+    if candidate.is_symlink() or not candidate.is_file():
+        raise IHCError("Private identifier crosswalk is not a regular file")
+    path = candidate.resolve()
+    before = path.stat()
+    if stat.S_IMODE(before.st_mode) != 0o600:
+        raise IHCError("Private identifier crosswalk must have exact mode 0600")
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fields = tuple(reader.fieldnames or ())
+        rows = [dict(row) for row in reader]
+    if set(IDENTIFIER_CROSSWALK_FIELDS) - set(fields):
+        raise IHCError(
+            "Private identifier crosswalk must contain linkage_id and clinical_id"
+        )
+    if not rows:
+        raise IHCError("Private identifier crosswalk contains no rows")
+    mapping: dict[str, str] = {}
+    target_ids: set[str] = set()
+    for row in rows:
+        source = _normalize_identifier(row.get("linkage_id"))
+        target = _normalize_identifier(row.get("clinical_id"))
+        if not source or not target or source in mapping or target in target_ids:
+            raise IHCError(
+                "Private identifier crosswalk must be non-empty and one-to-one"
+            )
+        mapping[source] = target
+        target_ids.add(target)
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    after = path.stat()
+    if (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+    ) != (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+    ):
+        raise IHCError("Private identifier crosswalk changed while it was read")
+    return mapping, digest
+
+
 def export_pathologist_csv(
     workbook: Path,
     linkage: Path,
@@ -1783,6 +1918,7 @@ def export_pathologist_csv(
     sheet_name: str = "Biopsias finales incluidas",
     clinical_id_column: str | None = None,
     linkage_id_column: str | None = None,
+    identifier_crosswalk: Path | None = None,
     clinical_columns: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Create a privacy-minimized, public-alias keyed marker table."""
@@ -1818,6 +1954,10 @@ def export_pathologist_csv(
         if any(value is not None for value in row)
     ]
     linkage_rows, linkage_fields = _load_linkage_rows(linkage)
+    crosswalk: dict[str, str] = {}
+    crosswalk_sha256 = ""
+    if identifier_crosswalk is not None:
+        crosswalk, crosswalk_sha256 = _load_identifier_crosswalk(identifier_crosswalk)
     clinical_candidates = (
         [clinical_id_column]
         if clinical_id_column
@@ -1841,7 +1981,7 @@ def export_pathologist_csv(
             "Could not identify linkage columns; pass --clinical-id-column and "
             "--linkage-id-column explicitly"
         )
-    matches: list[tuple[str, str, dict[str, str], dict[str, dict[str, Any]]]] = []
+    matches: list[tuple[str, str, dict[str, str], dict[str, dict[str, Any]], int]] = []
     for clinical_column in clinical_candidates:
         if clinical_column not in headers:
             continue
@@ -1859,10 +1999,14 @@ def export_pathologist_csv(
             if linkage_column not in linkage_fields:
                 continue
             alias_to_id: dict[str, str] = {}
+            used_crosswalk_ids: set[str] = set()
             consistent = True
             for row in linkage_rows:
                 alias = str(row.get("case_alias", "")).strip()
-                key = _normalize_identifier(row.get(linkage_column))
+                source_key = _normalize_identifier(row.get(linkage_column))
+                key = crosswalk.get(source_key, source_key)
+                if source_key in crosswalk:
+                    used_crosswalk_ids.add(source_key)
                 if not alias or not key:
                     consistent = False
                     break
@@ -1875,16 +2019,29 @@ def export_pathologist_csv(
                 and alias_to_id
                 and all(key in clinical_by_id for key in alias_to_id.values())
                 and len(set(alias_to_id.values())) == len(alias_to_id)
+                and used_crosswalk_ids == set(crosswalk)
             ):
                 matches.append(
-                    (clinical_column, linkage_column, alias_to_id, clinical_by_id)
+                    (
+                        clinical_column,
+                        linkage_column,
+                        alias_to_id,
+                        clinical_by_id,
+                        len(used_crosswalk_ids),
+                    )
                 )
     if len(matches) != 1:
         raise IHCError(
             "Private linkage could not be matched uniquely to the workbook. "
             "Specify both identifier columns; do not infer linkage from marker values."
         )
-    clinical_column, linkage_column, alias_to_id, clinical_by_id = matches[0]
+    (
+        clinical_column,
+        linkage_column,
+        alias_to_id,
+        clinical_by_id,
+        crosswalk_rows_used,
+    ) = matches[0]
     columns = dict(DEFAULT_CLINICAL_COLUMNS)
     if clinical_columns:
         columns.update(clinical_columns)
@@ -1929,6 +2086,10 @@ def export_pathologist_csv(
         "clinical_sheet": sheet_name,
         "clinical_link_column": clinical_column,
         "private_linkage_column": linkage_column,
+        "identifier_crosswalk_used": bool(crosswalk),
+        "identifier_crosswalk_rows": crosswalk_rows_used,
+        "identifier_crosswalk_sha256": crosswalk_sha256,
+        "marker_values_used_for_linkage": False,
         "source_workbook_sha256": hashlib.sha256(workbook.read_bytes()).hexdigest(),
         "generated_at_utc": utc_now(),
         "warning": (
@@ -2014,6 +2175,327 @@ def bootstrap_kappa_interval(
 
 def _percentage_decile(value: float) -> int:
     return min(9, max(0, int(float(value) // 10)))
+
+
+def _average_ranks(values: Sequence[float]) -> np.ndarray:
+    array = np.asarray(values, dtype=np.float64)
+    order = np.argsort(array, kind="mergesort")
+    ranks = np.empty(len(array), dtype=np.float64)
+    start = 0
+    while start < len(order):
+        stop = start + 1
+        while stop < len(order) and array[order[stop]] == array[order[start]]:
+            stop += 1
+        ranks[order[start:stop]] = 0.5 * (start + stop - 1) + 1.0
+        start = stop
+    return ranks
+
+
+def _safe_correlation(left: Sequence[float], right: Sequence[float]) -> float:
+    if (
+        len(left) < 2
+        or np.std(left) <= np.finfo(float).eps
+        or np.std(right) <= np.finfo(float).eps
+    ):
+        return math.nan
+    return float(np.corrcoef(left, right)[0, 1])
+
+
+def _continuous_agreement_metrics(
+    reference: Sequence[float], prediction: Sequence[float]
+) -> dict[str, Any]:
+    fields = (
+        "mean_absolute_error",
+        "root_mean_squared_error",
+        "median_absolute_error",
+        "mean_bias_tumorquantai_minus_pathologist",
+        "limits_of_agreement_95_low",
+        "limits_of_agreement_95_high",
+        "pearson_correlation",
+        "spearman_correlation",
+        "lin_concordance_correlation",
+    )
+    if not reference:
+        return {field: "" for field in fields}
+    truth = np.asarray(reference, dtype=np.float64)
+    predicted = np.asarray(prediction, dtype=np.float64)
+    difference = predicted - truth
+    mean_truth = float(np.mean(truth))
+    mean_prediction = float(np.mean(predicted))
+    variance_truth = float(np.mean((truth - mean_truth) ** 2))
+    variance_prediction = float(np.mean((predicted - mean_prediction) ** 2))
+    covariance = float(np.mean((truth - mean_truth) * (predicted - mean_prediction)))
+    ccc_denominator = (
+        variance_truth + variance_prediction + (mean_truth - mean_prediction) ** 2
+    )
+    if ccc_denominator <= np.finfo(float).eps:
+        ccc = 1.0 if np.array_equal(truth, predicted) else math.nan
+    else:
+        ccc = 2.0 * covariance / ccc_denominator
+    bias = float(np.mean(difference))
+    difference_sd = (
+        float(np.std(difference, ddof=1)) if len(difference) >= 2 else math.nan
+    )
+    return {
+        "mean_absolute_error": float(np.mean(np.abs(difference))),
+        "root_mean_squared_error": float(np.sqrt(np.mean(difference**2))),
+        "median_absolute_error": float(np.median(np.abs(difference))),
+        "mean_bias_tumorquantai_minus_pathologist": bias,
+        "limits_of_agreement_95_low": (
+            bias - 1.96 * difference_sd if math.isfinite(difference_sd) else ""
+        ),
+        "limits_of_agreement_95_high": (
+            bias + 1.96 * difference_sd if math.isfinite(difference_sd) else ""
+        ),
+        "pearson_correlation": _finite_or_blank(_safe_correlation(truth, predicted)),
+        "spearman_correlation": _finite_or_blank(
+            _safe_correlation(_average_ranks(truth), _average_ranks(predicted))
+        ),
+        "lin_concordance_correlation": _finite_or_blank(ccc),
+    }
+
+
+def _specific_agreement(confusion: np.ndarray) -> tuple[Any, Any]:
+    if confusion.shape != (2, 2):
+        return "", ""
+    true_negative, false_positive = (int(value) for value in confusion[0])
+    false_negative, true_positive = (int(value) for value in confusion[1])
+    positive_denominator = 2 * true_positive + false_positive + false_negative
+    negative_denominator = 2 * true_negative + false_positive + false_negative
+    positive = (
+        2.0 * true_positive / positive_denominator if positive_denominator else ""
+    )
+    negative = (
+        2.0 * true_negative / negative_denominator if negative_denominator else ""
+    )
+    return positive, negative
+
+
+def _category_counts(labels: Sequence[str], counts: Sequence[int]) -> str:
+    return json.dumps(
+        {str(label): int(count) for label, count in zip(labels, counts)},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def _wide_case_concordance_rows(
+    clinical_by_alias: Mapping[str, Mapping[str, Any]],
+    comparison_rows: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    comparison = {
+        (str(row["case_alias"]), str(row["marker"])): row for row in comparison_rows
+    }
+    output: list[dict[str, Any]] = []
+    for alias, clinical in sorted(clinical_by_alias.items()):
+        row: dict[str, Any] = {field: "" for field in CASE_CONCORDANCE_WIDE_FIELDS}
+        row["case_alias"] = alias
+        row["pathologist_er_percent"] = clinical["pathologist_er_percent"]
+        row["pathologist_pr_percent"] = clinical["pathologist_pr_percent"]
+        row["pathologist_her2_ihc_score"] = clinical["pathologist_her2_ihc_score"]
+        row["pathologist_her2_fish"] = clinical["pathologist_her2_fish"]
+        row["pathologist_ki67_percent"] = clinical["pathologist_ki67_percent"]
+        for marker, prefix in (("ER", "er"), ("PR", "pr"), ("Ki-67", "ki67")):
+            paired = comparison.get((alias, marker))
+            if paired:
+                row[f"tumorquantai_{prefix}_percent"] = paired["tumorquantai_value"]
+                if marker in {"ER", "PR"}:
+                    row[f"pathologist_{prefix}_binary_at_1_percent"] = paired[
+                        "pathologist_category"
+                    ]
+                    row[f"tumorquantai_{prefix}_binary_at_1_percent"] = paired[
+                        "tumorquantai_category"
+                    ]
+                else:
+                    row["pathologist_ki67_decile"] = paired["pathologist_category"]
+                    row["tumorquantai_ki67_decile"] = paired["tumorquantai_category"]
+                    row["pathologist_ki67_binary_at_20_percent"] = int(
+                        float(paired["pathologist_value"]) >= 20.0
+                    )
+                    row["tumorquantai_ki67_binary_at_20_percent"] = int(
+                        float(paired["tumorquantai_value"]) >= 20.0
+                    )
+        her2 = comparison.get((alias, "HER2"))
+        if her2:
+            row["tumorquantai_her2_membrane_proxy_pre_score"] = her2[
+                "tumorquantai_value"
+            ]
+            row["pathologist_her2_category"] = her2["pathologist_category"]
+            row["tumorquantai_her2_category"] = her2["tumorquantai_category"]
+        output.append(row)
+    return output
+
+
+AGREEMENT_SCALE_TITLES = {
+    "binary-at-1-percent": "Negative vs positive (≥1%)",
+    "ordinal-0-to-3": "HER2 0 / 1+ / 2+ / 3+",
+    "percentage-deciles": "Ki-67 percentage deciles",
+    "secondary-binary-at-20-percent": "Below vs at/above 20%",
+}
+
+AGREEMENT_CATEGORY_LABELS = {
+    "binary-at-1-percent": ["Negative (<1%)", "Positive (≥1%)"],
+    "ordinal-0-to-3": ["0", "1+", "2+", "3+"],
+    "percentage-deciles": [
+        "0–<10%",
+        "10–<20%",
+        "20–<30%",
+        "30–<40%",
+        "40–<50%",
+        "50–<60%",
+        "60–<70%",
+        "70–<80%",
+        "80–<90%",
+        "90–100%",
+    ],
+    "secondary-binary-at-20-percent": ["<20%", "≥20%"],
+}
+
+
+def _agreement_table_key(summary: Mapping[str, Any]) -> str:
+    if summary["primary_scale"] == "secondary-binary-at-20-percent":
+        return "Ki-67_binary_20"
+    return str(summary["marker"])
+
+
+def _agreement_interpretation_notes(
+    summaries: Sequence[Mapping[str, Any]],
+    contingency_tables: Mapping[str, Mapping[str, Any]],
+) -> list[str]:
+    notes: list[str] = []
+    for summary in summaries:
+        key = _agreement_table_key(summary)
+        table = contingency_tables[key]
+        matrix = np.asarray(
+            table["matrix_rows_pathologist_columns_tumorquantai"], dtype=np.int64
+        )
+        predicted_totals = matrix.sum(axis=0)
+        reference_totals = matrix.sum(axis=1)
+        labels = list(table["category_labels"])
+        used_predictions = np.flatnonzero(predicted_totals)
+        used_references = np.flatnonzero(reference_totals)
+        scale_title = AGREEMENT_SCALE_TITLES[str(summary["primary_scale"])]
+        if len(used_predictions) == 1:
+            category = labels[int(used_predictions[0])]
+            notes.append(
+                f"{summary['marker']} ({scale_title}): TumorQuantAI used only "
+                f"the {category} category. Kappa therefore reflects the lack of "
+                "predicted category variation even when raw agreement is high."
+            )
+        if len(used_references) == 1:
+            category = labels[int(used_references[0])]
+            notes.append(
+                f"{summary['marker']} ({scale_title}): the pathologist reference "
+                f"used only the {category} category, so kappa is not informative."
+            )
+    return notes
+
+
+def _agreement_report_html(
+    metadata: Mapping[str, Any],
+    summaries: Sequence[Mapping[str, Any]],
+    contingency_tables: Mapping[str, Mapping[str, Any]],
+) -> str:
+    def value(value_: Any, digits: int = 3) -> str:
+        return "—" if value_ == "" else _format_number(value_, digits)
+
+    summary_rows = "".join(
+        "<tr>"
+        f"<th scope='row'>{html.escape(str(row['marker']))}</th>"
+        f"<td>{html.escape(AGREEMENT_SCALE_TITLES[str(row['primary_scale'])])}</td>"
+        f"<td>{'Quadratic' if row['weighting'] == 'quadratic' else 'Unweighted'}</td>"
+        f"<td>{int(row['n'])}</td>"
+        f"<td class='metric'>{value(row['kappa'])}</td>"
+        f"<td>{value(row['bootstrap_ci_95_low'])} to "
+        f"{value(row['bootstrap_ci_95_high'])}</td>"
+        f"<td>{value(100 * float(row['exact_category_agreement']), 1) + '%' if row['exact_category_agreement'] != '' else '—'}</td>"
+        f"<td>{value(row['mean_absolute_error'], 1)}</td>"
+        f"<td>{value(row['root_mean_squared_error'], 1)}</td>"
+        f"<td>{value(row['pearson_correlation'])}</td>"
+        f"<td>{value(row['spearman_correlation'])}</td>"
+        f"<td>{value(row['lin_concordance_correlation'])}</td>"
+        "</tr>"
+        for row in summaries
+    )
+
+    matrix_sections: list[str] = []
+    for summary in summaries:
+        key = _agreement_table_key(summary)
+        table = contingency_tables[key]
+        labels = [html.escape(str(label)) for label in table["category_labels"]]
+        matrix = table["matrix_rows_pathologist_columns_tumorquantai"]
+        column_totals = [
+            sum(int(row[index]) for row in matrix) for index in range(len(labels))
+        ]
+        header = "".join(f"<th scope='col'>{label}</th>" for label in labels)
+        body = "".join(
+            "<tr>"
+            f"<th scope='row'>{labels[index]}</th>"
+            + "".join(f"<td>{int(count)}</td>" for count in counts)
+            + f"<td class='total'>{sum(int(count) for count in counts)}</td></tr>"
+            for index, counts in enumerate(matrix)
+        )
+        footer = "".join(f"<td>{count}</td>" for count in column_totals)
+        title = (
+            f"{summary['marker']} · "
+            f"{AGREEMENT_SCALE_TITLES[str(summary['primary_scale'])]}"
+        )
+        matrix_sections.append(
+            "<article class='matrix-card'>"
+            f"<h3>{html.escape(title)}</h3>"
+            "<p class='axis-note'>Rows: pathologist · columns: TumorQuantAI</p>"
+            "<div class='table-scroll'><table class='matrix'><thead><tr>"
+            "<th scope='col'>Pathologist ↓ / TumorQuantAI →</th>"
+            f"{header}<th scope='col'>Total</th></tr></thead><tbody>{body}"
+            f"<tr class='total'><th scope='row'>Total</th>{footer}"
+            f"<td>{sum(column_totals)}</td></tr></tbody></table></div></article>"
+        )
+
+    notes = metadata.get("interpretation_notes", [])
+    notes_html = (
+        "<section><h2>Data-dependent cautions</h2><ul>"
+        + "".join(f"<li>{html.escape(str(note))}</li>" for note in notes)
+        + "</ul></section>"
+        if notes
+        else ""
+    )
+    limitations = "".join(
+        f"<li>{html.escape(str(item))}</li>" for item in metadata["limitations"]
+    )
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TumorQuantAI IHC agreement report</title>
+<style>
+:root{{--ink:#162033;--muted:#5f6b7a;--navy:#172554;--teal:#0f766e;--line:#dbe3ea;--paper:#f5f8fb;--warn:#fff7df;--warn-line:#d97706}}
+*{{box-sizing:border-box}}body{{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}
+a{{color:var(--teal);font-weight:650;text-underline-offset:3px}}.hero{{background:linear-gradient(130deg,#0f172a 0%,var(--navy) 62%,#155e75 100%);color:#fff;padding:54px 24px 48px}}
+.hero-inner,main{{max-width:1180px;margin:auto}}.eyebrow{{color:#99f6e4;font-size:.78rem;font-weight:800;letter-spacing:.13em;text-transform:uppercase}}
+h1{{font-size:clamp(2rem,5vw,3.35rem);letter-spacing:-.035em;line-height:1.05;margin:.45rem 0 .8rem}}.lede{{color:#dbeafe;font-size:1.06rem;max-width:760px}}
+.chips{{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}}.chip{{background:#ffffff18;border:1px solid #ffffff33;border-radius:999px;padding:7px 12px;font-weight:700}}
+main{{padding:30px 24px 64px}}section{{margin:30px 0}}h2{{font-size:1.55rem;margin:0 0 14px}}h3{{font-size:1.02rem;margin:0}}
+.warning{{background:var(--warn);border:1px solid #f5d487;border-left:5px solid var(--warn-line);border-radius:10px;padding:16px 18px}}
+.stats{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:24px 0}}.stat{{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;box-shadow:0 8px 24px #0f172a0d}}
+.stat strong{{display:block;color:var(--navy);font-size:1.85rem;line-height:1.1}}.stat span,.axis-note,.footnote{{color:var(--muted)}}
+.table-scroll{{overflow-x:auto}}table{{border-collapse:collapse;width:100%}}th,td{{border-bottom:1px solid var(--line);padding:10px 12px;text-align:left;white-space:nowrap}}thead th{{background:var(--navy);color:#fff;font-size:.82rem}}tbody th{{font-weight:750}}td.metric{{font-size:1.05rem;font-weight:800;color:var(--navy)}}
+.matrix-grid{{display:grid;gap:18px}}.matrix-card{{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;box-shadow:0 8px 24px #0f172a0d}}.matrix-card h3{{color:var(--navy)}}.axis-note{{font-size:.88rem;margin:4px 0 12px}}.matrix th,.matrix td{{text-align:center}}.matrix thead th:first-child,.matrix tbody th{{text-align:left}}.total th,.total td,td.total{{background:#eef3f7;font-weight:800}}
+.downloads{{display:flex;flex-wrap:wrap;gap:10px}}.button{{background:var(--navy);border-radius:8px;color:#fff;padding:10px 14px;text-decoration:none}}.button.secondary{{background:#fff;border:1px solid var(--line);color:var(--navy)}}
+.methods{{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}}.methods article{{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px}}code{{font-size:.84em}}footer{{border-top:1px solid var(--line);color:var(--muted);margin-top:36px;padding-top:18px}}
+@media(max-width:760px){{.stats,.methods{{grid-template-columns:1fr}}.hero{{padding-top:38px}}main{{padding-inline:16px}}}}
+</style></head><body>
+<header class="hero"><div class="hero-inner"><div class="eyebrow">TumorQuantAI · research report</div>
+<h1>Pathologist–TumorQuantAI concordance</h1>
+<p class="lede">Marker-wise agreement for ER, PR, HER2, and Ki-67 using prespecified categories, transparent denominators, and case-resampled bootstrap intervals.</p>
+<div class="chips"><span class="chip">Cohen's κ</span><span class="chip">{int(metadata['bootstrap_iterations']):,} bootstrap iterations</span><span class="chip">Explicit contingency matrices</span></div></div></header>
+<main><div class="warning"><strong>Research use only.</strong> These results do not validate TumorQuantAI, establish diagnostic accuracy, or support patient care. Review the image QC, category prevalence, and limitations together with every coefficient.</div>
+<div class="stats"><div class="stat"><strong>{int(metadata['overlap_case_count'])}</strong><span>overlapping cases</span></div><div class="stat"><strong>{int(metadata['paired_marker_rows'])}</strong><span>paired case-marker rows</span></div><div class="stat"><strong>{int(metadata['bootstrap_iterations']):,}</strong><span>case-resampled bootstrap iterations</span></div></div>
+<section><h2>Agreement at a glance</h2><div class="table-scroll"><table><thead><tr><th>Marker</th><th>Scale</th><th>Weighting</th><th>n</th><th>κ</th><th>Bootstrap 95% CI</th><th>Exact</th><th>MAE</th><th>RMSE</th><th>Pearson r</th><th>Spearman ρ</th><th>Lin's CCC</th></tr></thead><tbody>{summary_rows}</tbody></table></div><p class="footnote">Continuous metrics use the underlying percentages for ER, PR, and Ki-67 and the 0–3 ordinal pre-score for HER2. The full CSV also reports expected agreement, median error, bias, 95% limits of agreement, positive/negative specific agreement, and category margins. A dash marks a metric that was not prespecified or could not be estimated.</p></section>
+{notes_html}
+<section><h2>Contingency matrices</h2><div class="matrix-grid">{''.join(matrix_sections)}</div></section>
+<section><h2>Files</h2><div class="downloads"><a class="button" href="concordance_metrics.csv">Full concordance metrics CSV</a><a class="button secondary" href="kappa_summary.csv">Compact kappa CSV</a><a class="button secondary" href="contingency_tables.json">Contingency JSON</a><a class="button secondary" href="agreement_summary.json">Run metadata</a><a class="button secondary" href="case_concordance_values_pseudonymized.csv">Wide paired values CSV</a><a class="button secondary" href="case_comparison_pseudonymized.csv">Long paired values CSV</a></div><p class="footnote">The paired CSV files contain public case aliases plus marker values and remain pseudonymized health data. Keep this entire directory under controlled access.</p></section>
+<section><h2>Methods and interpretation</h2><div class="methods"><article><h3>Prespecified scales</h3><p>ER and PR use unweighted κ at 1%. HER2 uses quadratic-weighted κ over 0, 1+, 2+, and 3+. Ki-67 uses quadratic-weighted percentage deciles, with a secondary unweighted view at 20%.</p></article><article><h3>Uncertainty</h3><p>The percentile 95% interval resamples paired cases with replacement using seed <code>{int(metadata['bootstrap_seed'])}</code>. Kappa is prevalence-sensitive; exact agreement and margins remain visible.</p></article></div></section>
+<section><h2>Limitations</h2><ul>{limitations}</ul></section>
+<footer>Generated {html.escape(str(metadata['generated_at_utc']))}. Method reference: <a href="https://doi.org/10.1177/001316446002000104">Cohen (1960)</a>. Clinical context: <a href="https://ascopubs.org/doi/10.1200/JCO.19.02309">ER/PR</a>, <a href="https://www.cap.org/cap-guidelines/her2-testing-in-breast-cancer-2023-guideline-update/">HER2</a>, and <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC8487652/">Ki-67</a>.</footer></main></body></html>"""
 
 
 def compare_pathologist_agreement(
@@ -2158,24 +2640,17 @@ def compare_pathologist_agreement(
             if truth_categories
             else math.nan
         )
-        mae = (
-            float(
-                np.mean(
-                    np.abs(
-                        np.asarray(continuous_truth) - np.asarray(continuous_prediction)
-                    )
-                )
-            )
-            if continuous_truth
+        total = int(confusion.sum())
+        expected = (
+            float(confusion.sum(axis=1) @ confusion.sum(axis=0)) / float(total**2)
+            if total
             else math.nan
         )
-        correlation = (
-            float(np.corrcoef(continuous_truth, continuous_prediction)[0, 1])
-            if len(continuous_truth) >= 2
-            and np.std(continuous_truth) > 0
-            and np.std(continuous_prediction) > 0
-            else math.nan
+        continuous_metrics = _continuous_agreement_metrics(
+            continuous_truth, continuous_prediction
         )
+        positive_agreement, negative_agreement = _specific_agreement(confusion)
+        category_labels = AGREEMENT_CATEGORY_LABELS[scale]
         summaries.append(
             {
                 "marker": marker,
@@ -2186,13 +2661,24 @@ def compare_pathologist_agreement(
                 "bootstrap_ci_95_low": _finite_or_blank(low),
                 "bootstrap_ci_95_high": _finite_or_blank(high),
                 "exact_category_agreement": _finite_or_blank(exact),
-                "mean_absolute_error": _finite_or_blank(mae),
-                "pearson_correlation": _finite_or_blank(correlation),
+                "expected_category_agreement": _finite_or_blank(expected),
+                **continuous_metrics,
+                "positive_specific_agreement": positive_agreement,
+                "negative_specific_agreement": negative_agreement,
+                "pathologist_category_counts": _category_counts(
+                    category_labels, confusion.sum(axis=1)
+                ),
+                "tumorquantai_category_counts": _category_counts(
+                    category_labels, confusion.sum(axis=0)
+                ),
             }
         )
         contingency_tables[marker] = {
             "categories": categories,
+            "category_labels": AGREEMENT_CATEGORY_LABELS[scale],
             "matrix_rows_pathologist_columns_tumorquantai": confusion.tolist(),
+            "pathologist_totals": confusion.sum(axis=1).tolist(),
+            "tumorquantai_totals": confusion.sum(axis=0).tolist(),
         }
 
     ki_rows = [row for row in comparison_rows if row["marker"] == "Ki-67"]
@@ -2207,6 +2693,14 @@ def compare_pathologist_agreement(
         iterations=bootstrap_iterations,
         seed=bootstrap_seed + 91,
     )
+    ki_total = int(ki_confusion.sum())
+    ki_expected = (
+        float(ki_confusion.sum(axis=1) @ ki_confusion.sum(axis=0)) / float(ki_total**2)
+        if ki_total
+        else math.nan
+    )
+    ki_positive_agreement, ki_negative_agreement = _specific_agreement(ki_confusion)
+    ki_labels = AGREEMENT_CATEGORY_LABELS["secondary-binary-at-20-percent"]
     summaries.append(
         {
             "marker": "Ki-67",
@@ -2221,15 +2715,30 @@ def compare_pathologist_agreement(
                 if ki_truth
                 else ""
             ),
-            "mean_absolute_error": "",
-            "pearson_correlation": "",
+            "expected_category_agreement": _finite_or_blank(ki_expected),
+            **_continuous_agreement_metrics([], []),
+            "positive_specific_agreement": ki_positive_agreement,
+            "negative_specific_agreement": ki_negative_agreement,
+            "pathologist_category_counts": _category_counts(
+                ki_labels, ki_confusion.sum(axis=1)
+            ),
+            "tumorquantai_category_counts": _category_counts(
+                ki_labels, ki_confusion.sum(axis=0)
+            ),
         }
     )
     contingency_tables["Ki-67_binary_20"] = {
         "categories": [0, 1],
+        "category_labels": AGREEMENT_CATEGORY_LABELS["secondary-binary-at-20-percent"],
         "matrix_rows_pathologist_columns_tumorquantai": ki_confusion.tolist(),
+        "pathologist_totals": ki_confusion.sum(axis=1).tolist(),
+        "tumorquantai_totals": ki_confusion.sum(axis=0).tolist(),
     }
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    output_dir.chmod(0o700)
+    wide_comparison_rows = _wide_case_concordance_rows(
+        clinical_by_alias, comparison_rows
+    )
     summary_fields = (
         "marker",
         "primary_scale",
@@ -2242,6 +2751,30 @@ def compare_pathologist_agreement(
         "mean_absolute_error",
         "pearson_correlation",
     )
+    concordance_fields = (
+        "marker",
+        "primary_scale",
+        "weighting",
+        "n",
+        "kappa",
+        "bootstrap_ci_95_low",
+        "bootstrap_ci_95_high",
+        "exact_category_agreement",
+        "expected_category_agreement",
+        "positive_specific_agreement",
+        "negative_specific_agreement",
+        "mean_absolute_error",
+        "root_mean_squared_error",
+        "median_absolute_error",
+        "mean_bias_tumorquantai_minus_pathologist",
+        "limits_of_agreement_95_low",
+        "limits_of_agreement_95_high",
+        "pearson_correlation",
+        "spearman_correlation",
+        "lin_concordance_correlation",
+        "pathologist_category_counts",
+        "tumorquantai_category_counts",
+    )
     comparison_fields = (
         "case_alias",
         "marker",
@@ -2252,14 +2785,20 @@ def compare_pathologist_agreement(
         "exact_category_agreement",
     )
     _write_csv(output_dir / "kappa_summary.csv", summaries, summary_fields)
+    _write_csv(output_dir / "concordance_metrics.csv", summaries, concordance_fields)
     _write_csv(
         output_dir / "case_comparison_pseudonymized.csv",
         comparison_rows,
         comparison_fields,
     )
+    _write_csv(
+        output_dir / "case_concordance_values_pseudonymized.csv",
+        wide_comparison_rows,
+        CASE_CONCORDANCE_WIDE_FIELDS,
+    )
     _atomic_json(output_dir / "contingency_tables.json", contingency_tables)
     metadata = {
-        "schema_version": "tumorquantai_ihc_agreement_v1",
+        "schema_version": "tumorquantai_ihc_agreement_v2",
         "generated_at_utc": utc_now(),
         "bootstrap_iterations": bootstrap_iterations,
         "bootstrap_seed": bootstrap_seed,
@@ -2269,7 +2808,7 @@ def compare_pathologist_agreement(
         "analysis_case_table_sha256": hashlib.sha256(
             case_path.read_bytes()
         ).hexdigest(),
-        "case_rows": len(comparison_rows),
+        "case_rows": len(wide_comparison_rows),
         "paired_marker_rows": len(comparison_rows),
         "pathologist_case_count": len(clinical_by_alias),
         "tumorquantai_case_count": len(algorithm_aliases),
@@ -2277,28 +2816,29 @@ def compare_pathologist_agreement(
         "pathologist_only_case_count": len(set(clinical_by_alias) - algorithm_aliases),
         "tumorquantai_only_case_count": len(algorithm_aliases - set(clinical_by_alias)),
         "privacy_status": "pseudonymized_marker_comparison",
+        "outputs": {
+            "full_concordance_metrics": "concordance_metrics.csv",
+            "kappa_summary": "kappa_summary.csv",
+            "wide_case_values": "case_concordance_values_pseudonymized.csv",
+            "long_case_values": "case_comparison_pseudonymized.csv",
+            "contingency_tables": "contingency_tables.json",
+        },
         "limitations": [
             "No pathologist-verified invasive-tumour ROI/classifier was supplied.",
             "Selected fields are not whole-slide measurements.",
             "HER2 is a membrane-proxy pre-score, not clinical HER2 status.",
             "Ki-67 20% is a secondary research threshold, not a universal cut point.",
         ],
+        "interpretation_notes": _agreement_interpretation_notes(
+            summaries, contingency_tables
+        ),
         "summaries": summaries,
     }
     _atomic_json(output_dir / "agreement_summary.json", metadata)
-    table_rows = "".join(
-        "<tr>"
-        f"<td>{html.escape(str(row['marker']))}</td>"
-        f"<td>{html.escape(str(row['primary_scale']))}</td>"
-        f"<td>{int(row['n'])}</td>"
-        f"<td>{_format_number(row['kappa'], 3)}</td>"
-        f"<td>{_format_number(row['bootstrap_ci_95_low'], 3)} to "
-        f"{_format_number(row['bootstrap_ci_95_high'], 3)}</td>"
-        f"<td>{_format_number(100 * float(row['exact_category_agreement']), 1) + '%' if row['exact_category_agreement'] != '' else '—'}</td></tr>"
-        for row in summaries
+    _atomic_text(
+        output_dir / "AGREEMENT_REPORT.html",
+        _agreement_report_html(metadata, summaries, contingency_tables),
     )
-    report = f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>TumorQuantAI IHC agreement</title><style>body{{max-width:1000px;margin:40px auto;padding:0 22px;font:15px/1.55 system-ui;color:#172033}}h1{{color:#18324a}}.warning{{border-left:5px solid #e4a11b;background:#fff8e8;padding:15px 18px}}table{{width:100%;border-collapse:collapse;margin-top:22px}}th,td{{border-bottom:1px solid #dbe2ea;padding:10px;text-align:left}}th{{background:#f3f6f9}}code{{font-size:12px}}</style></head><body><h1>Pathologist–TumorQuantAI concordance</h1><div class="warning"><b>Research use only.</b> Kappa measures agreement under the prespecified categories; it does not validate the image method or establish clinical accuracy. Review sampling, segmentation overlays, category prevalence, and confidence intervals.</div><table><thead><tr><th>Marker</th><th>Scale</th><th>n</th><th>κ</th><th>Bootstrap 95% CI</th><th>Exact agreement</th></tr></thead><tbody>{table_rows}</tbody></table><p><a href="kappa_summary.csv">Kappa CSV</a> · <a href="contingency_tables.json">Contingency tables</a> · <a href="case_comparison_pseudonymized.csv">Pseudonymized paired values</a></p><p>Method reference: <a href="https://doi.org/10.1177/001316446002000104">Cohen (1960), A coefficient of agreement for nominal scales</a>. Clinical interpretation context: <a href="https://ascopubs.org/doi/10.1200/JCO.19.02309">ER/PR</a>, <a href="https://www.cap.org/cap-guidelines/her2-testing-in-breast-cancer-2023-guideline-update/">HER2</a>, and <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC8487652/">Ki-67</a> guidance.</p></body></html>"""
-    _atomic_text(output_dir / "AGREEMENT_REPORT.html", report)
     return {**metadata, "report_path": str(output_dir / "AGREEMENT_REPORT.html")}
 
 
@@ -2376,6 +2916,14 @@ def add_cli_parser(subparsers: Any) -> None:
     clinical.add_argument("--sheet", default="Biopsias finales incluidas")
     clinical.add_argument("--clinical-id-column")
     clinical.add_argument("--linkage-id-column")
+    clinical.add_argument(
+        "--identifier-crosswalk",
+        type=Path,
+        help=(
+            "optional mode-0600 CSV with linkage_id,clinical_id for explicitly "
+            "reviewed identifier corrections; marker values are never used"
+        ),
+    )
 
     compare = commands.add_parser(
         "compare",
@@ -2433,6 +2981,7 @@ def dispatch_cli(args: Any) -> int:
             sheet_name=args.sheet,
             clinical_id_column=args.clinical_id_column,
             linkage_id_column=args.linkage_id_column,
+            identifier_crosswalk=args.identifier_crosswalk,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
