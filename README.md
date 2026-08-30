@@ -215,6 +215,29 @@ workflow outputs and are not part of the Zenodo deposit. This
 DOI identifies the breast-IHC dataset, not the TumorQuantAI software or the
 separate lymphoma dataset. See the [breast IHC patch tutorial](https://cfarkas.github.io/tumorquantai/tutorials/breast-ihc-patches/).
 
+## Colon IHC: direct Motic WSI quantification
+
+TumorQuantAI can read Motic MDS pixel pyramids directly and quantify registered
+CD3/CD8 serial sections in CK20-guided epithelial and stromal proxy
+compartments:
+
+~~~bash
+tumorquantai --inmunoscore /private/extracted/inmunoscore \
+  --output /controlled/results/tumorquantai_immunoscore \
+  --alias-secret-file /controlled/private_release/alias_secret.bin \
+  --private-linkage /controlled/private_release/case_slide_linkage.csv \
+  --workers 3
+~~~
+
+The command writes one clear case-value CSV, an explicit pass-only/all-numeric
+cohort summary, a long counts/areas/densities CSV, registration metrics,
+composite QC images, and unavailable-case records. It is a CK20-guided
+research proxy, not the consensus clinical
+Immunoscore: no official score is emitted without pathologist-validated tumour
+core/invasive-margin regions and the validated external reference
+distribution. See the [colon IHC whole-slide
+tutorial](https://cfarkas.github.io/tumorquantai/tutorials/colon-ihc-wsi-immunoscore/).
+
 ## Run your own WSIs
 
 Use one L0 TIFF and, for sampled analyses, one L2 companion per sample:

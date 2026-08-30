@@ -637,6 +637,64 @@ def _compatibility_option_values(
     return values
 
 
+def _rewrite_immunoscore_compatibility_arguments(
+    arguments: Sequence[str],
+) -> list[str]:
+    """Rewrite the top-level Immunoscore option onto the native IHC command."""
+    raw = list(arguments)
+    if not _compatibility_has_option(raw, "--inmunoscore"):
+        return raw
+    if raw[:1] and raw[0] in PATCH_COMPATIBILITY_COMMANDS:
+        raise _parameter_error(
+            "--inmunoscore is a top-level compatibility flag; do not combine "
+            "it with a subcommand."
+        )
+    if _compatibility_has_option(raw, "--patches", "--paper-figures"):
+        raise _parameter_error(
+            "--inmunoscore cannot be combined with raw-patch compatibility mode."
+        )
+    if "--" in raw:
+        raise _parameter_error(
+            "--inmunoscore does not accept Nextflow expert passthrough arguments."
+        )
+    values: list[str] = []
+    cleaned: list[str] = []
+    index = 0
+    help_only = False
+    while index < len(raw):
+        argument = raw[index]
+        if argument == "--inmunoscore":
+            if index + 1 >= len(raw) or raw[index + 1].startswith("--"):
+                if raw[index + 1 : index + 2] == ["--help"] and len(raw) == 2:
+                    help_only = True
+                    index += 1
+                    continue
+                raise _parameter_error(
+                    "--inmunoscore requires the extracted Motic WSI root."
+                )
+            values.append(raw[index + 1])
+            index += 2
+            continue
+        if argument.startswith("--inmunoscore="):
+            value = argument.split("=", 1)[1]
+            if not value:
+                raise _parameter_error(
+                    "--inmunoscore requires the extracted Motic WSI root."
+                )
+            values.append(value)
+            index += 1
+            continue
+        cleaned.append(argument)
+        index += 1
+    if help_only:
+        return ["ihc", "immunoscore", "--help"]
+    if len(values) != 1:
+        raise _parameter_error(
+            "Immunoscore mode requires exactly one --inmunoscore INPUT."
+        )
+    return ["ihc", "immunoscore", values[0], *cleaned]
+
+
 def _rewrite_patch_compatibility_arguments(
     arguments: Sequence[str],
 ) -> tuple[list[str], str | None]:
@@ -1134,7 +1192,10 @@ def build_parser() -> argparse.ArgumentParser:
             "  tumorquantai inspect /data/slides --output /data/tqa-inspection\n"
             "  tumorquantai convert downloads --output slides --resume\n"
             "  tumorquantai quickstart --no-inference\n"
-            "  tumorquantai --patches /data/patches --paper-figures --output results"
+            "  tumorquantai --patches /data/patches --paper-figures --output results\n"
+            "  tumorquantai --inmunoscore /private/motic --output results "
+            "--alias-secret-file /private/alias.key "
+            "--private-linkage /private/linkage.csv"
         ),
     )
     parser.add_argument("--version", action="version", version=f"TumorQuantAI {core.VERSION}")
@@ -2323,6 +2384,9 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     raw_arguments = list(argv) if argv is not None else sys.argv[1:]
     try:
+        raw_arguments = _rewrite_immunoscore_compatibility_arguments(
+            raw_arguments
+        )
         raw_arguments, patch_value = _rewrite_patch_compatibility_arguments(
             raw_arguments
         )

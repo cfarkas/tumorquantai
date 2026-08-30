@@ -94,6 +94,63 @@ def test_every_help_command_is_available(tmp_path: Path, command: str | None) ->
     assert "usage:" in result.stdout
 
 
+def test_top_level_inmunoscore_help_is_available(tmp_path: Path) -> None:
+    result = invoke(tmp_path, "--inmunoscore", "--help")
+    assert result.returncode == core.EXIT_OK, result.stderr
+    assert "CK20" in result.stdout
+    assert "--alias-secret-file" in result.stdout
+    assert "not clinical Immunoscore" in result.stdout
+
+
+def test_top_level_inmunoscore_rewrites_to_package_command() -> None:
+    namespace = runpy.run_path(str(CLI), run_name="tumorquantai_immunoscore_test")
+    rewritten = namespace["_rewrite_immunoscore_compatibility_arguments"](
+        [
+            "--inmunoscore",
+            "/private/motic",
+            "--output",
+            "/controlled/results",
+            "--alias-secret-file",
+            "/controlled/alias.bin",
+            "--private-linkage",
+            "/controlled/linkage.csv",
+        ]
+    )
+    assert rewritten == [
+        "ihc",
+        "immunoscore",
+        "/private/motic",
+        "--output",
+        "/controlled/results",
+        "--alias-secret-file",
+        "/controlled/alias.bin",
+        "--private-linkage",
+        "/controlled/linkage.csv",
+    ]
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ("ihc", "--inmunoscore", "/private/motic"),
+        (
+            "--inmunoscore",
+            "/private/motic",
+            "--patches",
+            "/patches",
+            "--paper-figures",
+        ),
+        ("--inmunoscore", "/one", "--inmunoscore", "/two"),
+    ],
+)
+def test_inmunoscore_compatibility_rejects_ambiguous_modes(
+    tmp_path: Path, arguments: tuple[str, ...]
+) -> None:
+    result = invoke(tmp_path, *arguments)
+    assert result.returncode == core.EXIT_USAGE
+    assert "ERROR:" in result.stderr
+
+
 @pytest.mark.parametrize("command", ("run", "quickstart"))
 def test_execution_help_shows_cpu_and_gpu_aliases(
     tmp_path: Path, command: str,

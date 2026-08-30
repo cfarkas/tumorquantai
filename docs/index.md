@@ -27,6 +27,8 @@ Choose `--singularity`, `--poetry`, or `--conda` instead of `--docker` during in
 - [Configure HistoPLUS access](how-to/model-access.md)
 - [QuickStart Example 1: one public WSI](quick_start.md)
 - [Full tutorial: 21 lymphoma WSIs at 10%](full_tutorial.md)
+- [Breast ER/PR/HER2/Ki-67 patch quantification](tutorials/breast-ihc-patches.md)
+- [Colon CD3/CD8 whole-slide quantification guided by CK20](tutorials/colon-ihc-wsi-immunoscore.md)
 - [Apply TumorQuantAI to your own WSIs](own_data.md)
 - [Execution methods](execution_environments.md)
 - [Understand the outputs](outputs.md)

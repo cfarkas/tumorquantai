@@ -96,7 +96,12 @@ def _dimensions(
     return tuple(result)
 
 
-def parse_manifest_text(text: str, source: str) -> list[MdsManifestRow]:
+def parse_manifest_text(
+    text: str,
+    source: str,
+    *,
+    alias_re: re.Pattern[str] = ALIAS_RE,
+) -> list[MdsManifestRow]:
     reader = csv.DictReader(io.StringIO(text))
     fields = set(reader.fieldnames or [])
     missing = REQUIRED_COLUMNS - fields
@@ -122,7 +127,7 @@ def parse_manifest_text(text: str, source: str) -> list[MdsManifestRow]:
             )
         alias = str(raw.get("alias", "")).strip()
         filename = str(raw.get("zenodo_filename", "")).strip()
-        if not ALIAS_RE.fullmatch(alias) or alias in seen_aliases:
+        if not alias_re.fullmatch(alias) or alias in seen_aliases:
             raise MdsManifestError(
                 f"Unsafe/duplicate alias at {source}:{line_number}"
             )
@@ -200,10 +205,18 @@ def parse_manifest_text(text: str, source: str) -> list[MdsManifestRow]:
     return rows
 
 
-def load_manifest(path: Path) -> tuple[list[MdsManifestRow], str]:
+def load_manifest(
+    path: Path,
+    *,
+    alias_re: re.Pattern[str] = ALIAS_RE,
+) -> tuple[list[MdsManifestRow], str]:
     candidate = path.expanduser().absolute()
     if candidate.is_symlink() or not candidate.is_file():
         raise MdsManifestError(f"MDS manifest is not a regular file: {candidate}")
     resolved = candidate.resolve()
     text = resolved.read_text(encoding="utf-8-sig")
-    return parse_manifest_text(text, str(resolved)), text
+    return parse_manifest_text(
+        text,
+        str(resolved),
+        alias_re=alias_re,
+    ), text

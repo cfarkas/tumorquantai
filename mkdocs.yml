@@ -53,6 +53,7 @@ nav:
       - Structural Software Demo: start-here/demo.md
       - Four Public WSIs at 10%: tutorials/four-public-slides.md
       - Breast IHC Marker Quantification: tutorials/breast-ihc-patches.md
+      - Colon CD3/CD8/CK20 Whole Slides: tutorials/colon-ihc-wsi-immunoscore.md
   - Run and Configure:
       - Workflow, Presets, and Resume: running.md
       - Download Public MDS Files: how-to/download-mds.md
@@ -77,11 +78,13 @@ nav:
       - Version 1 Compatibility: reference/compatibility.md
       - IHC v1-to-v2 Migration: reference/ihc-v2-migration.md
       - Breast IHC Case Linkage and Privacy: reference/breast-ihc-case-linkage.md
+      - Colon CK20-guided CD3/CD8 Reference: reference/colon-ihc-immunoscore.md
   - Help and About:
       - Troubleshooting: troubleshooting/index.md
       - Citation and Research Use: citation_research_use.md
       - Developer Guide: developer_guide.md
       - Breast IHC Dataset Release: maintainers/breast-ihc-dataset-release.md
+      - Colon IHC Dataset Release: maintainers/colon-ihc-dataset-release.md
       - Glossary: GLOSSARY.md
 
 plugins:

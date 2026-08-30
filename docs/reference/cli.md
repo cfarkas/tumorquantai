@@ -48,6 +48,18 @@ tumorquantai quickstart [--output PATH]
                          [--profile auto|gpu|cpu|local | --cpu | --gpu]
                          [--seed INT] [--local-weight FILE]
 
+tumorquantai --inmunoscore INPUT --output DIR
+             --alias-secret-file FILE --private-linkage CSV
+             [--workers INT] [--source-mpp FLOAT]
+             [--target-analysis-mpp FLOAT] [--overview-max-edge INT]
+             [--block-tiles INT] [--minimum-registration-dice FLOAT]
+             [--immune-weak-dab-od FLOAT] [--ck20-minimum-dab-od FLOAT]
+             [--ck20-target-mpp FLOAT]
+             [--ck20-minimum-projected-fraction FLOAT]
+             [--ck20-minimum-component-um2 FLOAT]
+             [--ck20-epithelium-expansion-um FLOAT]
+             [--no-qc] [--no-resume] [--fail-fast] [--dry-run]
+
 tumorquantai --patches TIFF_PATH --paper-figures --output DIR
              [--source-mpp FLOAT]
              [--docker | --singularity | --conda]
@@ -200,6 +212,49 @@ See the [case-linkage and privacy reference](breast-ihc-case-linkage.md) for
 the exact identity chain, fail-closed behavior, controlled audit CSV, and
 reference-cohort counts. Then follow the
 [complete marker-quantification tutorial](../tutorials/breast-ihc-patches.md).
+
+### Package-native colon CD3/CD8/CK20 whole-slide quantification
+
+The following commands are equivalent:
+
+```bash
+tumorquantai --inmunoscore /private/motic-bundles \
+  --output /controlled/results/colon-ihc \
+  --alias-secret-file /controlled/private/alias_secret.bin \
+  --private-linkage /controlled/private/case_slide_linkage.csv
+
+tumorquantai ihc immunoscore /private/motic-bundles \
+  --output /controlled/results/colon-ihc \
+  --alias-secret-file /controlled/private/alias_secret.bin \
+  --private-linkage /controlled/private/case_slide_linkage.csv
+```
+
+The deliberately preserved top-level spelling is `--inmunoscore`; the
+canonical English subcommand is `ihc immunoscore`. This route reads Motic MDS
+`DSI0` pixels directly, registers CD3 and CD8 serial sections to CK20, and
+reports positive-cell counts, analysed area, and cells/mm² in
+`ck20_epithelium_proxy`, `ck20_stroma_proxy`, and common-tissue compartments.
+CK20 detection is streamed at approximately 2 µm/pixel and area-projected into
+the bounded registration overview so focal staining is not averaged away. It
+does not run HistoPLUS or Nextflow.
+
+The owner-controlled alias secret must be a regular, single-linked, mode-0600
+file with at least 32 bytes. The private linkage must remain outside the
+result directory. Case grouping uses the exact source bundle prefix before the
+CD3/CD8/CK20 token; staining values are never used to infer identity. Cases
+missing a marker remain explicitly unavailable.
+
+`--dry-run` inventories marker sets and verifies physical scale without
+hashing WSIs or writing output. Normal runs are resumable and verify the exact
+source size/SHA-256 linkage before reusing a completed case. Automated
+registration and CK20 masks always require visual review.
+
+This is a research proxy. It neither defines pathologist-reviewed tumour-core
+and invasive-margin regions nor imports the validated external reference
+distribution, so `consensus_immunoscore` is always blank with an explicit
+unavailable status. See the
+[complete colon-IHC tutorial](../tutorials/colon-ihc-wsi-immunoscore.md) and
+[exact CSV/QC reference](colon-ihc-immunoscore.md).
 
 ### Optional HistoPLUS raw TIFF cell typing
 

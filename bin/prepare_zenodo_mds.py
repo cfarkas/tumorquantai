@@ -35,6 +35,15 @@ from mds_to_tiff import MdsPixels
 
 
 ALIAS_RE = re.compile(r"^TumorQuantAI_LymphomaWSI_[0-9]{3}$")
+COLON_IMMUNOSCORE_ALIAS_RE = re.compile(r"^TQA_CIS_[A-Z2-7]{20}$")
+COLON_SOURCE_BUNDLE_RE = re.compile(
+    r"^(?P<case_id>.+)-(?:CD3|CD8|CK20)-.+$",
+    re.IGNORECASE,
+)
+ALIAS_PROFILES = {
+    "lymphoma": ALIAS_RE,
+    "colon-immunoscore": COLON_IMMUNOSCORE_ALIAS_RE,
+}
 FICLONE = 0x40049409
 PUBLIC_COLUMNS = (
     "schema_version",
@@ -97,28 +106,49 @@ def load_selection(
     mapping: Path,
     excluded_aliases: set[str],
     expected_count: int | None,
+    alias_re: re.Pattern[str] = ALIAS_RE,
+    *,
+    require_private_mode: bool = False,
 ) -> list[Selection]:
-    path = mapping.expanduser().resolve()
-    if not path.is_file() or path.is_symlink():
-        raise MdsPreparationError(f"Private alias mapping is not a regular file: {path}")
+    candidate = mapping.expanduser().absolute()
+    if candidate.is_symlink() or not candidate.is_file():
+        raise MdsPreparationError(
+            f"Private alias mapping is not a regular file: {candidate}"
+        )
+    path = candidate.resolve()
+    status = path.stat()
+    if require_private_mode and (
+        stat.S_IMODE(status.st_mode) != 0o600
+        or status.st_uid != os.getuid()
+        or status.st_nlink != 1
+    ):
+        raise MdsPreparationError(
+            "Private alias mapping must be owner-controlled, single-linked, "
+            "and mode 0600"
+        )
     rows: list[Selection] = []
     seen_aliases: set[str] = set()
     seen_sources: set[Path] = set()
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         fields = set(reader.fieldnames or [])
-        if "alias" not in fields or not ({"source_path", "source_mds_path"} & fields):
+        alias_columns = {"alias", "slide_alias"} & fields
+        if not alias_columns or not ({"source_path", "source_mds_path"} & fields):
             raise MdsPreparationError(
-                "Alias mapping requires alias and source_path or source_mds_path"
+                "Alias mapping requires alias or slide_alias and source_path "
+                "or source_mds_path"
             )
+        alias_column = "alias" if "alias" in fields else "slide_alias"
         source_column = "source_path" if "source_path" in fields else "source_mds_path"
         for line_number, row in enumerate(reader, start=2):
-            alias = str(row.get("alias", "")).strip()
+            alias = str(row.get(alias_column, "")).strip()
             if alias in excluded_aliases:
                 continue
-            if not ALIAS_RE.fullmatch(alias):
+            if not alias_re.fullmatch(alias):
                 raise MdsPreparationError(f"Unsafe alias at {path}:{line_number}")
-            candidate = Path(str(row.get(source_column, "")).strip()).expanduser().absolute()
+            candidate = (
+                Path(str(row.get(source_column, "")).strip()).expanduser().absolute()
+            )
             if candidate.is_symlink() or not candidate.is_file():
                 raise MdsPreparationError(
                     f"MDS source is not a regular file at {path}:{line_number}"
@@ -127,7 +157,9 @@ def load_selection(
             if source.suffix.casefold() != ".mds":
                 raise MdsPreparationError(f"Source is not .mds at {path}:{line_number}")
             if alias in seen_aliases or source in seen_sources:
-                raise MdsPreparationError(f"Duplicate alias/source at {path}:{line_number}")
+                raise MdsPreparationError(
+                    f"Duplicate alias/source at {path}:{line_number}"
+                )
             seen_aliases.add(alias)
             seen_sources.add(source)
             rows.append(Selection(alias=alias, source_path=source))
@@ -172,7 +204,8 @@ def clone_or_copy(source: Path, destination: Path) -> str:
 def neutral_bytes(size: int, label: str) -> bytes:
     if size < 0:
         raise MdsPreparationError("Negative OLE stream size")
-    marker = f"TumorQuantAI de-identified: {label}".encode("ascii")
+    del label
+    marker = b"TumorQuantAI de-identified non-pixel stream"
     return (marker[:size] + b"\x00" * size)[:size]
 
 
@@ -263,7 +296,9 @@ def sanitize_nonpixel_streams(path: Path) -> tuple[OlePixelSignature, int]:
     try:
         ole = olefile.OleFileIO(str(path), write_mode=True)
     except (OSError, IOError, olefile.OleFileError) as exc:
-        raise MdsPreparationError(f"Cannot open staged MDS for sanitization: {path}") from exc
+        raise MdsPreparationError(
+            f"Cannot open staged MDS for sanitization: {path}"
+        ) from exc
     try:
         signature = ole_pixel_signature(ole)
         nonpixel = [
@@ -281,7 +316,9 @@ def sanitize_nonpixel_streams(path: Path) -> tuple[OlePixelSignature, int]:
             else:
                 replacement = neutral_bytes(len(original), name)
             if len(replacement) != len(original):
-                raise MdsPreparationError(f"Replacement size mismatch for stream {name}")
+                raise MdsPreparationError(
+                    f"Replacement size mismatch for stream {name}"
+                )
             ole.write_stream(list(stream), replacement)
     finally:
         ole.close()
@@ -297,12 +334,16 @@ def validate_sanitized_ole(
         source_ole = olefile.OleFileIO(str(source))
         staged_ole = olefile.OleFileIO(str(staged))
     except (OSError, IOError, olefile.OleFileError) as exc:
-        raise MdsPreparationError("Cannot reopen source/staged MDS for validation") from exc
+        raise MdsPreparationError(
+            "Cannot reopen source/staged MDS for validation"
+        ) from exc
     try:
         source_streams = pixel_streams(source_ole)
         staged_streams = pixel_streams(staged_ole)
         if source_streams != staged_streams:
-            raise MdsPreparationError("DSI0 pixel stream names changed during sanitization")
+            raise MdsPreparationError(
+                "DSI0 pixel stream names changed during sanitization"
+            )
         sampled = set(sampled_paths(source_streams))
         sample_digest = hashlib.sha256()
         full_digest = hashlib.sha256()
@@ -366,12 +407,21 @@ def marker_variants(source: Path) -> list[bytes]:
     parent = source.parent.name
     accession = parent.split("_")[0]
     values = {parent, accession, str(source), str(source.parent)}
+    colon_match = COLON_SOURCE_BUNDLE_RE.fullmatch(parent)
+    if colon_match is not None:
+        values.add(colon_match.group("case_id"))
     variants: set[bytes] = set()
     for value in values:
-        if len(value) < 4:
-            continue
-        variants.add(value.encode("utf-8"))
-        variants.add(value.encode("utf-16le"))
+        for normalized in {value, value.casefold(), value.upper()}:
+            if len(normalized) < 4:
+                continue
+            variants.add(normalized.encode("utf-8"))
+            variants.add(normalized.encode("utf-16le"))
+            variants.add(normalized.encode("utf-16be"))
+            try:
+                variants.add(normalized.encode("latin-1"))
+            except UnicodeEncodeError:
+                pass
     return sorted(variants)
 
 
@@ -417,7 +467,9 @@ def atomic_csv(
         raise MdsPreparationError(f"Refusing symlink output: {candidate}")
     path = candidate.resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
     temporary = Path(temporary_name)
     try:
         os.chmod(temporary, mode)
@@ -438,16 +490,24 @@ def atomic_csv(
             temporary.unlink()
 
 
-def prepare_one(selection: Selection, staging_dir: Path, resume: bool) -> tuple[dict, dict]:
+def prepare_one(
+    selection: Selection, staging_dir: Path, resume: bool
+) -> tuple[dict, dict]:
     remote_name = f"{selection.alias}.mds"
     destination = staging_dir / remote_name
+    if destination.is_symlink():
+        raise MdsPreparationError(f"Refusing symlink staging file: {destination}")
     if destination.exists() and not resume:
-        raise MdsPreparationError(f"Staged MDS already exists (use --resume): {destination}")
+        raise MdsPreparationError(
+            f"Staged MDS already exists (use --resume): {destination}"
+        )
     source_size, source_sha, _, _ = digest_and_scan(selection.source_path, [])
     if not destination.exists():
         temporary = staging_dir / f".{remote_name}.preparing"
         if temporary.exists():
-            raise MdsPreparationError(f"Incomplete staging file requires review: {temporary}")
+            raise MdsPreparationError(
+                f"Incomplete staging file requires review: {temporary}"
+            )
         method = clone_or_copy(selection.source_path, temporary)
         try:
             source_signature, nonpixel_count = sanitize_nonpixel_streams(temporary)
@@ -523,6 +583,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--exclude-alias", action="append", default=[])
     parser.add_argument("--expected-count", type=int, default=21)
     parser.add_argument("--source-mpp", type=float, default=0.261780)
+    parser.add_argument(
+        "--alias-profile",
+        choices=tuple(ALIAS_PROFILES),
+        default="lymphoma",
+        help="strict public-alias grammar for this dataset",
+    )
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--limit", type=int)
@@ -531,11 +597,22 @@ def build_parser() -> argparse.ArgumentParser:
 
 def run(args: argparse.Namespace) -> dict[str, object]:
     source_mpp = validate_mpp(args.source_mpp)
+    alias_profile = getattr(args, "alias_profile", "lymphoma")
+    try:
+        alias_re = ALIAS_PROFILES[alias_profile]
+    except KeyError as exc:
+        raise MdsPreparationError("Unknown alias profile") from exc
     excluded = set(args.exclude_alias)
-    invalid = sorted(alias for alias in excluded if not ALIAS_RE.fullmatch(alias))
+    invalid = sorted(alias for alias in excluded if not alias_re.fullmatch(alias))
     if invalid:
         raise MdsPreparationError("Invalid --exclude-alias value")
-    selections = load_selection(args.alias_mapping, excluded, args.expected_count)
+    selections = load_selection(
+        args.alias_mapping,
+        excluded,
+        args.expected_count,
+        alias_re,
+        require_private_mode=alias_profile == "colon-immunoscore",
+    )
     if args.limit is not None:
         if args.limit <= 0:
             raise MdsPreparationError("--limit must be greater than zero")
@@ -546,6 +623,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "total_size_bytes": total_bytes,
         "excluded_aliases": sorted(excluded),
         "source_mpp": source_mpp,
+        "alias_profile": alias_profile,
         "files": [f"{item.alias}.mds" for item in selections],
     }
     if args.plan:
@@ -553,14 +631,18 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
     staging_candidate = args.staging_dir.expanduser().absolute()
     if staging_candidate.is_symlink():
-        raise MdsPreparationError(f"Refusing symlink staging directory: {staging_candidate}")
+        raise MdsPreparationError(
+            f"Refusing symlink staging directory: {staging_candidate}"
+        )
     staging_dir = staging_candidate.resolve()
     staging_dir.mkdir(parents=True, exist_ok=True, mode=stat.S_IRWXU)
     os.chmod(staging_dir, stat.S_IRWXU)
     public_rows: list[dict[str, object]] = []
     private_rows: list[dict[str, object]] = []
     for index, selection in enumerate(selections, start=1):
-        print(f"[{index}/{len(selections)}] preparing {selection.alias}", file=sys.stderr)
+        print(
+            f"[{index}/{len(selections)}] preparing {selection.alias}", file=sys.stderr
+        )
         public, private = prepare_one(selection, staging_dir, args.resume)
         public["source_mpp"] = source_mpp
         public_rows.append(public)
@@ -570,7 +652,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     return {
         "plan": False,
         **plan,
-        "sanitized_total_size_bytes": sum(int(row["size_bytes"]) for row in public_rows),
+        "sanitized_total_size_bytes": sum(
+            int(row["size_bytes"]) for row in public_rows
+        ),
         "public_manifest": str(args.public_manifest.expanduser().resolve()),
         "private_mapping": str(args.private_mapping.expanduser().resolve()),
         "staging_dir": str(staging_dir),

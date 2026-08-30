@@ -1,0 +1,30 @@
+{
+  "metadata": {
+    "title": "TumorQuantAI colon cancer CD3, CD8, and CK20 whole-slide image dataset",
+    "description": "Restricted research dataset containing 30 pseudonymized Motic MDS whole-slide images from 11 source cases: 10 CD3, 10 CD8, and 10 CK20 slides acquired at 0.261780 micrometres per pixel; nine cases have complete three-marker serial-section sets. Original archives, source filenames, sidecars, label/macro content, identifiers, and private linkage are excluded. DSI0 tissue pixels are preserved byte-for-byte while non-pixel streams receive generic same-size neutral replacements, with structural checks, multi-encoding identifier scans, and controlled visual-review panels. Accompanying English artifacts report TumorQuantAI CK20-guided CD3/CD8 counts, analysed areas, positive-cell densities, descriptive statistics, registration QC, and unavailable cases. These outputs are research proxies, not the clinically validated consensus Immunoscore: pathologist-reviewed tumour-core/invasive-margin regions and the validated external reference distribution were not supplied. Restricted draft access does not establish publication, redistribution, ethics, privacy, or licensing approval.",
+    "upload_type": "dataset",
+    "access_right": "restricted",
+    "access_conditions": "Access requests require custodian review of research purpose, data protection, redistribution restrictions, and applicable ethics or institutional approvals.",
+    "creators": [
+      {
+        "name": "Farkas, Carlos"
+      }
+    ],
+    "keywords": [
+      "digital pathology",
+      "colorectal cancer",
+      "immunohistochemistry",
+      "CD3",
+      "CD8",
+      "CK20",
+      "whole-slide imaging"
+    ],
+    "related_identifiers": [
+      {
+        "identifier": "https://github.com/cfarkas/tumorquantai",
+        "relation": "isSupplementTo",
+        "scheme": "url"
+      }
+    ]
+  }
+}

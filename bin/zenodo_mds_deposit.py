@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from html import unescape
@@ -138,10 +139,21 @@ def truthy(value: str) -> bool:
 
 
 def collect_mds_uploads(
-    public_manifest: Path, private_mapping: Path
+    public_manifest: Path,
+    private_mapping: Path,
+    *,
+    alias_re: re.Pattern[str] = base.ALIAS_RE,
+    expected_count: int | None = None,
+    expected_bytes: int | None = None,
+    manifest_name: str = DEFAULT_MANIFEST_NAME,
+    extra_files: list[str] | None = None,
 ) -> list[base.UploadFile]:
+    if expected_count is None:
+        expected_count = EXPECTED_MDS_COUNT
+    if expected_bytes is None:
+        expected_bytes = EXPECTED_MDS_BYTES
     try:
-        public_rows, _ = load_manifest(public_manifest)
+        public_rows, _ = load_manifest(public_manifest, alias_re=alias_re)
     except MdsManifestError as exc:
         raise base.DepositError(str(exc)) from exc
     private_path = base.secure_file(private_mapping, "MDS private mapping")
@@ -151,7 +163,7 @@ def collect_mds_uploads(
     private_by_alias: dict[str, dict[str, str]] = {}
     for private in private_rows:
         alias = str(private.get("alias", "")).strip()
-        if not base.ALIAS_RE.fullmatch(alias) or alias in private_by_alias:
+        if not alias_re.fullmatch(alias) or alias in private_by_alias:
             raise base.DepositError(
                 "MDS private mapping contains an unsafe/duplicate alias"
             )
@@ -163,7 +175,7 @@ def collect_mds_uploads(
     for row in public_rows:
         alias = row.alias
         name = base.safe_remote_name(row.zenodo_filename)
-        if not base.ALIAS_RE.fullmatch(alias) or alias in seen_aliases:
+        if not alias_re.fullmatch(alias) or alias in seen_aliases:
             raise base.DepositError(
                 "MDS public manifest contains an unsafe/duplicate alias"
             )
@@ -235,14 +247,14 @@ def collect_mds_uploads(
         seen_aliases.add(alias)
         seen_names.add(name)
 
-    if len(uploads) != EXPECTED_MDS_COUNT:
+    if len(uploads) != expected_count:
         raise base.DepositError(
-            f"Expected {EXPECTED_MDS_COUNT} MDS files, found {len(uploads)}"
+            f"Expected {expected_count} MDS files, found {len(uploads)}"
         )
     mds_bytes = sum(item.size_bytes for item in uploads)
-    if mds_bytes != EXPECTED_MDS_BYTES:
+    if mds_bytes != expected_bytes:
         raise base.DepositError(
-            f"Expected {EXPECTED_MDS_BYTES} MDS bytes, found {mds_bytes}"
+            f"Expected {expected_bytes} MDS bytes, found {mds_bytes}"
         )
     if set(private_by_alias) != seen_aliases:
         raise base.DepositError(
@@ -255,14 +267,26 @@ def collect_mds_uploads(
     uploads.append(
         base.make_small_upload(
             manifest_candidate.resolve(),
-            DEFAULT_MANIFEST_NAME,
+            manifest_name,
             "public-manifest",
         )
     )
+    for value in extra_files or []:
+        path, remote_name = base.parse_extra_file(value)
+        uploads.append(
+            base.make_small_upload(path, remote_name, "extra-public-file")
+        )
+    names = [item.remote_name for item in uploads]
+    if len(names) != len(set(names)):
+        raise base.DepositError("Zenodo upload names are not unique")
     if len(uploads) > base.ZENODO_MAX_FILES:
         raise base.DepositError("MDS deposit exceeds Zenodo's 100-file limit")
     if any(item.size_bytes > base.ZENODO_MAX_FILE_BYTES for item in uploads):
         raise base.DepositError("An MDS file exceeds Zenodo's 50 GB file limit")
+    if sum(item.size_bytes for item in uploads) > base.ZENODO_MAX_FILE_BYTES:
+        raise base.DepositError(
+            "MDS deposit exceeds Zenodo's default 50 GB record quota"
+        )
     return sorted(uploads, key=lambda item: item.remote_name.casefold())
 
 
@@ -418,6 +442,12 @@ def deposit_mds(
     replace_mismatched: bool = False,
     plan: bool = False,
     session=None,
+    alias_re: re.Pattern[str] = base.ALIAS_RE,
+    expected_count: int | None = None,
+    expected_bytes: int | None = None,
+    manifest_name: str = DEFAULT_MANIFEST_NAME,
+    dataset_format: str = "sanitized-mds",
+    extra_files: list[str] | None = None,
 ) -> dict[str, object]:
     api_url = validated_api_url(api_url)
     if workers < 1 or workers > MAX_UPLOAD_WORKERS:
@@ -437,7 +467,15 @@ def deposit_mds(
         raise base.DepositError(
             "Restricted raw pathology MDS drafts require access_conditions"
         )
-    uploads = collect_mds_uploads(public_manifest, private_mapping)
+    uploads = collect_mds_uploads(
+        public_manifest,
+        private_mapping,
+        alias_re=alias_re,
+        expected_count=expected_count,
+        expected_bytes=expected_bytes,
+        manifest_name=manifest_name,
+        extra_files=extra_files,
+    )
     fingerprint = base.release_fingerprint(metadata, uploads)
     plan_result = {
         "draft_only": True,
@@ -474,7 +512,7 @@ def deposit_mds(
             raise base.DepositError("Deposit state belongs to another API URL")
         if (
             state.get("schema_version") != 1
-            or state.get("dataset_format") != "sanitized-mds"
+            or state.get("dataset_format") != dataset_format
             or state.get("status") != "draft"
             or state.get("release_fingerprint_sha256") != fingerprint
             or not isinstance(state.get("uploaded"), dict)
@@ -491,7 +529,7 @@ def deposit_mds(
         deposition_id = base.deposition_id_from_payload(draft)
         state = {
             "schema_version": 1,
-            "dataset_format": "sanitized-mds",
+            "dataset_format": dataset_format,
             "api_url": api_url.rstrip("/"),
             "deposition_id": deposition_id,
             "release_fingerprint_sha256": fingerprint,
@@ -657,6 +695,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retries", type=int, default=5)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--replace-mismatched", action="store_true")
+    parser.add_argument(
+        "--extra-file",
+        action="append",
+        default=[],
+        help="reviewed public PATH or PATH=REMOTE_NAME to add to the draft",
+    )
     parser.add_argument("--plan", action="store_true")
     return parser
 
@@ -677,6 +721,7 @@ def main(argv: list[str] | None = None) -> int:
             workers=args.workers,
             replace_mismatched=args.replace_mismatched,
             plan=args.plan,
+            extra_files=args.extra_file,
         )
     except (base.DepositError, OSError, ValueError) as exc:
         parser.error(str(exc))

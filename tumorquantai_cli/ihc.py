@@ -25,7 +25,6 @@ import math
 import os
 import stat
 import tempfile
-import traceback
 import zipfile
 from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -3319,7 +3318,8 @@ def compare_pathologist_agreement(
 
 def add_cli_parser(subparsers: Any) -> None:
     parser = subparsers.add_parser(
-        "ihc", help="quantify breast IHC markers and assess pathologist agreement"
+        "ihc",
+        help=("quantify breast IHC patches or CK20-guided CD3/CD8 colon WSIs"),
     )
     commands = parser.add_subparsers(dest="ihc_command", required=True)
     quantify = commands.add_parser(
@@ -3402,6 +3402,135 @@ def add_cli_parser(subparsers: Any) -> None:
     )
     quantify.add_argument("--minimum-cells-for-score", type=int, default=100)
 
+    immunoscore = commands.add_parser(
+        "immunoscore",
+        help=(
+            "register Motic CD3/CD8 WSIs to CK20 and quantify compartment "
+            "density proxies (research use; not clinical Immunoscore)"
+        ),
+        description=(
+            "Register Motic CD3/CD8 serial WSIs to CK20 and quantify "
+            "epithelial/stromal density proxies. Research use only; this is "
+            "not clinical Immunoscore."
+        ),
+    )
+    immunoscore.add_argument(
+        "input",
+        type=Path,
+        help="private extracted root containing Motic case-marker bundles",
+    )
+    immunoscore.add_argument(
+        "--output",
+        required=True,
+        type=Path,
+        help="new or resumable PHI-free result directory",
+    )
+    immunoscore.add_argument(
+        "--alias-secret-file",
+        required=True,
+        type=Path,
+        help="owner-controlled mode-0600 file with at least 32 random bytes",
+    )
+    immunoscore.add_argument(
+        "--private-linkage",
+        required=True,
+        type=Path,
+        help=(
+            "separate mode-0600 private CSV linking source IDs to HMAC aliases; "
+            "must be outside --output"
+        ),
+    )
+    immunoscore.add_argument(
+        "--workers",
+        type=int,
+        default=min(3, os.cpu_count() or 1),
+        help="parallel complete cases (1-8; each worker streams one WSI)",
+    )
+    immunoscore.add_argument(
+        "--source-mpp",
+        type=float,
+        help=(
+            "optional asserted source MPP; it must exactly agree with every "
+            "private Motic info.ini scale"
+        ),
+    )
+    immunoscore.add_argument(
+        "--target-analysis-mpp",
+        type=float,
+        default=0.55,
+        help="select the pyramid level nearest this MPP (default: 0.55)",
+    )
+    immunoscore.add_argument(
+        "--overview-max-edge",
+        type=int,
+        default=2048,
+        help="maximum registration-overview edge in pixels",
+    )
+    immunoscore.add_argument(
+        "--block-tiles",
+        type=int,
+        default=4,
+        help="MDS tiles per streamed analysis-block edge",
+    )
+    immunoscore.add_argument(
+        "--minimum-registration-dice",
+        type=float,
+        default=0.35,
+        help="automatic pass threshold; lower registrations remain review-only",
+    )
+    immunoscore.add_argument(
+        "--immune-weak-dab-od",
+        type=float,
+        default=0.16,
+        help="expected-brown weak DAB threshold for CD3/CD8 cells",
+    )
+    immunoscore.add_argument(
+        "--ck20-minimum-dab-od",
+        type=float,
+        default=0.08,
+        help="expected-brown DAB threshold for the epithelial proxy",
+    )
+    immunoscore.add_argument(
+        "--ck20-target-mpp",
+        type=float,
+        default=2.0,
+        help="stream CK20 at the pyramid level nearest this MPP (default: 2.0)",
+    )
+    immunoscore.add_argument(
+        "--ck20-minimum-projected-fraction",
+        type=float,
+        default=0.02,
+        help="minimum high-resolution DAB fraction in an overview pixel",
+    )
+    immunoscore.add_argument(
+        "--ck20-minimum-component-um2",
+        type=float,
+        default=1_000.0,
+        help="minimum connected CK20 proxy area in square micrometres",
+    )
+    immunoscore.add_argument(
+        "--ck20-epithelium-expansion-um",
+        type=float,
+        default=8.0,
+        help="outward expansion of the retained CK20 epithelial proxy",
+    )
+    immunoscore.add_argument("--fail-fast", action="store_true")
+    immunoscore.add_argument(
+        "--no-qc",
+        action="store_true",
+        help="skip registration/compartment composite PNGs",
+    )
+    immunoscore.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="refuse/recompute instead of reusing complete matching cases",
+    )
+    immunoscore.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="discover marker sets and verify MPP without hashing or analysis",
+    )
+
     clinical = commands.add_parser(
         "anonymize-clinical",
         help="export the minimum pathologist marker table under public aliases",
@@ -3477,6 +3606,39 @@ def dispatch_cli(args: Any) -> int:
         )
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0 if result.get("failed_patch_count", 0) == 0 else 10
+    if args.ihc_command == "immunoscore":
+        from tumorquantai_cli import immunoscore
+
+        config = immunoscore.ImmunoscoreConfig(
+            target_analysis_mpp=args.target_analysis_mpp,
+            overview_max_edge=args.overview_max_edge,
+            block_tiles=args.block_tiles,
+            weak_dab_od=args.immune_weak_dab_od,
+            ck20_minimum_dab_od=args.ck20_minimum_dab_od,
+            ck20_target_analysis_mpp=args.ck20_target_mpp,
+            ck20_minimum_projected_fraction=(args.ck20_minimum_projected_fraction),
+            ck20_minimum_component_um2=args.ck20_minimum_component_um2,
+            ck20_epithelium_expansion_um=args.ck20_epithelium_expansion_um,
+            minimum_registration_dice=args.minimum_registration_dice,
+        )
+        try:
+            result = immunoscore.run_immunoscore(
+                args.input,
+                args.output,
+                args.alias_secret_file,
+                args.private_linkage,
+                config,
+                workers=args.workers,
+                source_mpp=args.source_mpp,
+                save_qc=not args.no_qc,
+                resume=not args.no_resume,
+                fail_fast=args.fail_fast,
+                dry_run=args.dry_run,
+            )
+        except immunoscore.ImmunoscoreError as exc:
+            raise IHCError(str(exc)) from exc
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 0 if result.get("failed_case_count", 0) == 0 else 10
     if args.ihc_command == "anonymize-clinical":
         result = export_pathologist_csv(
             args.workbook,

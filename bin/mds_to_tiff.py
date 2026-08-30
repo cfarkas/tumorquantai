@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import hashlib
 import json
 import math
 import os
@@ -18,17 +17,27 @@ import re
 import stat
 import sys
 import tempfile
-from dataclasses import dataclass
-from io import BytesIO
 from pathlib import Path
-from typing import Iterator
 
 import numpy as np
-import olefile
 import tifffile
-from PIL import Image
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
 
 from mds_manifest import MdsManifestError, MdsManifestRow, load_manifest
+from tumorquantai_cli.mds_reader import (
+    MdsLevel,
+    MdsPixels,
+    MdsReadError,
+    digest_file,
+    level_sort_key as level_sort_key,
+    parse_tile_name as parse_tile_name,
+)
+
+
+__all__ = ("level_sort_key", "parse_tile_name")
 
 
 ALIAS_RE = re.compile(r"^TumorQuantAI_LymphomaWSI_[0-9]{3}$")
@@ -38,154 +47,7 @@ CONVERSION_MANIFEST_NAME = "mds_conversion_manifest.json"
 SAMPLES_NAME = "samples.csv"
 
 
-class MdsExportError(RuntimeError):
-    """Raised when an MDS file cannot be exported safely."""
-
-
-@dataclass(frozen=True)
-class MdsLevel:
-    index: int
-    name: str
-    rows: int
-    columns: int
-    tile_width: int
-    tile_height: int
-
-    @property
-    def width(self) -> int:
-        return self.columns * self.tile_width
-
-    @property
-    def height(self) -> int:
-        return self.rows * self.tile_height
-
-
-def parse_tile_name(value: str) -> tuple[int, int] | None:
-    parts = value.split("_")
-    if len(parts) != 2:
-        return None
-    try:
-        row, column = (int(part) for part in parts)
-    except ValueError:
-        return None
-    if row < 0 or column < 0:
-        return None
-    return row, column
-
-
-def level_sort_key(value: str) -> tuple[int, float | str]:
-    try:
-        return (0, -float(value))
-    except ValueError:
-        return (1, value.casefold())
-
-
-class MdsPixels:
-    """Small, read-only MDS pixel reader backed by ``olefile``."""
-
-    def __init__(self, path: Path) -> None:
-        candidate = path.expanduser().absolute()
-        if candidate.is_symlink() or not candidate.is_file():
-            raise MdsExportError(f"MDS input is not a regular file: {candidate}")
-        self.path = candidate.resolve()
-        if self.path.suffix.casefold() != ".mds":
-            raise MdsExportError(f"MDS input must end in .mds: {self.path}")
-        try:
-            self.ole = olefile.OleFileIO(str(self.path))
-        except (OSError, IOError, olefile.OleFileError) as exc:
-            raise MdsExportError(
-                f"Cannot open MDS OLE structure: {self.path}"
-            ) from exc
-        self._tiles: dict[str, dict[tuple[int, int], tuple[str, ...]]] = {}
-        try:
-            self._levels = self._discover_levels()
-        except Exception:
-            self.ole.close()
-            raise
-
-    def __enter__(self) -> "MdsPixels":
-        return self
-
-    def __exit__(self, *_: object) -> None:
-        self.close()
-
-    def close(self) -> None:
-        self.ole.close()
-
-    @property
-    def levels(self) -> tuple[MdsLevel, ...]:
-        return self._levels
-
-    def _discover_levels(self) -> tuple[MdsLevel, ...]:
-        grouped: dict[str, dict[tuple[int, int], tuple[str, ...]]] = {}
-        for stream in self.ole.listdir(streams=True, storages=False):
-            if len(stream) != 3 or stream[0] != "DSI0":
-                continue
-            coordinate = parse_tile_name(stream[2])
-            if coordinate is None:
-                continue
-            grouped.setdefault(stream[1], {})[coordinate] = tuple(stream)
-        if not grouped:
-            raise MdsExportError(f"MDS contains no DSI0 pixel tiles: {self.path}")
-
-        levels: list[MdsLevel] = []
-        for index, name in enumerate(sorted(grouped, key=level_sort_key)):
-            tiles = grouped[name]
-            first_path = tiles[min(tiles)]
-            try:
-                encoded = self.ole.openstream(list(first_path)).read()
-                with Image.open(BytesIO(encoded)) as image:
-                    tile_width, tile_height = image.size
-            except Exception as exc:
-                raise MdsExportError(
-                    f"Cannot decode the first tile in MDS level {name!r}: "
-                    f"{self.path}"
-                ) from exc
-            if tile_width <= 0 or tile_height <= 0:
-                raise MdsExportError(f"Invalid tile dimensions in {self.path}")
-            rows = max(row for row, _ in tiles) + 1
-            columns = max(column for _, column in tiles) + 1
-            self._tiles[name] = tiles
-            levels.append(
-                MdsLevel(
-                    index=index,
-                    name=name,
-                    rows=rows,
-                    columns=columns,
-                    tile_width=tile_width,
-                    tile_height=tile_height,
-                )
-            )
-        return tuple(levels)
-
-    def iter_level_tiles(
-        self, level: MdsLevel, fill_value: int = 255
-    ) -> Iterator[np.ndarray]:
-        paths = self._tiles[level.name]
-        expected_shape = (level.tile_height, level.tile_width, 3)
-        for row in range(level.rows):
-            for column in range(level.columns):
-                stream = paths.get((row, column))
-                if stream is None:
-                    yield np.full(expected_shape, fill_value, dtype=np.uint8)
-                    continue
-                try:
-                    encoded = self.ole.openstream(list(stream)).read()
-                    with Image.open(BytesIO(encoded)) as image:
-                        array = np.asarray(image.convert("RGB"), dtype=np.uint8)
-                except Exception as exc:
-                    raise MdsExportError(
-                        f"Cannot decode tile {level.name}/{row}_{column} "
-                        f"in {self.path}"
-                    ) from exc
-                if array.shape == expected_shape:
-                    yield array
-                    continue
-                padded = np.full(expected_shape, fill_value, dtype=np.uint8)
-                height = min(array.shape[0], level.tile_height)
-                width = min(array.shape[1], level.tile_width)
-                padded[:height, :width, :] = array[:height, :width, :3]
-                yield padded
+MdsExportError = MdsReadError
 
 
 def compression_settings(name: str, level: int) -> tuple[str | None, dict | None]:
@@ -206,36 +68,13 @@ def validate_mpp(value: float) -> float:
     return value
 
 
-def digest_file(path: Path) -> tuple[int, str]:
-    before = path.stat()
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(8 * 1024 * 1024), b""):
-            size += len(chunk)
-            digest.update(chunk)
-    after = path.stat()
-    identity = lambda item: (
-        item.st_dev,
-        item.st_ino,
-        item.st_size,
-        item.st_mtime_ns,
-        item.st_ctime_ns,
-    )
-    if identity(before) != identity(after):
-        raise MdsExportError(f"File changed while hashing: {path}")
-    return size, digest.hexdigest()
-
-
 def _rational_float(value: object) -> float:
     if isinstance(value, tuple) and len(value) == 2:
         return float(value[0]) / float(value[1])
     return float(value)
 
 
-def validate_tiff(
-    path: Path, *, width: int, height: int, output_mpp: float
-) -> None:
+def validate_tiff(path: Path, *, width: int, height: int, output_mpp: float) -> None:
     candidate = path.expanduser().absolute()
     if candidate.is_symlink() or not candidate.is_file():
         raise MdsExportError(f"TIFF output is not a regular file: {candidate}")
@@ -251,11 +90,8 @@ def validate_tiff(
             unit = int(page.tags["ResolutionUnit"].value)
             x_resolution = _rational_float(page.tags["XResolution"].value)
             measured_mpp = 10_000.0 / x_resolution if unit == 3 else math.nan
-            if (
-                not math.isfinite(measured_mpp)
-                or not math.isclose(
-                    measured_mpp, output_mpp, rel_tol=2e-6, abs_tol=2e-6
-                )
+            if not math.isfinite(measured_mpp) or not math.isclose(
+                measured_mpp, output_mpp, rel_tol=2e-6, abs_tol=2e-6
             ):
                 raise MdsExportError(
                     f"TIFF physical-resolution validation failed: {candidate}"
@@ -356,19 +192,14 @@ def sample_id_for(path: Path) -> str:
     return value
 
 
-def manifest_sample_id_for(
-    path: Path, manifest_rows: dict[str, MdsManifestRow]
-) -> str:
+def manifest_sample_id_for(path: Path, manifest_rows: dict[str, MdsManifestRow]) -> str:
     """Resolve a public filename or downloader-created path to its manifest alias."""
 
     matches = {
         row.alias
         for row in manifest_rows.values()
         if path.name == row.zenodo_filename
-        or (
-            path.name.casefold() == "1.mds"
-            and path.parent.name == row.alias
-        )
+        or (path.name.casefold() == "1.mds" and path.parent.name == row.alias)
     }
     if not matches:
         raise MdsExportError(
@@ -422,7 +253,9 @@ def _safe_relative_output(output_dir: Path, value: str) -> Path:
     try:
         resolved.relative_to(output_dir)
     except ValueError as exc:
-        raise MdsExportError(f"Conversion path escapes output directory: {value}") from exc
+        raise MdsExportError(
+            f"Conversion path escapes output directory: {value}"
+        ) from exc
     return resolved
 
 
@@ -748,7 +581,11 @@ def run(args: argparse.Namespace) -> list[dict[str, object]]:
             f"Conversion manifest already exists; use --resume or --overwrite: "
             f"{state_path}"
         )
-    state = load_conversion_state(state_path) if not args.dry_run else empty_conversion_state()
+    state = (
+        load_conversion_state(state_path)
+        if not args.dry_run
+        else empty_conversion_state()
+    )
     existing_entries = entry_index(state)
     rows: list[dict[str, object]] = []
     verified_keys: set[tuple[str, int]] = set()
@@ -779,9 +616,13 @@ def run(args: argparse.Namespace) -> list[dict[str, object]]:
 
         if args.dry_run:
             source_size = (
-                manifest_row.size_bytes if manifest_row is not None else path.stat().st_size
+                manifest_row.size_bytes
+                if manifest_row is not None
+                else path.stat().st_size
             )
-            source_sha = manifest_row.sha256 if manifest_row is not None else "not-computed"
+            source_sha = (
+                manifest_row.sha256 if manifest_row is not None else "not-computed"
+            )
         else:
             source_size, source_sha = digest_file(path)
             if manifest_row is not None and (
