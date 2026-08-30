@@ -357,7 +357,7 @@ One public case has no HER2 patch in the manifest, so HER2 has 50 rather than
 | Ki-67 | Quadratic, percentage deciles | 51 | 0.232 | 0.055–0.428 | 23.5% | 31.1 | 44.4 | 0.217 |
 | Ki-67 | Unweighted, 20% binary | 51 | 0.287 | 0.049–0.521 | 62.7% | — | — | — |
 
-[Download the complete aggregate concordance CSV](../assets/data/breast_ihc_reference_concordance_metrics.csv).
+[Download the complete aggregate concordance CSV](../assets/reference/breast_ihc_reference_concordance_metrics.csv).
 For ER, PR, and Ki-67, errors are percentage points; for HER2 they are
 0–3 pre-score units. The downloadable file also contains expected agreement,
 specific agreement, median error, bias and limits of agreement, Pearson and

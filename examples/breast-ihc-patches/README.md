@@ -27,7 +27,7 @@ Open `START_HERE.html` and inspect every segmentation overlay. The concise
 output is `tables/tumorquantai_marker_values.csv`; it includes all four marker
 pre-scores, denominators, and QC status in one row per public case.
 
-The [aggregate reference concordance CSV](../../docs/assets/data/breast_ihc_reference_concordance_metrics.csv)
+The [aggregate reference concordance CSV](../../docs/assets/reference/breast_ihc_reference_concordance_metrics.csv)
 contains no case rows. The private 51-row pathologist CSV and paired case
 outputs are deliberately excluded from Git.
 
