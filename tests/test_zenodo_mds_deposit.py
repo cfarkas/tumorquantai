@@ -234,6 +234,7 @@ def test_upload_has_a_bounded_no_progress_timeout(tmp_path: Path) -> None:
         float(module.UPLOAD_SOCKET_TIMEOUT_SECONDS),
     )
     assert module.UPLOAD_STALL_TIMEOUT_SECONDS == 60
+    assert module.UPLOAD_MIN_PROGRESS_BYTES_PER_WINDOW == 8 * 1024 * 1024
     assert module.UPLOAD_SOCKET_TIMEOUT_SECONDS == 300
 
 
@@ -257,7 +258,7 @@ def test_main_thread_watchdog_interrupts_a_stalled_upload(
     upload = module.base.UploadFile(path, path.name, 7, "0" * 64, "0" * 32, "test")
     previous_handler = signal.getsignal(signal.SIGALRM)
     monkeypatch.setattr(module, "UPLOAD_STALL_TIMEOUT_SECONDS", 1)
-    with pytest.raises(module.requests.Timeout, match="No upload progress"):
+    with pytest.raises(module.requests.Timeout, match="below minimum"):
         StalledClient().upload_file("https://zenodo.org/api/files/test", upload)
     assert signal.getsignal(signal.SIGALRM) == previous_handler
     assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)

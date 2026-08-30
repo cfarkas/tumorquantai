@@ -33,6 +33,7 @@ EXPECTED_MDS_BYTES = 17_370_771_968
 ALLOWED_API_ORIGINS = {"zenodo.org", "sandbox.zenodo.org"}
 MAX_UPLOAD_WORKERS = 4
 UPLOAD_STALL_TIMEOUT_SECONDS = 60
+UPLOAD_MIN_PROGRESS_BYTES_PER_WINDOW = 8 * 1024 * 1024
 UPLOAD_SOCKET_TIMEOUT_SECONDS = 5 * 60
 MDS_PRIVATE_COLUMNS = {
     "alias",
@@ -76,6 +77,7 @@ class ProgressReader:
         name: str,
         size: int,
         on_progress: Callable[[], None] | None = None,
+        on_seek: Callable[[], None] | None = None,
         on_complete: Callable[[], None] | None = None,
     ) -> None:
         self.handle = handle
@@ -84,6 +86,7 @@ class ProgressReader:
         self.last_reported = 0
         self.threshold = max(64 * 1024 * 1024, size // 20)
         self.on_progress = on_progress
+        self.on_seek = on_seek
         self.on_complete = on_complete
 
     def __len__(self) -> int:
@@ -109,8 +112,9 @@ class ProgressReader:
 
     def seek(self, offset: int, whence: int = 0) -> int:
         result = self.handle.seek(offset, whence)
-        if self.on_progress is not None:
-            self.on_progress()
+        callback = self.on_seek or self.on_progress
+        if callback is not None:
+            callback()
         if result == 0:
             self.last_reported = 0
         return result
@@ -138,9 +142,13 @@ class ProgressZenodoClient(base.ZenodoClient):
             and signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
         )
         previous_handler = None
+        progress: ProgressReader | None = None
+        window_start_position = 0
 
-        def arm_watchdog() -> None:
+        def start_watchdog_window() -> None:
+            nonlocal window_start_position
             if watchdog_enabled:
+                window_start_position = progress.tell() if progress is not None else 0
                 signal.setitimer(
                     signal.ITIMER_REAL,
                     float(UPLOAD_STALL_TIMEOUT_SECONDS),
@@ -153,20 +161,34 @@ class ProgressZenodoClient(base.ZenodoClient):
         if watchdog_enabled:
             previous_handler = signal.getsignal(signal.SIGALRM)
 
-            def abort_stalled_upload(_signum, _frame) -> None:
-                raise requests.Timeout(f"No upload progress for {upload.remote_name}")
+            def check_upload_rate(_signum, _frame) -> None:
+                nonlocal window_start_position
+                position = progress.tell() if progress is not None else 0
+                advanced = position - window_start_position
+                if (
+                    position < upload.size_bytes
+                    and advanced < UPLOAD_MIN_PROGRESS_BYTES_PER_WINDOW
+                ):
+                    raise requests.Timeout(
+                        f"Upload progress below minimum for {upload.remote_name}"
+                    )
+                window_start_position = position
+                signal.setitimer(
+                    signal.ITIMER_REAL,
+                    float(UPLOAD_STALL_TIMEOUT_SECONDS),
+                )
 
-            signal.signal(signal.SIGALRM, abort_stalled_upload)
-            arm_watchdog()
+            signal.signal(signal.SIGALRM, check_upload_rate)
         try:
             with upload.local_path.open("rb") as handle:
                 progress = ProgressReader(
                     handle,
                     upload.remote_name,
                     upload.size_bytes,
-                    on_progress=arm_watchdog,
+                    on_seek=start_watchdog_window,
                     on_complete=disarm_watchdog,
                 )
+                start_watchdog_window()
                 response = self.request(
                     "PUT",
                     url,
