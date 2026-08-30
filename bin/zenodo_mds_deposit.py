@@ -12,12 +12,16 @@ import argparse
 import csv
 import json
 import re
+import signal
 import sys
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from html import unescape
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Callable
 from urllib.parse import urlparse
+
+import requests
 
 import zenodo_deposit as base
 from mds_manifest import MdsManifestError, load_manifest
@@ -65,18 +69,27 @@ def validated_api_url(value: str) -> str:
 class ProgressReader:
     """File wrapper that reports upload progress without exposing credentials."""
 
-    def __init__(self, handle: BinaryIO, name: str, size: int) -> None:
+    def __init__(
+        self,
+        handle: BinaryIO,
+        name: str,
+        size: int,
+        on_progress: Callable[[], None] | None = None,
+    ) -> None:
         self.handle = handle
         self.name = name
         self.size = size
         self.last_reported = 0
         self.threshold = max(64 * 1024 * 1024, size // 20)
+        self.on_progress = on_progress
 
     def __len__(self) -> int:
         return self.size
 
     def read(self, amount: int = -1) -> bytes:
         chunk = self.handle.read(amount)
+        if self.on_progress is not None:
+            self.on_progress()
         position = self.handle.tell()
         if position == self.size or position - self.last_reported >= self.threshold:
             percent = 100.0 * position / self.size if self.size else 100.0
@@ -90,6 +103,8 @@ class ProgressReader:
 
     def seek(self, offset: int, whence: int = 0) -> int:
         result = self.handle.seek(offset, whence)
+        if self.on_progress is not None:
+            self.on_progress()
         if result == 0:
             self.last_reported = 0
         return result
@@ -110,15 +125,48 @@ class ProgressZenodoClient(base.ZenodoClient):
         self, bucket_url: str, upload: base.UploadFile
     ) -> dict[str, object]:
         url = f"{bucket_url.rstrip('/')}/{base.quote(upload.remote_name, safe='')}"
-        with upload.local_path.open("rb") as handle:
-            progress = ProgressReader(handle, upload.remote_name, upload.size_bytes)
-            response = self.request(
-                "PUT",
-                url,
-                expected=(200, 201),
-                data=progress,
-                timeout=(15.0, float(UPLOAD_STALL_TIMEOUT_SECONDS)),
-            )
+        watchdog_enabled = (
+            threading.current_thread() is threading.main_thread()
+            and hasattr(signal, "SIGALRM")
+            and hasattr(signal, "ITIMER_REAL")
+            and signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
+        )
+        previous_handler = None
+
+        def arm_watchdog() -> None:
+            if watchdog_enabled:
+                signal.setitimer(
+                    signal.ITIMER_REAL,
+                    float(UPLOAD_STALL_TIMEOUT_SECONDS),
+                )
+
+        if watchdog_enabled:
+            previous_handler = signal.getsignal(signal.SIGALRM)
+
+            def abort_stalled_upload(_signum, _frame) -> None:
+                raise requests.Timeout(f"No upload progress for {upload.remote_name}")
+
+            signal.signal(signal.SIGALRM, abort_stalled_upload)
+            arm_watchdog()
+        try:
+            with upload.local_path.open("rb") as handle:
+                progress = ProgressReader(
+                    handle,
+                    upload.remote_name,
+                    upload.size_bytes,
+                    on_progress=arm_watchdog,
+                )
+                response = self.request(
+                    "PUT",
+                    url,
+                    expected=(200, 201),
+                    data=progress,
+                    timeout=(15.0, float(UPLOAD_STALL_TIMEOUT_SECONDS)),
+                )
+        finally:
+            if watchdog_enabled:
+                signal.setitimer(signal.ITIMER_REAL, 0.0)
+                signal.signal(signal.SIGALRM, previous_handler)
         return self.json_response(response, f"Upload of {upload.remote_name}")
 
 

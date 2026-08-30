@@ -5,8 +5,10 @@ import hashlib
 import importlib.util
 import json
 import os
+import signal
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -191,11 +193,19 @@ def test_parser_has_no_publish_option() -> None:
 def test_progress_reader_preserves_bytes(tmp_path: Path) -> None:
     path = tmp_path / "payload"
     path.write_bytes(b"123456")
+    progress_events: list[int] = []
     with path.open("rb") as handle:
-        reader = module.ProgressReader(handle, "safe.mds", 6)
+        reader = module.ProgressReader(
+            handle,
+            "safe.mds",
+            6,
+            on_progress=lambda: progress_events.append(handle.tell()),
+        )
         assert len(reader) == 6
         assert reader.read(2) == b"12"
+        assert reader.seek(2) == 2
         assert reader.read() == b"3456"
+    assert progress_events == [2, 2, 6]
 
 
 def test_upload_has_a_bounded_no_progress_timeout(tmp_path: Path) -> None:
@@ -221,6 +231,32 @@ def test_upload_has_a_bounded_no_progress_timeout(tmp_path: Path) -> None:
         float(module.UPLOAD_STALL_TIMEOUT_SECONDS),
     )
     assert module.UPLOAD_STALL_TIMEOUT_SECONDS == 300
+
+
+@pytest.mark.skipif(
+    not hasattr(signal, "SIGALRM") or not hasattr(signal, "ITIMER_REAL"),
+    reason="POSIX progress watchdog",
+)
+def test_main_thread_watchdog_interrupts_a_stalled_upload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class StalledClient(module.ProgressZenodoClient):
+        def __init__(self) -> None:
+            pass
+
+        def request(self, *_args, **_kwargs):
+            time.sleep(2)
+            raise AssertionError("Progress watchdog did not interrupt the request")
+
+    path = tmp_path / "slide.mds"
+    path.write_bytes(b"payload")
+    upload = module.base.UploadFile(path, path.name, 7, "0" * 64, "0" * 32, "test")
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    monkeypatch.setattr(module, "UPLOAD_STALL_TIMEOUT_SECONDS", 1)
+    with pytest.raises(module.requests.Timeout, match="No upload progress"):
+        StalledClient().upload_file("https://zenodo.org/api/files/test", upload)
+    assert signal.getsignal(signal.SIGALRM) == previous_handler
+    assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0)
 
 
 def test_restricted_metadata_allows_blank_license(tmp_path: Path) -> None:
