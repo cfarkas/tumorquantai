@@ -28,6 +28,7 @@ EXPECTED_MDS_COUNT = 21
 EXPECTED_MDS_BYTES = 17_370_771_968
 ALLOWED_API_ORIGINS = {"zenodo.org", "sandbox.zenodo.org"}
 MAX_UPLOAD_WORKERS = 4
+UPLOAD_STALL_TIMEOUT_SECONDS = 5 * 60
 MDS_PRIVATE_COLUMNS = {
     "alias",
     "staged_path",
@@ -116,7 +117,7 @@ class ProgressZenodoClient(base.ZenodoClient):
                 url,
                 expected=(200, 201),
                 data=progress,
-                timeout=(15.0, 6 * 60 * 60.0),
+                timeout=(15.0, float(UPLOAD_STALL_TIMEOUT_SECONDS)),
             )
         return self.json_response(response, f"Upload of {upload.remote_name}")
 
@@ -271,7 +272,13 @@ def collect_mds_uploads(
         raise base.DepositError(
             "MDS deposit exceeds Zenodo's default 50 GB record quota"
         )
-    return sorted(uploads, key=lambda item: item.remote_name.casefold())
+    return sorted(
+        uploads,
+        key=lambda item: (
+            item.kind == "sanitized-mds",
+            item.remote_name.casefold(),
+        ),
+    )
 
 
 def restricted_metadata_from_file(path: Path) -> dict[str, object]:
@@ -664,10 +671,23 @@ def deposit_mds(
 
     if workers == 1:
         for upload, existing in pending:
-            if existing is not None:
-                client.delete_file(existing.delete_url)
-            response = client.upload_file(bucket_url, upload)
-            base.validate_upload_response(response, upload)
+            upload_client = (
+                client
+                if session is not None
+                else ProgressZenodoClient(token, api_url, retries=retries)
+            )
+            try:
+                if existing is not None:
+                    upload_client.delete_file(existing.delete_url)
+                response = upload_client.upload_file(bucket_url, upload)
+                base.validate_upload_response(response, upload)
+            finally:
+                if upload_client is not client:
+                    close_session = getattr(
+                        getattr(upload_client, "session", None), "close", None
+                    )
+                    if callable(close_session):
+                        close_session()
             uploaded_state[upload.remote_name] = {
                 "size_bytes": upload.size_bytes,
                 "md5": upload.md5,

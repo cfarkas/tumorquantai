@@ -140,6 +140,10 @@ def test_collect_mds_uploads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     by_kind = {upload.kind: upload for upload in uploads}
     assert by_kind["sanitized-mds"].local_path == slide.resolve()
     assert by_kind["public-manifest"].local_path == public.resolve()
+    assert [upload.kind for upload in uploads] == [
+        "public-manifest",
+        "sanitized-mds",
+    ]
 
 
 def test_collect_rejects_incomplete_privacy_review(tmp_path: Path) -> None:
@@ -192,6 +196,31 @@ def test_progress_reader_preserves_bytes(tmp_path: Path) -> None:
         assert len(reader) == 6
         assert reader.read(2) == b"12"
         assert reader.read() == b"3456"
+
+
+def test_upload_has_a_bounded_no_progress_timeout(tmp_path: Path) -> None:
+    captured: dict[str, object] = {}
+
+    class CaptureClient(module.ProgressZenodoClient):
+        def __init__(self) -> None:
+            pass
+
+        def request(self, method: str, url: str, **kwargs):
+            captured.update({"method": method, "url": url, **kwargs})
+            return object()
+
+        def json_response(self, _response, _description: str) -> dict[str, object]:
+            return {}
+
+    path = tmp_path / "slide.mds"
+    path.write_bytes(b"payload")
+    upload = module.base.UploadFile(path, path.name, 7, "0" * 64, "0" * 32, "test")
+    CaptureClient().upload_file("https://zenodo.org/api/files/test", upload)
+    assert captured["timeout"] == (
+        15.0,
+        float(module.UPLOAD_STALL_TIMEOUT_SECONDS),
+    )
+    assert module.UPLOAD_STALL_TIMEOUT_SECONDS == 300
 
 
 def test_restricted_metadata_allows_blank_license(tmp_path: Path) -> None:
@@ -284,6 +313,40 @@ def test_deposit_draft_chain_is_verified(
     assert stored["status"] == "draft"
     assert stored["release_fingerprint_sha256"]
     assert len(stored["uploaded"]) == 2
+
+
+def test_sequential_uploads_use_fresh_clients(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FreshClient(FakeZenodoClient):
+        instances: list["FreshClient"] = []
+        upload_client_ids: set[int] = set()
+
+        def __init__(self, *_args, **_kwargs) -> None:
+            type(self).instances.append(self)
+
+        def upload_file(
+            self, bucket_url: str, upload: module.base.UploadFile
+        ) -> dict[str, object]:
+            type(self).upload_client_ids.add(id(self))
+            return super().upload_file(bucket_url, upload)
+
+    public, private, slide = manifests(tmp_path)
+    allow_one_slide(monkeypatch, slide)
+    monkeypatch.setattr(module, "ProgressZenodoClient", FreshClient)
+    token = tmp_path / "token"
+    token.write_text("secret", encoding="utf-8")
+    os.chmod(token, 0o600)
+    module.deposit_mds(
+        public_manifest=public,
+        private_mapping=private,
+        metadata_file=metadata_file(tmp_path),
+        state_file=tmp_path / "state.json",
+        token_file=token,
+    )
+    assert len(FreshClient.instances) == 3
+    assert len(FreshClient.upload_client_ids) == 2
+    assert id(FreshClient.instances[0]) not in FreshClient.upload_client_ids
 
 
 def test_parallel_deposit_uses_bounded_workers_and_records_state(

@@ -185,7 +185,10 @@ The token file must be regular, owner-controlled, and mode 0600. The depositor
 accepts only production or sandbox Zenodo HTTPS API origins. It verifies every
 local hash before upload, resumes exact remote size/MD5 matches, rejects
 unreviewed extra files, rechecks restricted metadata, and records state
-atomically.
+atomically. Sequential mode opens a fresh HTTPS session for each file and stops
+after five minutes without socket progress; rerun the exact command to recover
+from a transient Zenodo stall. A response lost after remote commit is recovered
+as `verified-existing` on the next run.
 
 ### Expanding public review artifacts in the same unsubmitted draft
 
