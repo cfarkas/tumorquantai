@@ -220,18 +220,42 @@ the Zenodo directory.
 
 ## Review the published output
 
-You do not need to rerun 30 WSIs to inspect the reference predictions. Expand
-the deposited paper figures beside the self-contained dashboards:
+You do not need to rerun 30 WSIs to inspect the reference predictions.
+
+<a class="tqa-button" href="https://zenodo.org/records/22177196/files/tumorquantai_immunoscore_paper_figures.zip?download=1">Download the complete review-figure ZIP (108 MiB)</a>
+<a class="tqa-button tqa-button-secondary" href="https://zenodo.org/records/22177196/files/tumorquantai_immunoscore_values.csv?download=1">Open the case-value CSV</a>
+
+Direct public result downloads:
+
+- [paper-ready case and marker figures (ZIP, 108 MiB)](https://zenodo.org/records/22177196/files/tumorquantai_immunoscore_paper_figures.zip?download=1);
+- [TumorQuantAI case values (CSV)](https://zenodo.org/records/22177196/files/tumorquantai_immunoscore_values.csv?download=1);
+- [cohort density summary (CSV)](https://zenodo.org/records/22177196/files/cohort_density_summary.csv?download=1);
+- [cohort report (HTML)](https://zenodo.org/records/22177196/files/REPORT.html?download=1);
+- [pathologist review dashboard (HTML)](https://zenodo.org/records/22177196/files/PATHOLOGIST_REVIEW.html?download=1); and
+- [all 57 files on the Zenodo record](https://zenodo.org/records/22177196).
+
+Zenodo deliberately serves the HTML files as plain text. If clicking an HTML
+link shows source code, use the browser's **Save link as** action.
+Save the report and dashboard to the same local directory as the extracted
+figure bundle, then
+open them locally. To use the local web-server option, expand the ZIP beside
+the two HTML files and keep this command running in its terminal:
 
 ```bash
 (cd "$TQA_PUBLIC" && unzip -q -o tumorquantai_immunoscore_paper_figures.zip)
 (cd "$TQA_PUBLIC" && python3 -m http.server 8000 --bind 127.0.0.1)
 ```
 
-Open `http://127.0.0.1:8000/REPORT.html` for the frozen cohort report and
-`http://127.0.0.1:8000/PATHOLOGIST_REVIEW.html` for case adjudication. The
-dashboard displays the case sheet from the extracted `cases/` tree, falls back
-to the deposited registration composite when necessary, preserves all
+Only then, on that same computer, open
+`http://127.0.0.1:8000/REPORT.html` for the frozen cohort report and
+`http://127.0.0.1:8000/PATHOLOGIST_REVIEW.html` for case adjudication.
+`127.0.0.1` is not a public TumorQuantAI address: it always means the computer
+running the browser. If the command runs on a remote SSH server, download the
+bundle locally or use an SSH port forward; do not expose the review server to
+the public Internet.
+
+The dashboard displays the case sheet from the extracted `cases/` tree, falls
+back to the deposited registration composite when necessary, preserves all
 TumorQuantAI fields, and exports `pathologist_review_completed.csv` with
 additive `accept`, `flag`, or `exclude` decisions.
 
