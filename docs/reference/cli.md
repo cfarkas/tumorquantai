@@ -215,18 +215,19 @@ reference-cohort counts. Then follow the
 
 ### Package-native colon CD3/CD8/CK20 whole-slide quantification
 
-The following commands are equivalent:
+The top-level compatibility form and canonical subcommand are equivalent.
+For the public Zenodo release, use its flat slide catalog:
 
 ```bash
-tumorquantai --inmunoscore /private/motic-bundles \
-  --output /controlled/results/colon-ihc \
-  --alias-secret-file /controlled/private/alias_secret.bin \
-  --private-linkage /controlled/private/case_slide_linkage.csv
+tumorquantai --inmunoscore /data/zenodo-22177196 \
+  --output /data/results/colon-ihc-reproduction \
+  --public-slide-catalog \
+    /data/zenodo-22177196/tumorquantai_colon_immunoscore_slide_catalog.csv
 
-tumorquantai ihc immunoscore /private/motic-bundles \
-  --output /controlled/results/colon-ihc \
-  --alias-secret-file /controlled/private/alias_secret.bin \
-  --private-linkage /controlled/private/case_slide_linkage.csv
+tumorquantai ihc immunoscore /data/zenodo-22177196 \
+  --output /data/results/colon-ihc-reproduction \
+  --public-slide-catalog \
+    /data/zenodo-22177196/tumorquantai_colon_immunoscore_slide_catalog.csv
 ```
 
 The deliberately preserved top-level spelling is `--inmunoscore`; the
@@ -238,16 +239,32 @@ CK20 detection is streamed at approximately 2 µm/pixel and area-projected into
 the bounded registration overview so focal staining is not averaged away. It
 does not run HistoPLUS or Nextflow.
 
-The owner-controlled alias secret must be a regular, single-linked, mode-0600
-file with at least 32 bytes. The private linkage must remain outside the
-result directory. Case grouping uses the exact source bundle prefix before the
-CD3/CD8/CK20 token; staining values are never used to infer identity. Cases
-missing a marker remain explicitly unavailable.
+Public mode preserves the published aliases and verifies the catalog schema,
+safe filenames, identities, one-slide-per-marker rule, byte sizes, MPP,
+format, sanitization profile, exact MDS roster, and SHA-256. The public
+reference is Zenodo record [`22177196`](https://zenodo.org/records/22177196),
+DOI [`10.5281/zenodo.22177196`](https://doi.org/10.5281/zenodo.22177196).
+
+For private source bundles, replace `--public-slide-catalog` with both private
+identity options:
+
+```bash
+tumorquantai --inmunoscore /private/motic-bundles \
+  --output /controlled/results/colon-ihc \
+  --alias-secret-file /controlled/private/alias_secret.bin \
+  --private-linkage /controlled/private/case_slide_linkage.csv
+```
+
+The alias secret must be regular, single-linked, mode 0600, and at least 32
+bytes. The linkage stays outside output. Private grouping uses the exact bundle
+prefix before CD3/CD8/CK20; staining never determines identity. Public and
+private identity options are mutually exclusive. Missing markers remain
+explicitly unavailable in either mode.
 
 `--dry-run` inventories marker sets and verifies physical scale without
 hashing WSIs or writing output. Normal runs are resumable and verify the exact
-source size/SHA-256 linkage before reusing a completed case. Automated
-registration and CK20 masks always require visual review.
+source size/SHA-256 against the selected catalog/linkage before analysis or
+reuse. Automated registration and CK20 masks always require visual review.
 
 This is a research proxy. It neither defines pathologist-reviewed tumour-core
 and invasive-margin regions nor imports the validated external reference

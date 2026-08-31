@@ -9,8 +9,9 @@ Use the repository `CITATION.cff` and record the exact release/tag or commit:
 > Farkas, Carlos. *TumorQuantAI*. Version 1.0.0. 2026.
 > https://github.com/cfarkas/tumorquantai
 
-TumorQuantAI has no software DOI. DOIs `10.5281/zenodo.21466410` and
-`10.5281/zenodo.21797920` belong to separate datasets, not the software.
+TumorQuantAI has no software DOI. DOIs `10.5281/zenodo.21466410`,
+`10.5281/zenodo.21797920`, and `10.5281/zenodo.22177196` belong to separate
+datasets, not the software.
 Repository code and documentation are licensed under MIT; third-party
 software, models, weights, containers, and datasets retain separate terms.
 
@@ -35,6 +36,21 @@ When the published raw TIFF patches or release manifest are used:
 The record declares CC BY 4.0 for the dataset. Generated paper/QC figures are
 local workflow outputs, not deposit contents. This DOI does not identify or
 license TumorQuantAI software, model weights, dependencies, or containers.
+
+## Public colon CD3/CD8/CK20 WSI dataset
+
+When the published MDS files or deposited analysis/review artifacts are used:
+
+> Farkas, Carlos. (2026). *TumorQuantAI colon cancer CD3, CD8, and CK20
+> whole-slide image dataset* (Version 1.0.0). Zenodo.
+> https://doi.org/10.5281/zenodo.22177196
+
+The record exposes 57 public files: 30 sanitized MDS WSIs and 27 catalog,
+checksum, result, QC, report, figure, and review artifacts. The record uses a
+custom copyright statement rather than CC BY. This DOI does not identify the
+software or establish clinical validation of the CK20-guided provisional
+proxy.
+
 
 ## LazySlide and HistoPLUS
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import stat
 from pathlib import Path
 
@@ -26,6 +27,49 @@ def _bundle(root: Path, name: str, *, scale: float = 0.26178) -> Path:
     path = directory / "1.mds"
     path.write_bytes(name.encode("utf-8"))
     return path
+
+
+def _public_catalog(root: Path, markers: tuple[str, ...]) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    case_alias = "TQA_CI_AAAAAAAAAAAAAAAAAAAA"
+    slide_tokens = (
+        "AAAAAAAAAAAAAAAAAAAA",
+        "BBBBBBBBBBBBBBBBBBBB",
+        "CCCCCCCCCCCCCCCCCCCC",
+    )
+    rows: list[dict[str, str]] = []
+    assert len(markers) <= len(slide_tokens)
+    for marker, token in zip(markers, slide_tokens):
+        slide_alias = f"TQA_CIS_{token}"
+        filename = f"{slide_alias}.mds"
+        payload = f"public-{marker}".encode()
+        (root / filename).write_bytes(payload)
+        rows.append(
+            {
+                "case_alias": case_alias,
+                "slide_alias": slide_alias,
+                "marker": marker,
+                "zenodo_filename": filename,
+                "size_bytes": str(len(payload)),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+                "md5": hashlib.md5(payload, usedforsecurity=False).hexdigest(),
+                "source_mpp": "0.26178",
+                "source_format": immunoscore.ZENODO_PUBLIC_SOURCE_FORMAT,
+                "sanitization_profile": (
+                    immunoscore.ZENODO_PUBLIC_SANITIZATION_PROFILE
+                ),
+            }
+        )
+    catalog = root / "tumorquantai_colon_immunoscore_slide_catalog.csv"
+    with catalog.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=immunoscore.ZENODO_PUBLIC_SLIDE_CATALOG_FIELDS,
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+    return catalog
 
 
 def test_discovery_creates_stable_hmac_aliases_and_private_linkage(
@@ -62,6 +106,66 @@ def test_discovery_requires_owner_only_alias_secret(tmp_path: Path) -> None:
     secret.chmod(0o644)
     with pytest.raises(immunoscore.ImmunoscoreError, match="0600"):
         immunoscore.discover_mds_slides(source, secret)
+
+
+def test_public_catalog_discovery_preserves_aliases_and_verifies_digest(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "public"
+    catalog = _public_catalog(source, immunoscore.IMMUNOSCORE_MARKERS)
+
+    records = immunoscore.discover_public_mds_slides(source, catalog)
+    assert len(records) == 3
+    assert {record.marker for record in records} == set(immunoscore.IMMUNOSCORE_MARKERS)
+    assert {record.case_alias for record in records} == {"TQA_CI_AAAAAAAAAAAAAAAAAAAA"}
+    assert all(
+        record.source_mpp_provenance == "published public slide catalog"
+        for record in records
+    )
+    assert immunoscore.add_source_digests(records) == records
+
+
+def test_public_catalog_rejects_same_size_digest_change(tmp_path: Path) -> None:
+    source = tmp_path / "public"
+    catalog = _public_catalog(source, ("CD3",))
+    records = immunoscore.discover_public_mds_slides(source, catalog)
+    records[0].source_path.write_bytes(b"changed!!!")
+    with pytest.raises(immunoscore.ImmunoscoreError, match="SHA-256 mismatch"):
+        immunoscore.add_source_digests(records)
+
+
+def test_public_catalog_dry_run_creates_no_private_linkage(tmp_path: Path) -> None:
+    source = tmp_path / "public"
+    catalog = _public_catalog(source, immunoscore.IMMUNOSCORE_MARKERS)
+    output = tmp_path / "result"
+    result = immunoscore.run_immunoscore(
+        source,
+        output,
+        None,
+        None,
+        immunoscore.ImmunoscoreConfig(),
+        dry_run=True,
+        public_slide_catalog=catalog,
+    )
+    assert result["input_identity_mode"] == "published_public_slide_catalog"
+    assert result["complete_case_count"] == 1
+    assert not output.exists()
+    assert not (tmp_path / "linkage.csv").exists()
+
+
+def test_public_catalog_rejects_private_alias_options(tmp_path: Path) -> None:
+    source = tmp_path / "public"
+    catalog = _public_catalog(source, ("CD3",))
+    with pytest.raises(immunoscore.ImmunoscoreError, match="cannot be combined"):
+        immunoscore.run_immunoscore(
+            source,
+            tmp_path / "result",
+            _secret(tmp_path / "alias.bin"),
+            tmp_path / "linkage.csv",
+            immunoscore.ImmunoscoreConfig(),
+            dry_run=True,
+            public_slide_catalog=catalog,
+        )
 
 
 @pytest.mark.parametrize(

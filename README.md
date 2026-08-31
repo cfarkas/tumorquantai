@@ -8,11 +8,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Lymphoma dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21466410.svg)](https://doi.org/10.5281/zenodo.21466410)
 [![Breast-IHC dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21797920.svg)](https://doi.org/10.5281/zenodo.21797920)
+[![Colon-IHC dataset DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22177196.svg)](https://doi.org/10.5281/zenodo.22177196)
 
-TumorQuantAI analyzes H&E whole-slide images (WSIs) and brightfield breast-IHC
-patches. The WSI route validates physical scale, samples tissue reproducibly,
-runs HistoPLUS, and writes cell-type outputs. The package-native IHC route
-segments and quantifies ER, PR, HER2, and Ki-67 with reviewable QC.
+TumorQuantAI analyzes H&E whole-slide images (WSIs), brightfield breast-IHC
+patches, and colon CD3/CD8/CK20 serial-section WSIs. The H&E route validates
+physical scale, samples tissue reproducibly, runs HistoPLUS, and writes
+cell-type outputs. Package-native IHC routes quantify marker staining and write
+reviewable values, visual QC, and explicit interpretation boundaries.
 
 Version 1.0.0 is distributed as a GitHub source release. It does not publish a
 standalone PyPI workflow package, a new TumorQuantAI application container, or
@@ -217,28 +219,41 @@ separate lymphoma dataset. See the [breast IHC patch tutorial](https://cfarkas.g
 
 ## Colon IHC: direct Motic WSI quantification
 
-TumorQuantAI can read Motic MDS pixel pyramids directly and quantify registered
+TumorQuantAI reads Motic MDS pixel pyramids directly and quantifies registered
 CD3/CD8 serial sections in CK20-guided epithelial and stromal proxy
-compartments:
+compartments. The public-catalog mode reproduces the published aliases without
+creating or requiring a private linkage:
 
 ```bash
-# Quantify a private CD3/CD8/CK20 serial-section collection.
-tumorquantai --inmunoscore /private/extracted/inmunoscore \
-  --output /controlled/results/tumorquantai_immunoscore \
-  --alias-secret-file /controlled/private_release/alias_secret.bin \
-  --private-linkage /controlled/private_release/case_slide_linkage.csv \
+# Analyze the public Zenodo colon-IHC record.
+tumorquantai --inmunoscore /path/to/zenodo-22177196 \
+  --output /path/to/new-colon-ihc-results \
+  --public-slide-catalog \
+    /path/to/zenodo-22177196/tumorquantai_colon_immunoscore_slide_catalog.csv \
   --workers 3
 ```
 
-The command writes one clear case-value CSV, an explicit pass-only/all-numeric
-cohort summary, a long counts/areas/densities CSV, registration metrics,
-composite QC images, 300-dpi case/slide review sheets, a provisional pI0-pI4
-within-cohort analogue, and an offline pathologist accept/flag/exclude dashboard.
-The pI label is a CK20-guided research proxy, not the consensus clinical
-Immunoscore: the official field remains blank without pathologist-validated
-tumour-core/invasive-margin regions and the validated external reference
-distribution. Reviewer decisions are additive and never overwrite the
-algorithm values or automatic QC. See the [colon IHC whole-slide
+The public reference release is [Zenodo record
+22177196](https://zenodo.org/records/22177196), dataset DOI
+[`10.5281/zenodo.22177196`](https://doi.org/10.5281/zenodo.22177196). Version
+1.0.0 contains 57 public files (40,721,516,620 bytes), including 30 sanitized
+MDS WSIs, exact checksum/catalog files, frozen results, nine registration
+composites, 36 paper-ready review sheets, and the offline pathologist
+accept/flag/exclude dashboard. The catalog route validates identities, sizes,
+MPP, format, sanitization profile, MDS roster, and SHA-256 before analysis.
+
+Private source bundles remain supported with `--alias-secret-file` and
+`--private-linkage`; those options are intentionally incompatible with
+`--public-slide-catalog`.
+
+The command writes one clear case-value CSV, explicit pass-only/all-numeric
+summaries, long counts/areas/densities, registration metrics, visual QC,
+300-dpi case/slide sheets, and a provisional pI0-pI4 within-cohort analogue.
+The pI label is a CK20-guided research proxy, not consensus Immunoscore: the
+official field stays blank without pathologist-validated tumour-core and
+invasive-margin regions plus the validated external reference distribution.
+Reviewer decisions are additive and never overwrite algorithm values or
+automatic QC. See the [complete public download, reproduction, and review
 tutorial](https://cfarkas.github.io/tumorquantai/tutorials/colon-ihc-wsi-immunoscore/).
 
 ## Run your own WSIs

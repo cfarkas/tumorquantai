@@ -72,6 +72,20 @@ PUBLIC_SLIDE_FIELDS = (
     "source_mpp",
     "source_mpp_provenance",
 )
+ZENODO_PUBLIC_SLIDE_CATALOG_FIELDS = (
+    "case_alias",
+    "slide_alias",
+    "marker",
+    "zenodo_filename",
+    "size_bytes",
+    "sha256",
+    "md5",
+    "source_mpp",
+    "source_format",
+    "sanitization_profile",
+)
+ZENODO_PUBLIC_SOURCE_FORMAT = "Motic MDS DSI0 pixel pyramid"
+ZENODO_PUBLIC_SANITIZATION_PROFILE = "pixel-preserving-nonpixel-redaction-v2"
 REGISTRATION_FIELDS = (
     "case_alias",
     "marker",
@@ -522,6 +536,139 @@ def discover_mds_slides(
     return records
 
 
+def discover_public_mds_slides(
+    input_root: Path,
+    slide_catalog: Path,
+    *,
+    source_mpp: float | None = None,
+) -> list[ImmunoscoreSlide]:
+    """Load already-anonymized flat MDS files from the published catalog."""
+    candidate = input_root.expanduser().absolute()
+    if candidate.is_symlink() or not candidate.is_dir():
+        raise ImmunoscoreError("Immunoscore input must be a regular directory")
+    input_root = candidate.resolve()
+    catalog_candidate = slide_catalog.expanduser().absolute()
+    if catalog_candidate.is_symlink() or not catalog_candidate.is_file():
+        raise ImmunoscoreError("Public slide catalog must be a regular CSV file")
+    slide_catalog = catalog_candidate.resolve()
+
+    with slide_catalog.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if tuple(reader.fieldnames or ()) != ZENODO_PUBLIC_SLIDE_CATALOG_FIELDS:
+            raise ImmunoscoreError(
+                "Public slide catalog columns do not match the published schema"
+            )
+        rows = [dict(row) for row in reader]
+    if not rows:
+        raise ImmunoscoreError("Public slide catalog contains no slides")
+
+    records: list[ImmunoscoreSlide] = []
+    seen_case_markers: set[tuple[str, str]] = set()
+    seen_slide_aliases: set[str] = set()
+    seen_filenames: set[str] = set()
+    for index, row in enumerate(rows, start=2):
+        case_alias = str(row["case_alias"])
+        slide_alias = str(row["slide_alias"])
+        marker = str(row["marker"])
+        filename = str(row["zenodo_filename"])
+        if CASE_ALIAS_RE.fullmatch(case_alias) is None:
+            raise ImmunoscoreError(f"Invalid public case alias on catalog row {index}")
+        if SLIDE_ALIAS_RE.fullmatch(slide_alias) is None:
+            raise ImmunoscoreError(f"Invalid public slide alias on catalog row {index}")
+        if marker not in IMMUNOSCORE_MARKERS:
+            raise ImmunoscoreError(f"Invalid marker on public catalog row {index}")
+        if (
+            not filename
+            or Path(filename).name != filename
+            or filename != f"{slide_alias}.mds"
+        ):
+            raise ImmunoscoreError(
+                f"Unsafe or inconsistent Zenodo filename on catalog row {index}"
+            )
+        key = (case_alias, marker)
+        if (
+            key in seen_case_markers
+            or slide_alias in seen_slide_aliases
+            or filename in seen_filenames
+        ):
+            raise ImmunoscoreError("Public slide catalog contains duplicate identities")
+        seen_case_markers.add(key)
+        seen_slide_aliases.add(slide_alias)
+        seen_filenames.add(filename)
+
+        path = input_root / filename
+        if path.is_symlink() or not path.is_file():
+            raise ImmunoscoreError(f"Catalog MDS is missing or not regular: {filename}")
+        try:
+            expected_size = int(str(row["size_bytes"]))
+        except ValueError as exc:
+            raise ImmunoscoreError(
+                f"Invalid MDS size on public catalog row {index}"
+            ) from exc
+        if expected_size <= 0 or path.stat().st_size != expected_size:
+            raise ImmunoscoreError(f"Published size mismatch for {filename}")
+        expected_sha256 = str(row["sha256"])
+        expected_md5 = str(row["md5"])
+        if re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None:
+            raise ImmunoscoreError(f"Invalid SHA-256 on public catalog row {index}")
+        if re.fullmatch(r"[0-9a-f]{32}", expected_md5) is None:
+            raise ImmunoscoreError(f"Invalid MD5 on public catalog row {index}")
+        try:
+            measured_mpp = float(str(row["source_mpp"]))
+        except ValueError as exc:
+            raise ImmunoscoreError(
+                f"Invalid source MPP on public catalog row {index}"
+            ) from exc
+        if not math.isfinite(measured_mpp) or measured_mpp <= 0:
+            raise ImmunoscoreError(f"Invalid source MPP on public catalog row {index}")
+        if source_mpp is not None and (
+            not math.isfinite(source_mpp)
+            or source_mpp <= 0
+            or not math.isclose(measured_mpp, source_mpp, rel_tol=1e-6, abs_tol=1e-6)
+        ):
+            raise ImmunoscoreError(
+                "Explicit source MPP differs from the public slide catalog"
+            )
+        if str(row["source_format"]) != ZENODO_PUBLIC_SOURCE_FORMAT:
+            raise ImmunoscoreError(
+                f"Unsupported source format on public catalog row {index}"
+            )
+        if str(row["sanitization_profile"]) != ZENODO_PUBLIC_SANITIZATION_PROFILE:
+            raise ImmunoscoreError(
+                f"Unsupported sanitization profile on public catalog row {index}"
+            )
+        records.append(
+            ImmunoscoreSlide(
+                case_alias=case_alias,
+                slide_alias=slide_alias,
+                source_case_id=case_alias,
+                source_slide_id=slide_alias,
+                marker=marker,
+                source_path=path.resolve(),
+                source_mpp=measured_mpp,
+                source_mpp_provenance="published public slide catalog",
+                source_size_bytes=expected_size,
+                source_sha256=expected_sha256,
+            )
+        )
+
+    discovered_paths = {
+        path.resolve()
+        for path in input_root.rglob("*.mds")
+        if path.is_file() and not path.is_symlink()
+    }
+    catalog_paths = {record.source_path for record in records}
+    if discovered_paths != catalog_paths:
+        raise ImmunoscoreError("Input MDS roster differs from the public slide catalog")
+    records.sort(
+        key=lambda item: (
+            item.case_alias,
+            IMMUNOSCORE_MARKERS.index(item.marker),
+        )
+    )
+    return records
+
+
 def add_source_digests(
     records: Sequence[ImmunoscoreSlide],
 ) -> list[ImmunoscoreSlide]:
@@ -534,6 +681,16 @@ def add_source_digests(
             )
         except MdsReadError as exc:
             raise ImmunoscoreError(str(exc)) from exc
+        if record.source_size_bytes and size != record.source_size_bytes:
+            raise ImmunoscoreError(
+                f"Published size mismatch for {record.source_path.name}"
+            )
+        if record.source_sha256 and not hmac.compare_digest(
+            sha256, record.source_sha256
+        ):
+            raise ImmunoscoreError(
+                f"Published SHA-256 mismatch for {record.source_path.name}"
+            )
         result.append(
             ImmunoscoreSlide(
                 **{
@@ -2411,8 +2568,8 @@ def aggregate_results(
 def run_immunoscore(
     input_root: Path,
     output_root: Path,
-    alias_secret: Path,
-    private_linkage: Path,
+    alias_secret: Path | None,
+    private_linkage: Path | None,
     config: ImmunoscoreConfig,
     *,
     workers: int = 1,
@@ -2421,6 +2578,7 @@ def run_immunoscore(
     resume: bool = True,
     fail_fast: bool = False,
     dry_run: bool = False,
+    public_slide_catalog: Path | None = None,
 ) -> dict[str, Any]:
     """Discover, anonymize, quantify, aggregate, and report a colon WSI cohort."""
     config.validate()
@@ -2434,31 +2592,66 @@ def run_immunoscore(
     if output_candidate.is_symlink():
         raise ImmunoscoreError("Immunoscore output must not be a symlink")
     output_root = output_candidate.resolve()
-    alias_secret_candidate = alias_secret.expanduser().absolute()
-    if alias_secret_candidate.is_symlink():
-        raise ImmunoscoreError("Alias secret must not be a symlink")
-    alias_secret = alias_secret_candidate.resolve()
-    private_linkage = private_linkage.expanduser().absolute()
-    if private_linkage.is_symlink():
-        raise ImmunoscoreError("Private linkage must not be a symlink")
+    public_input = public_slide_catalog is not None
+    if public_input and (alias_secret is not None or private_linkage is not None):
+        raise ImmunoscoreError(
+            "--public-slide-catalog cannot be combined with private alias options"
+        )
+    if not public_input and (alias_secret is None or private_linkage is None):
+        raise ImmunoscoreError(
+            "Private bundle input requires --alias-secret-file and --private-linkage"
+        )
+    if alias_secret is not None:
+        alias_secret_candidate = alias_secret.expanduser().absolute()
+        if alias_secret_candidate.is_symlink():
+            raise ImmunoscoreError("Alias secret must not be a symlink")
+        alias_secret = alias_secret_candidate.resolve()
+    if private_linkage is not None:
+        private_linkage = private_linkage.expanduser().absolute()
+        if private_linkage.is_symlink():
+            raise ImmunoscoreError("Private linkage must not be a symlink")
+    if public_slide_catalog is not None:
+        catalog_candidate = public_slide_catalog.expanduser().absolute()
+        if catalog_candidate.is_symlink():
+            raise ImmunoscoreError("Public slide catalog must not be a symlink")
+        public_slide_catalog = catalog_candidate.resolve()
     if (
         output_root == input_root
         or input_root in output_root.parents
         or output_root in input_root.parents
     ):
         raise ImmunoscoreError("Input and output directories must be disjoint")
-    if output_root == alias_secret or output_root in alias_secret.parents:
+    if alias_secret is not None and (
+        output_root == alias_secret or output_root in alias_secret.parents
+    ):
         raise ImmunoscoreError("Alias secret must remain outside the result directory")
-    try:
-        private_linkage.relative_to(output_root)
-    except ValueError:
-        pass
-    else:
+    if private_linkage is not None:
+        try:
+            private_linkage.relative_to(output_root)
+        except ValueError:
+            pass
+        else:
+            raise ImmunoscoreError(
+                "Private linkage must remain outside the result directory"
+            )
+    if public_slide_catalog is not None and output_root in public_slide_catalog.parents:
         raise ImmunoscoreError(
-            "Private linkage must remain outside the result directory"
+            "Public slide catalog must remain outside the result directory"
         )
 
-    records = discover_mds_slides(input_root, alias_secret, source_mpp=source_mpp)
+    input_identity_mode = (
+        "published_public_slide_catalog"
+        if public_slide_catalog is not None
+        else "private_hmac_anonymization"
+    )
+    if public_slide_catalog is not None:
+        records = discover_public_mds_slides(
+            input_root, public_slide_catalog, source_mpp=source_mpp
+        )
+    else:
+        if alias_secret is None:  # Defensive narrowing after mode validation.
+            raise ImmunoscoreError("Private bundle input requires an alias secret")
+        records = discover_mds_slides(input_root, alias_secret, source_mpp=source_mpp)
     grouped, unavailable = group_case_slides(records)
     complete = {
         case_alias: markers
@@ -2468,6 +2661,7 @@ def run_immunoscore(
     plan = {
         "schema_version": IMMUNOSCORE_SCHEMA_VERSION,
         "mode": "dry_run" if dry_run else "analysis",
+        "input_identity_mode": input_identity_mode,
         "discovered_slide_count": len(records),
         "discovered_case_count": len(grouped),
         "complete_case_count": len(complete),
@@ -2499,7 +2693,8 @@ def run_immunoscore(
         for case_alias, markers in grouped.items()
         if set(markers) == set(IMMUNOSCORE_MARKERS)
     }
-    write_or_verify_private_linkage(private_linkage, records, resume=resume)
+    if private_linkage is not None:
+        write_or_verify_private_linkage(private_linkage, records, resume=resume)
     output_root.mkdir(parents=True, exist_ok=True)
     _atomic_csv(
         output_root / "tables/public_slide_inventory.csv",
@@ -2587,11 +2782,20 @@ def run_immunoscore(
         "settings": asdict(config),
         "workers": workers,
         "source_format": "Motic MDS; DSI0 pixel streams only",
-        "source_mpp_provenance": "private Motic info.ini scale",
+        "source_mpp_provenance": "; ".join(
+            sorted({record.source_mpp_provenance for record in records})
+        ),
         "anonymization": (
-            "Public results contain HMAC-derived aliases only. The alias secret "
-            "and source linkage are separately controlled files and are not "
-            "part of this result directory."
+            (
+                "Input already uses the published case and slide aliases from the "
+                "public slide catalog; no private linkage is created or required."
+            )
+            if public_slide_catalog is not None
+            else (
+                "Public results contain HMAC-derived aliases only. The alias secret "
+                "and source linkage are separately controlled files and are not "
+                "part of this result directory."
+            )
         ),
         "immune_positive_cell_rule": (
             "Hematoxylin/DAB object segmentation followed by 3-um expanded-cell "
@@ -2709,8 +2913,12 @@ def run_immunoscore(
             output_root / "workflow_metadata/failures.json",
             {"failures": failures},
         )
-    return {
+    result = {
         **metadata,
         "output": str(output_root),
-        "private_linkage": str(private_linkage),
     }
+    if private_linkage is not None:
+        result["private_linkage"] = str(private_linkage)
+    if public_slide_catalog is not None:
+        result["public_slide_catalog"] = str(public_slide_catalog)
+    return result

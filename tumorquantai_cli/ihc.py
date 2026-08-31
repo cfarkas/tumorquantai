@@ -3417,7 +3417,10 @@ def add_cli_parser(subparsers: Any) -> None:
     immunoscore.add_argument(
         "input",
         type=Path,
-        help="private extracted root containing Motic case-marker bundles",
+        help=(
+            "directory containing flat published MDS files or private extracted "
+            "Motic case-marker bundles"
+        ),
     )
     immunoscore.add_argument(
         "--output",
@@ -3427,17 +3430,26 @@ def add_cli_parser(subparsers: Any) -> None:
     )
     immunoscore.add_argument(
         "--alias-secret-file",
-        required=True,
         type=Path,
-        help="owner-controlled mode-0600 file with at least 32 random bytes",
+        help=(
+            "private-input mode: owner-controlled mode-0600 file with at least "
+            "32 random bytes"
+        ),
     )
     immunoscore.add_argument(
         "--private-linkage",
-        required=True,
         type=Path,
         help=(
-            "separate mode-0600 private CSV linking source IDs to HMAC aliases; "
-            "must be outside --output"
+            "private-input mode: separate mode-0600 CSV linking source IDs to "
+            "HMAC aliases; must be outside --output"
+        ),
+    )
+    immunoscore.add_argument(
+        "--public-slide-catalog",
+        type=Path,
+        help=(
+            "public-input mode: published TumorQuantAI colon slide catalog; "
+            "incompatible with the private alias options"
         ),
     )
     immunoscore.add_argument(
@@ -3634,6 +3646,7 @@ def dispatch_cli(args: Any) -> int:
                 resume=not args.no_resume,
                 fail_fast=args.fail_fast,
                 dry_run=args.dry_run,
+                public_slide_catalog=args.public_slide_catalog,
             )
         except immunoscore.ImmunoscoreError as exc:
             raise IHCError(str(exc)) from exc

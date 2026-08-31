@@ -36,7 +36,11 @@ Release preparation does not itself authorize a merge, tag, or publication.
 - [ ] Breast-IHC record `21797920` and DOI `10.5281/zenodo.21797920`
       resolve with 55 unique files totaling `74,958,557,152` bytes under
       CC BY 4.0.
-- [ ] Both dataset DOIs remain separate from the software citation and license.
+- [ ] Colon-IHC record `22177196` and DOI `10.5281/zenodo.22177196` resolve
+      with public files: 57 unique files, 30 MDS files, and
+      `40,721,516,620` total bytes.
+- [ ] The lymphoma, breast-IHC, and colon-IHC dataset DOIs remain separate from
+      the software citation and license.
 
 ## Safety and CI
 

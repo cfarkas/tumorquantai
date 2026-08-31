@@ -12,21 +12,32 @@ tumorquantai ihc immunoscore INPUT [OPTIONS]
 The compatibility flag deliberately uses the spelling `--inmunoscore`.
 The canonical English subcommand is `ihc immunoscore`.
 
-Required arguments:
+The public reference input is Zenodo record
+[`22177196`](https://zenodo.org/records/22177196), DOI
+[`10.5281/zenodo.22177196`](https://doi.org/10.5281/zenodo.22177196).
+
+Common required arguments:
 
 | Argument | Contract |
 | --- | --- |
-| `INPUT` | Regular directory containing Motic bundles named with one exact CD3, CD8, or CK20 token and a regular `1.mds` |
+| `INPUT` | Regular directory containing either flat public MDS files or private Motic case-marker bundles |
 | `--output DIR` | New directory, or an existing TumorQuantAI Immunoscore-proxy output with matching state |
-| `--alias-secret-file FILE` | Regular, owner-owned, single-linked, mode-0600 file containing at least 32 bytes |
-| `--private-linkage CSV` | Controlled CSV outside output; created atomically at mode 0600 or exactly verified as owner-controlled and single-linked on resume |
+
+Choose exactly one identity mode:
+
+| Mode | Required option(s) | Contract |
+| --- | --- | --- |
+| Published public input | `--public-slide-catalog CSV` | Exact published catalog schema and flat MDS roster; existing public aliases are preserved and no private linkage is created |
+| Private source input | `--alias-secret-file FILE` and `--private-linkage CSV` | Secret is owner-owned, single-linked, mode 0600, and at least 32 bytes; controlled linkage stays outside output and is created or exactly verified at mode 0600 |
+
+The public option and private option pair are mutually exclusive.
 
 Analysis options:
 
 | Option | Default | Effect |
 | --- | ---: | --- |
 | `--workers` | min(3, CPUs) | Complete cases processed concurrently; accepted range 1–8 |
-| `--source-mpp` | scanner sidecar | Optional assertion that must match every Motic `info.ini` scale |
+| `--source-mpp` | catalog or scanner sidecar | Optional assertion that must match every published catalog value or private Motic `info.ini` scale |
 | `--target-analysis-mpp` | 0.55 | Selects the nearest MDS pyramid level |
 | `--overview-max-edge` | 2048 | Bounded registration overview edge |
 | `--block-tiles` | 4 | Tile count along each streamed analysis-block edge |
@@ -42,7 +53,29 @@ Analysis options:
 | `--fail-fast` | false | Stops after the first complete-case failure |
 | `--dry-run` | false | Discovers marker sets and verifies MPP without writing |
 
-## Exact input grouping
+## Published public-catalog grouping
+
+`--public-slide-catalog` accepts the exact columns in
+`tumorquantai_colon_immunoscore_slide_catalog.csv`:
+
+```text
+case_alias, slide_alias, marker, zenodo_filename, size_bytes, sha256, md5,
+source_mpp, source_format, sanitization_profile
+```
+
+The loader requires `TQA_CI_` and `TQA_CIS_` base32 aliases, CD3/CD8/CK20
+markers, one slide per case/marker, a safe flat filename equal to
+`<slide_alias>.mds`, valid checksum syntax, an exact byte-size match, positive
+finite MPP, the published Motic DSI0 source format and sanitization profile,
+and equality between catalogued and discovered MDS paths. A full run hashes
+each MDS and requires its SHA-256 to match before case analysis. Dry-run checks
+the catalog and sizes but deliberately does not hash 40.7 GB of payloads.
+
+Public mode preserves the catalogued aliases as the analysis identities. It
+does not infer grouping from stain intensity or regenerate aliases from a new
+secret.
+
+## Private source-bundle grouping
 
 The regular expression is:
 
@@ -74,12 +107,13 @@ The signature is SHA-256 over:
 
 Completed cases are reused only when their status is complete, the signature
 matches, and requested QC artifacts exist. Before case reuse, every source MDS
-size and SHA-256 must exactly match the separate private linkage.
+size and SHA-256 must exactly match either the published catalog or the
+separate private linkage, according to the selected identity mode.
 
 ## Clear case-value CSV
 
 `tables/tumorquantai_immunoscore_values.csv` has one row for every discovered
-anonymous case:
+public case alias:
 
 | Field group | Fields |
 | --- | --- |

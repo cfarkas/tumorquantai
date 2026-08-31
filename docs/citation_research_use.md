@@ -31,6 +31,24 @@ Generated paper and QC figures are local TumorQuantAI outputs and are not part
 of the Zenodo deposit. This DOI identifies the breast-IHC dataset; it is not a
 software DOI and does not replace the separate citation for TumorQuantAI.
 
+## Public colon CD3/CD8/CK20 WSI dataset
+
+The public colon-IHC reference dataset is:
+
+- Zenodo record: `22177196`
+- DOI: [`10.5281/zenodo.22177196`](https://doi.org/10.5281/zenodo.22177196)
+- Version: `1.0.0`
+- Rights statement: Copyright (C) 2026 The Authors
+- Contents: 57 public files comprising 30 sanitized MDS WSIs and 27 catalog,
+  checksum, result, QC, report, figure, and pathologist-review artifacts
+  (40,721,516,620 bytes total)
+
+Cite this dataset when its images or deposited derivatives are used. Its DOI
+does not identify TumorQuantAI software and does not validate the provisional
+CK20-guided pI0-pI4 research proxy as consensus Immunoscore. Public file
+visibility does not itself create a separate open-content license.
+
+
 ## HistoPLUS and LazySlide
 
 Cite the HistoPLUS model and LazySlide software according to their official documentation and terms. Record the pinned HistoPLUS revision and weight identity from each TumorQuantAI summary.

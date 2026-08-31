@@ -41,6 +41,22 @@ material; generated TumorQuantAI paper/QC figures are local outputs and are not
 part of the deposit. The dataset DOI does not identify or license TumorQuantAI
 software, HistoPLUS weights, dependencies, or containers.
 
+## Public colon CD3/CD8/CK20 WSI dataset
+
+If the published MDS files, catalog, checksums, frozen analysis tables, or
+review figures are used, cite:
+
+> Farkas, Carlos. (2026). *TumorQuantAI colon cancer CD3, CD8, and CK20
+> whole-slide image dataset* (Version 1.0.0). Zenodo.
+> https://doi.org/10.5281/zenodo.22177196
+
+The public record contains 30 sanitized MDS WSIs plus frozen CK20-guided proxy
+outputs and review artifacts. Its custom rights statement is Copyright (C)
+2026 The Authors; do not describe it as CC BY unless the record is changed to
+declare that license. The DOI identifies the colon-IHC dataset, not the
+TumorQuantAI software and not a clinically validated consensus Immunoscore.
+
+
 ## LazySlide
 
 TumorQuantAI uses [LazySlide](https://github.com/rendeirolab/LazySlide) as part

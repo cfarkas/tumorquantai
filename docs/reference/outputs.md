@@ -222,7 +222,12 @@ independent validation.
 ## Package-native colon CD3/CD8/CK20 outputs
 
 `tumorquantai --inmunoscore` and `tumorquantai ihc immunoscore` create the
-same PHI-free research result:
+same public-alias research result:
+
+The reproducible public input and frozen reference outputs are Zenodo record
+[`22177196`](https://zenodo.org/records/22177196), dataset DOI
+[`10.5281/zenodo.22177196`](https://doi.org/10.5281/zenodo.22177196). Use
+`--public-slide-catalog` to preserve its published case/slide identities.
 
 ```text
 <colon-ihc-result>/
@@ -251,8 +256,8 @@ same PHI-free research result:
 ```
 
 `tumorquantai_immunoscore_values.csv` is the clearest case-level table. It has
-one row for every anonymous discovered case and four TumorQuantAI density
-values: CD3 and CD8 positive cells/mm² in the CK20 epithelial and stromal
+one row for every discovered non-semantic case alias and four TumorQuantAI
+density values: CD3 and CD8 positive cells/mm² in the CK20 epithelial and stromal
 proxy compartments. Automatic-QC-pass cases define four deterministic
 within-cohort mid-rank reference distributions. Every numerically available
 pass/review case receives four percentiles, their mean, an internal rank group,
@@ -291,11 +296,13 @@ projected-fraction threshold and range, raw/final compartment fractions, and
 effective morphology. It also records the selected-level dimensions needed to
 audit scale-based coordinates independently of MDS tile padding.
 
-`public_slide_inventory.csv` contains only HMAC aliases, marker, format, and
-physical scale. The exact source case/slide IDs, paths, sizes, and hashes are
-stored only in the separate mode-0600 private linkage. Incomplete marker sets
-appear in `unavailable_cases.csv`; missing or failed values are blank and are
-never converted to biological zero.
+`public_slide_inventory.csv` contains only non-semantic aliases, marker,
+format, and physical scale. In public mode, the published catalog separately
+records the public filename, byte size, and checksums; no private ID or source
+path is used. In private mode, the exact source case/slide IDs, paths, sizes,
+and hashes remain only in the separate mode-0600 linkage. Incomplete marker
+sets appear in `unavailable_cases.csv`; missing or failed values are blank and
+are never converted to biological zero.
 
 The output never claims the consensus clinical Immunoscore. Its
 `consensus_immunoscore` field is blank, and
