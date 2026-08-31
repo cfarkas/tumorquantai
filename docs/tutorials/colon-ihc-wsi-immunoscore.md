@@ -5,21 +5,45 @@
 
 ## Register CD3 and CD8 to CK20, then measure compartment densities
 
-TumorQuantAI reads Motic MDS pyramids directly. It creates stable anonymous
-aliases, aligns serial sections, uses CK20 to form epithelial and stromal
-proxies, streams immune-cell detection across each WSI, and writes clear CSV
+TumorQuantAI reads Motic MDS pyramids directly. It creates or preserves stable
+non-semantic aliases, aligns serial sections, uses CK20 to form epithelial and
+stromal proxies, streams immune-cell detection across each WSI, and writes clear CSV
 tables plus visual registration QC.
 
-<a class="tqa-button" href="#run-the-cohort">Run the cohort</a>
-<a class="tqa-button tqa-button-secondary" href="#what-the-numbers-mean">Interpret the outputs</a>
+<a class="tqa-button" href="#reproduce-the-public-analysis">Reproduce the analysis</a>
+<a class="tqa-button tqa-button-secondary" href="#review-the-published-output">Review the published output</a>
 </div>
 
 <div class="tqa-metric-grid">
   <div class="tqa-metric"><strong>30</strong><span>Motic MDS slides</span></div>
-  <div class="tqa-metric"><strong>11</strong><span>source cases discovered</span></div>
+  <div class="tqa-metric"><strong>11</strong><span>public case aliases</span></div>
   <div class="tqa-metric"><strong>9</strong><span>complete CD3/CD8/CK20 sets</span></div>
   <div class="tqa-metric"><strong>0.261780</strong><span>µm/pixel at source level</span></div>
 </div>
+
+![Five-step public colon IHC workflow: download and verify, validate the public catalog, register serial sections, quantify CK20-guided compartments, and review the provisional output](../assets/tutorial/colon_ihc_flow.svg)
+
+## Published reference dataset
+
+The exact reference release is public and requires no Zenodo credential:
+
+| Field | Published value |
+| --- | --- |
+| Dataset | *TumorQuantAI colon cancer CD3, CD8, and CK20 whole-slide image dataset* |
+| Record | [`22177196`](https://zenodo.org/records/22177196) |
+| DOI | [`10.5281/zenodo.22177196`](https://doi.org/10.5281/zenodo.22177196) |
+| Version | `1.0.0` |
+| Files | 57 public files; 40,721,516,620 bytes |
+| WSIs | 30 sanitized MDS files: 10 CD3, 10 CD8, and 10 CK20 |
+| Cases | 11 aliases; 9 complete triplets and 2 explicitly unavailable incomplete cases |
+| Rights statement | Copyright (C) 2026 The Authors; public visibility does not itself create a separate open-content license |
+
+The deposit includes the MDS files, exact SHA-256 and MD5 rosters, a
+case/slide/marker catalog, the complete TumorQuantAI value and QC CSVs, nine
+registration composites, 36 paper-ready review sheets, an HTML report, and an
+offline pathologist accept/flag/exclude dashboard. The dataset DOI identifies
+this dataset—not the TumorQuantAI software and not a clinically validated
+Immunoscore assay.
 
 !!! danger "Research proxy—not clinical Immunoscore"
     This workflow does **not** calculate the clinically validated consensus
@@ -97,7 +121,152 @@ The command is package-native and does not invoke HistoPLUS or Nextflow.
 `tumorquantai ihc immunoscore` is the canonical subcommand;
 `tumorquantai --inmunoscore` is the requested top-level compatibility form.
 
-## Prepare the private input
+
+## Reproduce the public analysis
+
+The public route consumes the flat Zenodo MDS filenames and the published
+`tumorquantai_colon_immunoscore_slide_catalog.csv` directly. It preserves the
+published `TQA_CI_...` case aliases, requires no alias secret, and creates no
+private linkage table.
+
+### 1. Download all 57 files
+
+The release is 40.7 GB. Keep it outside the Git checkout and allow enough
+additional space for a fresh result directory. The following resumable command
+uses the Zenodo API only to obtain the fixed filenames and public content URLs:
+
+```bash
+TQA_PUBLIC="$HOME/tumorquantai-data/colon-ihc-v1.0.0"
+install -d "$TQA_PUBLIC"
+
+curl -fsSL --retry 5 https://zenodo.org/api/records/22177196 \
+  | jq -r '.files[] | "\(.links.self)\n  out=\(.key)"' \
+  | aria2c --input-file=- \
+      --dir="$TQA_PUBLIC" \
+      --continue=true \
+      --max-concurrent-downloads=3 \
+      --max-connection-per-server=1 \
+      --auto-file-renaming=false \
+      --allow-overwrite=true
+```
+
+The command was tested against the published endpoint and preserves each
+Zenodo filename. Rerunning it resumes partial transfers. `jq` and `aria2c` must
+be installed by the operating system; neither is a TumorQuantAI runtime
+dependency.
+
+### 2. Verify the immutable payload
+
+Verify the primary SHA-256 roster before opening or analysing the images:
+
+```bash
+(cd "$TQA_PUBLIC" && sha256sum --check SHA256SUMS)
+
+find "$TQA_PUBLIC" -maxdepth 1 -type f -name 'TQA_CIS_*.mds' | wc -l
+# Expected: 30
+```
+
+`SHA256SUMS` covers the other 55 release files; the two checksum rosters do not
+hash themselves. `MD5SUMS` is supplied for repository interoperability and can
+be checked separately with `md5sum --check MD5SUMS`. SHA-256 is the primary
+integrity check.
+
+### 3. Preview the public catalog
+
+```bash
+TQA_RESULTS="$HOME/tumorquantai-results/colon-ihc-v1.0.0-reproduction"
+
+tumorquantai --inmunoscore "$TQA_PUBLIC" \
+  --output "$TQA_RESULTS" \
+  --public-slide-catalog \
+    "$TQA_PUBLIC/tumorquantai_colon_immunoscore_slide_catalog.csv" \
+  --workers 3 \
+  --dry-run
+```
+
+For the published catalog, the preview must report:
+
+```text
+input_identity_mode: published_public_slide_catalog
+discovered_slide_count: 30
+discovered_case_count: 11
+complete_case_count: 9
+incomplete_case_count: 2
+marker_slide_counts: CD3=10, CD8=10, CK20=10
+source_mpp_values: [0.26178]
+```
+
+The fail-closed reader checks the exact catalog columns, alias shapes, one
+slide per case/marker, safe flat filenames, byte sizes, physical scale, source
+format, sanitization profile, and equality between the catalog and input MDS
+rosters. `--dry-run` does not hash image payloads or create output.
+
+### 4. Quantify from the public MDS files
+
+After the preview matches, remove only `--dry-run`:
+
+```bash
+tumorquantai --inmunoscore "$TQA_PUBLIC" \
+  --output "$TQA_RESULTS" \
+  --public-slide-catalog \
+    "$TQA_PUBLIC/tumorquantai_colon_immunoscore_slide_catalog.csv" \
+  --workers 3
+```
+
+Before case analysis, TumorQuantAI hashes every catalogued MDS and requires its
+size and SHA-256 to match the publication catalog. The run is resumable and
+writes new results outside the downloaded release. Do not point `--output` at
+the Zenodo directory.
+
+## Review the published output
+
+You do not need to rerun 30 WSIs to inspect the reference predictions. Expand
+the deposited paper figures beside the self-contained dashboards:
+
+```bash
+(cd "$TQA_PUBLIC" && unzip -q -o tumorquantai_immunoscore_paper_figures.zip)
+(cd "$TQA_PUBLIC" && python3 -m http.server 8000 --bind 127.0.0.1)
+```
+
+Open `http://127.0.0.1:8000/REPORT.html` for the frozen cohort report and
+`http://127.0.0.1:8000/PATHOLOGIST_REVIEW.html` for case adjudication. The
+dashboard displays the case sheet from the extracted `cases/` tree, falls back
+to the deposited registration composite when necessary, preserves all
+TumorQuantAI fields, and exports `pathologist_review_completed.csv` with
+additive `accept`, `flag`, or `exclude` decisions.
+
+!!! warning "Treat completed review exports as controlled research records"
+    The blank deposited dashboard is public, but reviewer codes, free-text
+    notes, and downstream annotations can introduce sensitive or identifying
+    content. Inspect a completed export before sharing it.
+
+### Published result snapshot
+
+| Cohort result | Published value |
+| --- | ---: |
+| Automatic-QC pass | 6 cases |
+| Automatic-QC review | 3 cases |
+| Unavailable incomplete marker set | 2 cases |
+| Provisional pI distribution | pI0: 3; pI1: 0; pI2: 4; pI3: 2; pI4: 0; unscored: 2 |
+| Consensus Immunoscore | 0 reported; blank with explicit unavailable status for all 11 cases |
+
+The nine numerically available cases have these deposited CK20-proxy density
+summaries:
+
+| Measurement | Median positive cells/mm² | Range |
+| --- | ---: | ---: |
+| CD3, CK20-epithelium proxy | 86.46 | 11.25–3,363.76 |
+| CD3, CK20-stroma proxy | 107.85 | 22.02–411.68 |
+| CD8, CK20-epithelium proxy | 58.86 | 5.57–3,986.58 |
+| CD8, CK20-stroma proxy | 68.42 | 6.14–152.66 |
+
+These are descriptive values from the published
+[`cohort_density_summary.csv`](https://zenodo.org/records/22177196/files/cohort_density_summary.csv?download=1),
+not estimates of clinical performance. The pI distribution is cohort-relative
+and must be interpreted only after reviewing registration, CK20 compartment
+assignment, stain quality, tissue coverage, and cell segmentation.
+
+## Analyze private source bundles
 
 Keep original archives, extracted scanner bundles, alias secrets, and linkage
 tables outside Git:
@@ -157,7 +326,7 @@ Only `case_alias`, `slide_alias`, marker, and non-identifying acquisition facts
 appear in public results. The private linkage is required for exact audit and
 must never be uploaded to Zenodo or committed to Git.
 
-## Run the cohort
+## Run a private cohort
 
 Set paths once:
 
@@ -325,7 +494,7 @@ The immune panels are registration blends at overview scale. They are not
 cell-outline overlays. Open the source WSI at cellular resolution whenever
 segmentation itself is in question.
 
-## Review the results
+## Review a new local run
 
 Open:
 
@@ -378,7 +547,7 @@ tumorquantai_immunoscore/
 
 | File | Use it for | Important boundary |
 | --- | --- | --- |
-| `tumorquantai_immunoscore_values.csv` | One row per anonymous case, four densities, internal percentiles, pI0-pI4, and explicit consensus-unavailable fields | Review cases are scored against—but never included in—the automatic-pass reference |
+| `tumorquantai_immunoscore_values.csv` | One row per public case alias, four densities, internal percentiles, pI0-pI4, and explicit consensus-unavailable fields | Review cases are scored against—but never included in—the automatic-pass reference |
 | `cohort_density_summary.csv` | Mean, sample SD, median, quartiles, and range for each density under pass-only and all-numeric populations | Population and `n` are explicit; review cases never silently enter pass-only statistics |
 | `case_compartment_densities.csv` | Counts, areas, densities, mapping fraction, MPP, and QC in long format | A technically completed row can still require review |
 | `registration_qc.csv` | Transform method, feature matches, inliers, tissue Dice, and affine matrix | Automated Dice does not replace visual review |
@@ -404,10 +573,18 @@ is then checked for:
 - visual tissue-pixel review.
 
 The original ZIPs, sidecars, source filenames, alias secret, private linkage,
-and private sanitizer mapping remain outside the deposit. A new Zenodo entry
-is created as a **restricted, unsubmitted draft**. TumorQuantAI contains no
-publication action for this dataset; publication requires a separate human
-rights/privacy/metadata decision after visual review.
+and private sanitizer mapping remain outside the deposit. The package release
+helper can create only a restricted, unsubmitted Zenodo draft; it contains no
+publication action. For reference release `1.0.0`, the owner separately
+completed the privacy, integrity, visual, rights, and metadata gate, published
+the record, and explicitly changed all 57 files to public visibility. That
+manual action produced DOI
+[`10.5281/zenodo.22177196`](https://doi.org/10.5281/zenodo.22177196); it is not
+performed by TumorQuantAI.
+
+Non-semantic public aliases and sanitized container metadata do not justify
+attempting re-identification from tissue pixels or combining the images with
+outside identifying data.
 
 ## Limitations to carry into every report
 

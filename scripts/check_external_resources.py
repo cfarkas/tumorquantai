@@ -27,6 +27,14 @@ BREAST_TOTAL_BYTES = 74_958_557_152
 BREAST_ROSTER_SHA256 = (
     "a16f5cf00acc5aa20463f8a942175f11db608e082f7d067da917c8b29dd842fc"
 )
+COLON_RECORD = "22177196"
+COLON_DOI = "10.5281/zenodo.22177196"
+COLON_TITLE = "TumorQuantAI colon cancer CD3, CD8, and CK20 whole-slide image dataset"
+COLON_VERSION = "1.0.0"
+COLON_FILE_COUNT = 57
+COLON_MDS_COUNT = 30
+COLON_TOTAL_BYTES = 40_721_516_620
+COLON_ROSTER_SHA256 = "86cde25339db1c219d678aa2438fcfedd014eb414dba02de692993434dc555dc"
 
 
 def request(url: str, *, expect_json: bool = False) -> tuple[int, Any]:
@@ -133,6 +141,62 @@ def breast_record_failures(record: dict[str, Any]) -> list[str]:
     return failures
 
 
+def colon_record_failures(record: dict[str, Any]) -> list[str]:
+    """Validate the immutable public colon-IHC release identity and roster."""
+    failures: list[str] = []
+    if str(record.get("id")) != COLON_RECORD or record.get("doi") != COLON_DOI:
+        failures.append("colon-IHC Zenodo record ID/DOI changed")
+    access = record.get("access")
+    native_files_restricted = isinstance(access, dict) and (
+        "files" in access and access.get("files") != "public"
+    )
+    if not zenodo_record_is_public(record) or native_files_restricted:
+        failures.append("colon-IHC Zenodo record or files are not public")
+    metadata = record.get("metadata")
+    metadata = metadata if isinstance(metadata, dict) else {}
+    resource_type = metadata.get("resource_type")
+    resource_id = (
+        resource_type.get("type")
+        if isinstance(resource_type, dict)
+        else metadata.get("upload_type")
+    )
+    if str(resource_id).casefold() != "dataset":
+        failures.append("colon-IHC Zenodo resource type is not dataset")
+    if metadata.get("title") != COLON_TITLE or metadata.get("version") != COLON_VERSION:
+        failures.append("colon-IHC Zenodo title/version changed")
+    files = record.get("files")
+    if not isinstance(files, list) or not all(
+        isinstance(item, dict) for item in files
+    ):
+        failures.append("colon-IHC Zenodo file roster is invalid")
+        return failures
+    names = [str(item.get("key") or item.get("filename") or "") for item in files]
+    sizes = [item.get("size", item.get("filesize")) for item in files]
+    checksums = [str(item.get("checksum") or "").lower() for item in files]
+    if (
+        len(files) != COLON_FILE_COUNT
+        or len(set(names)) != len(names)
+        or any(not name for name in names)
+        or sum(name.endswith(".mds") for name in names) != COLON_MDS_COUNT
+    ):
+        failures.append("colon-IHC Zenodo file count/names changed")
+    if (
+        any(not isinstance(size, int) or size <= 0 for size in sizes)
+        or sum(size for size in sizes if isinstance(size, int)) != COLON_TOTAL_BYTES
+    ):
+        failures.append("colon-IHC Zenodo total byte count changed")
+    if any(
+        len(checksum) != 36
+        or not checksum.startswith("md5:")
+        or any(character not in "0123456789abcdef" for character in checksum[4:])
+        for checksum in checksums
+    ):
+        failures.append("colon-IHC Zenodo checksum metadata is invalid")
+    elif breast_roster_sha256(files) != COLON_ROSTER_SHA256:
+        failures.append("colon-IHC Zenodo filename/size/checksum roster changed")
+    return failures
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -176,6 +240,16 @@ def main(argv: list[str] | None = None) -> int:
         failures.append(str(exc))
 
     try:
+        _status, colon_record = request(
+            f"https://zenodo.org/api/records/{COLON_RECORD}",
+            expect_json=True,
+        )
+        failures.extend(colon_record_failures(colon_record))
+        checks.append("colon-IHC Zenodo record")
+    except RuntimeError as exc:
+        failures.append(str(exc))
+
+    try:
         _status, record = request(f"https://zenodo.org/api/records/{RECORD}", expect_json=True)
         if str(record.get("id")) != RECORD or record.get("doi") != DOI:
             failures.append("Zenodo record ID/DOI changed")
@@ -193,6 +267,7 @@ def main(argv: list[str] | None = None) -> int:
     for label, url, expect_json in (
         ("lymphoma dataset DOI", f"https://doi.org/{DOI}", False),
         ("breast-IHC dataset DOI", f"https://doi.org/{BREAST_DOI}", False),
+        ("colon-IHC dataset DOI", f"https://doi.org/{COLON_DOI}", False),
         ("GitHub Pages", "https://cfarkas.github.io/tumorquantai/", False),
         ("pinned HistoPLUS revision", f"https://huggingface.co/api/models/Owkin-Bioptimus/histoplus/revision/{MODEL_REVISION}", True),
     ):

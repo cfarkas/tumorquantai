@@ -99,6 +99,7 @@ def test_top_level_inmunoscore_help_is_available(tmp_path: Path) -> None:
     assert result.returncode == core.EXIT_OK, result.stderr
     assert "CK20" in result.stdout
     assert "--alias-secret-file" in result.stdout
+    assert "--public-slide-catalog" in result.stdout
     assert "not clinical Immunoscore" in result.stdout
 
 

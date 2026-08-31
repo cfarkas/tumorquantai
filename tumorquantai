@@ -1193,9 +1193,9 @@ def build_parser() -> argparse.ArgumentParser:
             "  tumorquantai convert downloads --output slides --resume\n"
             "  tumorquantai quickstart --no-inference\n"
             "  tumorquantai --patches /data/patches --paper-figures --output results\n"
-            "  tumorquantai --inmunoscore /private/motic --output results "
-            "--alias-secret-file /private/alias.key "
-            "--private-linkage /private/linkage.csv"
+            "  tumorquantai --inmunoscore /data/colon-mds --output results "
+            "--public-slide-catalog /data/colon-mds/"
+            "tumorquantai_colon_immunoscore_slide_catalog.csv"
         ),
     )
     parser.add_argument("--version", action="version", version=f"TumorQuantAI {core.VERSION}")

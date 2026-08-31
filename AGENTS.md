@@ -105,13 +105,18 @@ immutably matched to software `v0.4.0`, Zenodo record `21466410`, dataset DOI
 `10.5281/zenodo.21466410`, sample `TumorQuantAI_LymphomaWSI_022`, and source
 MPP `0.261780`. The separate raw breast-IHC patch dataset is Zenodo record
 `21797920`, DOI `10.5281/zenodo.21797920`. Verify these identities against
-their public records before changing them. Never assign either dataset DOI to
-the software or invent performance, clinical-validation, or biological claims.
+their public records before changing them. The separate public colon-IHC
+dataset is record `22177196`, DOI `10.5281/zenodo.22177196`, version `1.0.0`,
+with 57 files, 30 MDS files, and `40,721,516,620` bytes. Preserve its public
+aliases through `--public-slide-catalog`. Never assign any dataset DOI to the
+software or invent performance, clinical-validation, or biological claims.
 
 Colon-IHC release tooling creates only a new restricted, unpublished Zenodo
 draft. It must preserve all DSI0 pixel bytes, neutralize non-pixel MDS streams,
 pass private-marker scans and independent visible-pixel review, and must never
-reuse an existing deposit state or offer a publication action.
+reuse an existing deposit state or offer a publication action. The published
+reference state records a separate, explicitly authorized human action; it
+does not broaden the tooling contract.
 
 This repository is licensed under MIT as recorded in `LICENSE` and
 `docs/maintainers/LICENSE_DECISION.md`. Do not apply the repository license to

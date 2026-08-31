@@ -4,6 +4,23 @@ This procedure creates a **new restricted, unsubmitted Zenodo draft** for the
 30-slide CD3/CD8/CK20 Motic cohort. It does not create a new version of an
 existing record and it contains no publication action.
 
+## Published reference state
+
+The completed reference release was separately reviewed and published under
+explicit owner authorization after this draft-only procedure finished:
+
+| Field | Immutable reference |
+| --- | --- |
+| Record | [`22177196`](https://zenodo.org/records/22177196) |
+| DOI | [`10.5281/zenodo.22177196`](https://doi.org/10.5281/zenodo.22177196) |
+| Version/date | `1.0.0`; 2026-08-30 |
+| Visibility | Public metadata and public files |
+| Payload | 57 files; 30 MDS; 40,721,516,620 bytes |
+| Release fingerprint | `3844be6f9fe2db3d40c25369dffeaefbba87dbbfbd1a63c6b134fb1b03d0aab5` |
+
+This records the outcome; it does not broaden the uploader. The repository
+tool must continue to stop at a restricted, unsubmitted draft.
+
 ## Fixed release contract
 
 The release must contain exactly:
@@ -11,7 +28,7 @@ The release must contain exactly:
 - 30 sanitized MDS files;
 - 40,580,793,856 MDS bytes;
 - 10 CD3, 10 CD8, and 10 CK20 slides;
-- 11 anonymous cases, of which 9 have all three markers;
+- 11 public case aliases, of which 9 have all three markers;
 - aliases matching `TQA_CIS_[A-Z2-7]{20}`;
 - source MPP 0.261780 µm/pixel;
 - sanitization profile `pixel-preserving-nonpixel-redaction-v2`.
@@ -108,7 +125,7 @@ python3 bin/package_zenodo_immunoscore_release.py --public-manifest /controlled/
 
 The packager fails on private ID/path markers and creates:
 
-- an anonymous case/slide/marker catalog;
+- a pseudonymized public case/slide/marker catalog;
 - clear wide and long TumorQuantAI CSVs;
 - numeric and visual registration QC;
 - the blank pathologist accept/flag/exclude template, codebook, and offline dashboard;
@@ -227,6 +244,23 @@ The command has no `--publish` option. After upload:
 Do not treat “uploaded” or “anonymized” as permission to publish. Zenodo record
 metadata becomes public if the draft is eventually published even when file
 visibility is restricted, so metadata itself also requires privacy review.
+
+## 8. Record the separately authorized publication
+
+After a human owner makes the separate publication/access decision outside the
+tool, record the DOI, exact remote roster, total bytes, release fingerprint,
+publication timestamp, access state, and unauthenticated verification in a
+mode-0600 receipt outside Git. Confirm that:
+
+1. the DOI resolves without authentication;
+2. the API reports `status=published`, `access.record=public`, and
+   `access.files=public`;
+3. all 57 filenames, sizes, and MD5 values match the reviewed release;
+4. an unauthenticated content request downloads a file successfully;
+5. the public description no longer claims that files are restricted; and
+6. the dataset DOI remains separate from the software citation.
+
+For the v1.0.0 reference, each check passed for record `22177196`.
 
 ## GitHub boundary
 
