@@ -242,6 +242,9 @@ composites, 36 paper-ready review sheets, and the offline pathologist
 accept/flag/exclude dashboard. The catalog route validates identities, sizes,
 MPP, format, sanitization profile, MDS roster, and SHA-256 before analysis.
 
+[Download the complete colon-IHC paper-figure bundle (ZIP, 108 MiB)](https://zenodo.org/records/22177196/files/tumorquantai_immunoscore_paper_figures.zip?download=1)
+or open the [published case-value CSV](https://zenodo.org/records/22177196/files/tumorquantai_immunoscore_values.csv?download=1) directly.
+
 Private source bundles remain supported with `--alias-secret-file` and
 `--private-linkage`; those options are intentionally incompatible with
 `--public-slide-catalog`.
